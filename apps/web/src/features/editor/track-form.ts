@@ -15,20 +15,6 @@ import {
 
 import type { NotationDefaults } from '@/state/notation-defaults';
 
-/** Ten swatches that read on both themes, so a track keeps its colour when the theme flips. */
-export const TRACK_COLORS: readonly string[] = [
-  '#d9480f',
-  '#1971c2',
-  '#2f9e44',
-  '#9c36b5',
-  '#e03131',
-  '#f08c00',
-  '#0c8599',
-  '#c2255c',
-  '#5c7cfa',
-  '#495057',
-];
-
 export const MIN_STRINGS = 4;
 export const MIN_TUNING_NOTE = 12;
 export const MAX_TUNING_NOTE = 96;
@@ -326,7 +312,7 @@ export function validateTrackForm(form: TrackForm, existing?: Track): TrackFormE
   if (form.shortName.trim() === '' && existing?.shortName !== '') {
     errors.shortName = 'Give the track a short name.';
   }
-  if (!HEX_COLOR.test(form.color)) errors.color = 'Use a colour like #d9480f.';
+  if (!HEX_COLOR.test(form.color)) errors.color = 'Use a six-digit hex colour, such as a swatch.';
   if (form.kind === 'fretted') {
     const fretCount = existing?.fretCount ?? createTrack('fretted').fretCount;
     const capo = form.capo.trim();

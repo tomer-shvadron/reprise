@@ -4,10 +4,19 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { ALLOWED, findRawColors, inScope, isAllowed, staleEntries } from './check.ts';
+import {
+  ALLOWED,
+  findRawColors,
+  inScope,
+  isAllowed,
+  staleEntries,
+  tailwindPalettes,
+  withoutComments,
+} from './check.ts';
 
 const CLI = fileURLToPath(new URL('check.ts', import.meta.url));
-const kinds = (source: string) => findRawColors(source).map((finding) => finding.kind);
+const kinds = (source: string, css = false) =>
+  findRawColors(source, { css }).map((finding) => finding.kind);
 
 describe('findRawColors', () => {
   it.each([
@@ -21,6 +30,16 @@ describe('findRawColors', () => {
     ['className="bg-emerald-500/20"', 'palette-class'],
     ["const GREEN = 'text-emerald-700 dark:text-emerald-400';", 'palette-class'],
     ['className="fill-slate-900"', 'palette-class'],
+    ['className="border-t-red-500 border-x-slate-200 ring-offset-red-500"', 'palette-class'],
+    ['className="bg-mauve-500 text-olive-100 ring-mist-300 fill-taupe-950"', 'palette-class'],
+    ['className="shadow-[0_0_0_1px_#000]"', 'literal'],
+    ['className="shadow-[0_1px_2px_oklch(0_0_0/20%)]"', 'literal'],
+    ['className="shadow-[0_0_0_1px_rgba(0,0,0,.1)]"', 'literal'],
+    ["const u = 'a//b'; const c = '#fff';", 'literal'],
+    ['<circle fill="red" />', 'named-colour'],
+    ["style={{ color: 'red' }}", 'named-colour'],
+    ["circle.setAttribute('fill', 'teal');", 'named-colour'],
+    ['x { stroke: navy; }', 'named-colour'],
   ])('flags %s', (source, kind) => {
     expect(kinds(source)).toEqual([kind]);
   });
@@ -33,6 +52,10 @@ describe('findRawColors', () => {
     ['// the chord strip (#352) and #242'],
     ['/** Fixes #352, was rgb(0 0 0) */'],
     ['<a href="#main">'],
+    ['<circle fill="none" stroke="currentColor" />'],
+    ["background: 'white',"],
+    ["const colour = 'white';"],
+    ['className="border-t-border bg-success-foreground"'],
     ["const url = 'https://example.com/#abc';"],
   ])('passes %s', (source) => {
     expect(findRawColors(source)).toEqual([]);
@@ -46,6 +69,33 @@ describe('findRawColors', () => {
   it('ignores a multi-line comment but keeps its line count', () => {
     const found = findRawColors("/*\n #fff\n*/\nconst x = '#fff';");
     expect(found.map((f) => f.line)).toEqual([4]);
+  });
+});
+
+describe('css files', () => {
+  it('reads only block comments as comments', () => {
+    expect(kinds('a { background: url(//x); color: #fff; }', true)).toEqual(['literal']);
+    expect(kinds('a { background: white; }', true)).toEqual(['named-colour']);
+    expect(kinds('/* #fff */ a { color: var(--ink); }', true)).toEqual([]);
+  });
+});
+
+describe('withoutComments', () => {
+  it('keeps strings, blanks comments and preserves lines', () => {
+    expect(withoutComments("a('//') // x\n/* y\nz */ b")).toBe("a('//')     \n    \n     b");
+  });
+});
+
+describe('tailwindPalettes', () => {
+  it('reads the names of the shade-500 variables', () => {
+    const names = tailwindPalettes(
+      Array.from(
+        { length: 10 },
+        (_, i) => `--color-p${'abcdefghij'.charAt(i)}-500: oklch(0.5 0.1 20);`,
+      ).join('\n'),
+    );
+    expect(names).toHaveLength(10);
+    expect(() => tailwindPalettes('--color-red-500: x;')).toThrow(/too few/);
   });
 });
 

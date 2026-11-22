@@ -260,9 +260,11 @@ function systemBody(
           maskId = `${maskPrefix}${String(maskIds.size)}`;
           maskIds.set(key, maskId);
           const area = `x="${num(region.x)}" y="${num(region.y)}" width="${num(region.width)}" height="${num(region.height)}"`;
-          const holes = cuts.map((box) => `<path d="${box.d}" fill="#000000"/>`).join('');
+          const holes = cuts
+            .map((box) => `<path d="${box.d}" fill="${PALETTE.maskHide}"/>`)
+            .join('');
           writer.masks.push(
-            `<mask id="${maskId}" maskUnits="userSpaceOnUse" ${area}><rect ${area} fill="#ffffff"/>${holes}</mask>`,
+            `<mask id="${maskId}" maskUnits="userSpaceOnUse" ${area}><rect ${area} fill="${PALETTE.white}"/>${holes}</mask>`,
           );
         }
       }
