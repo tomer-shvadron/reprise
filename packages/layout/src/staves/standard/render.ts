@@ -406,7 +406,7 @@ export function renderBar(
       // One per bar: equal bend labels of neighbouring beats and of two voices at one onset print
       // once, and different ones stack.
       const drawn = newBendDrawn();
-      for (const beats of plan.voices) drawBends(connecting, beats, drawn);
+      drawBends(connecting, plan.voices, drawn);
     }
   }
 

@@ -1,6 +1,7 @@
 import {
   TIE_REACH_BARS,
   tieOriginOf,
+  type Bend,
   type Note,
   type TieLink,
   type TiePosition,
@@ -11,6 +12,8 @@ import {
   connections,
   type BendDrawn,
   beginBeat,
+  firstTipPosition,
+  previousBends,
   bendLifts,
   drawBend,
   drawLetter,
@@ -233,6 +236,7 @@ function drawBendGroup(
   stop: number,
   min: number,
   drawn: BendDrawn,
+  before: readonly (Bend | undefined)[] = [],
 ): void {
   const { placement, sink, space } = context;
   const band = placement.lanes.bend;
@@ -244,7 +248,10 @@ function drawBendGroup(
   // never ends left of where it starts, which would invert it.
   const xEnd = Math.max(x0, Math.min(Math.max(stop, x0 + min * space), contentEnd(context)));
   const releaseTop = lineY(context, top.note.string) - labelHalfHeight(size);
-  drawn.lifts = bendLifts(bent.map((label) => label.note.bend));
+  drawn.lifts = bendLifts(
+    bent.map((label) => label.note.bend),
+    before,
+  );
   for (const label of bent) {
     const { bend } = label.note;
     if (!bend) continue;
@@ -275,7 +282,8 @@ function drawBends(
   const { space } = context;
   const size = TAB.fretSize * space;
   beginBeat(drawn);
-  drawBendGroup(context, beat.labels, x, size, next - BEND.stop * space, BEND.min, drawn);
+  const before = previousBends(context.input.bar, beat.tick);
+  drawBendGroup(context, beat.labels, x, size, next - BEND.stop * space, BEND.min, drawn, before);
   const centres = graceCentres(beat, x, space);
   const graceSize = size * TAB.graceScale;
   for (const [g, column] of beat.graces.entries()) {
@@ -341,11 +349,22 @@ function drawLooseSlides(context: TabContext, label: NoteLabel, x: number): void
  * half from the bar's left edge otherwise; a bar ending a system draws the origin half of each
  * connection whose target is in the next bar.
  */
+/** A beat's bends, to draw once every voice's are known: `key` is where its first tip stands. */
+export interface BendJob {
+  key: number;
+  draw: (drawn: BendDrawn) => void;
+}
+
+/** Draws every voice's bends in one pass from left to right, so the leftmost equal label is kept. */
+export function drawBendJobs(jobs: readonly BendJob[], drawn: BendDrawn): void {
+  for (const job of [...jobs].sort((a, b) => a.key - b.key)) job.draw(drawn);
+}
+
 export function drawNoteEffects(
   context: TabContext,
   voice: TabVoice,
   xs: readonly number[],
-  drawn: BendDrawn,
+  jobs: BendJob[],
 ): void {
   const { input, placement, space } = context;
   const { track, barIndex } = input;
@@ -361,7 +380,15 @@ export function drawNoteEffects(
     if (x === undefined || beat.beat.rest) continue;
     if (!beat.connects && !slidesIn && !leavesLine) continue;
     const next = xs[i + 1] ?? contentEnd(context);
-    if (beat.connects) drawBends(context, beat, x, next, drawn);
+    if (beat.connects) {
+      const tip = firstTipPosition(beat.labels.map((label) => label.note.bend));
+      jobs.push({
+        key: x + (tip / 60) * (next - x),
+        draw: (drawn) => {
+          drawBends(context, beat, x, next, drawn);
+        },
+      });
+    }
     const at: TiePosition = { bar: barIndex, voice: voice.index, beat: beat.index };
     const letters = lettered(context, beat);
     const centres = graceCentres(beat, x, space);

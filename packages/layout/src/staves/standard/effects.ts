@@ -2,6 +2,7 @@ import {
   TIE_REACH_BARS,
   tieOriginOf,
   type Bar,
+  type Bend,
   type Beat,
   type Note,
   type TieLink,
@@ -22,6 +23,8 @@ import {
   lettersOfLinks,
   type BendDrawn,
   beginBeat,
+  firstTipPosition,
+  previousBends,
   bendLifts,
   drawBend,
   drawLetter,
@@ -758,26 +761,38 @@ export function drawStrokes(context: ConnectionContext): void {
  */
 export function drawBends(
   context: ConnectionContext,
-  beats: readonly BeatPlan[],
+  voices: readonly (readonly BeatPlan[])[],
   drawn: BendDrawn,
 ): void {
   const { placement, space } = context;
   const band = placement.lanes.bend;
   if (!band) return;
   const contentEnd = placement.x + placement.width;
-  for (const [i, beat] of beats.entries()) {
+  // Every voice's bends in one pass from left to right, so where equal labels meet the leftmost
+  // is the one kept, whichever voice it belongs to.
+  const jobs: { beat: BeatPlan; next: number; key: number }[] = [];
+  for (const beats of voices) {
+    for (const [i, beat] of beats.entries()) {
+      if (!beat.chord) continue;
+      const x = context.beatX(beat);
+      const following = beats[i + 1];
+      // Target heads end clear of what the next onset of any voice draws left of it: its heads,
+      // accidentals and graces, which the spacing measured the beat's room against.
+      const next = beat.bend
+        ? nextOnsetEdge(context, beat.tick, contentEnd)
+        : following
+          ? context.beatX(following)
+          : contentEnd;
+      const tip = firstTipPosition(mainHeads(beat.chord).map((head) => head.note.bend));
+      jobs.push({ beat, next, key: x + (tip / 60) * (next - x) });
+    }
+  }
+  jobs.sort((a, b) => a.key - b.key);
+  for (const { beat, next } of jobs) {
     const { chord } = beat;
     if (!chord) continue;
     const x = context.beatX(beat);
     beginBeat(drawn);
-    const following = beats[i + 1];
-    // Target heads end clear of what the next onset of any voice draws left of it: its heads,
-    // accidentals and graces, which the spacing measured the beat's room against.
-    const next = beat.bend
-      ? nextOnsetEdge(context, beat.tick, contentEnd)
-      : following
-        ? context.beatX(following)
-        : contentEnd;
     const frame = bendFrame(
       context,
       chord,
@@ -789,6 +804,7 @@ export function drawBends(
       band.bottom,
       drawn,
       beat.bend,
+      previousBends(context.input.bar, beat.tick),
     );
     if (frame) {
       for (const group of beat.bend?.groups ?? []) {
@@ -817,6 +833,7 @@ export function drawBends(
         band.bottom,
         drawn,
         undefined,
+        [],
       );
     }
   }
@@ -844,6 +861,7 @@ function bendFrame(
   laneBottom: number,
   drawn: BendDrawn,
   targets: BendPlan | undefined,
+  before: readonly (Bend | undefined)[],
 ): { x0: number; xEnd: number } | undefined {
   const { sink, space, placement } = context;
   const bent = mainHeads(chord).filter((head) => head.note.bend);
@@ -862,7 +880,10 @@ function bendFrame(
     (head) => placement.top + head.y - glyphMetrics(head.glyph).bbox.top * unit,
   );
   const releaseTop = Math.min(...tops);
-  drawn.lifts = bendLifts(bent.map((head) => head.note.bend));
+  drawn.lifts = bendLifts(
+    bent.map((head) => head.note.bend),
+    before,
+  );
   for (const [j, head] of bent.entries()) {
     const { bend } = head.note;
     const spot = spots[j];

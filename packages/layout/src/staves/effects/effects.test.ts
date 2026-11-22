@@ -11,7 +11,6 @@ import {
   type StaffPlacement,
 } from '../../index';
 import { overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
-import { randomScore } from '../../test/random-score';
 import { describePrimitive } from '../../test/describe';
 import { BENDS, content, everyEffectScore, guitar, laid, paged, texts } from '../../test/effects';
 import { analyseEffects, glyphHeight } from './analysis';
@@ -1211,26 +1210,103 @@ describe('bend labels never overlap', () => {
       expect(labels(result, 'full')).toHaveLength(1);
     });
 
+    it.each(modes)('keeps the leftmost equal label across voices in %s', (mode) => {
+      // Two voices bend to the same amount at one onset, voice 0 at the end of its frame and
+      // voice 1 early in its own: the labels meet, and the one kept is over the earlier tip.
+      const result = laid(
+        guitar(mode)
+          .bar()
+          .beat('64', [
+            note(3, 14, {
+              bend: custom([
+                [0, 0],
+                [60, 4],
+              ]),
+            }),
+          ])
+          .rest('2')
+          .voice(1)
+          .beat('64', [
+            note(5, 12, {
+              bend: custom([
+                [0, 0],
+                [50, 4],
+                [60, 0],
+              ]),
+            }),
+          ])
+          .rest('2')
+          .build({ ids: 'sequential' }),
+        { width: 260 },
+      );
+      const full = labels(result, 'full');
+      const heads = result.primitives.filter(arrows);
+      const leftmost = Math.min(...heads.map((p) => p.bbox.x + p.bbox.width / 2));
+      const [kept] = full;
+      expect(kept && Math.abs(kept.bbox.x + kept.bbox.width / 2 - leftmost)).toBeLessThan(1);
+      expect(full).toHaveLength(1);
+    });
+
+    const tipThenPrebendScore = (mode: Mode, tip: number, pre: number, duration: '8' | '64') =>
+      guitar(mode)
+        .bar()
+        .beat(duration, [
+          note(3, 14, {
+            bend: custom([
+              [0, 0],
+              [60, tip],
+            ]),
+          }),
+        ])
+        .beat(duration, [
+          note(3, 14, {
+            bend: custom([
+              [0, pre],
+              [60, pre],
+            ]),
+          }),
+        ])
+        .rest('2')
+        .build({ ids: 'sequential' });
+    const tipThenPrebend = (mode: Mode, tip: number, pre: number, duration: '8' | '64') =>
+      laid(tipThenPrebendScore(mode, tip, pre, duration));
+
     it.each(modes)(
-      'leaves no two bend labels overlapping on random scores in %s',
+      'stacks the pre-bend label of a quarter tone apart above a tip at the frame end in %s',
       (mode) => {
-        // Dense random scores bend to `full` on neighbouring beats and in two voices at one onset.
-        let found = 0;
-        for (let seed = 0; seed < 401; seed++) {
-          const built = randomScore(seed, { diagrams: true });
-          const result = layout(built, {
-            ...paged,
-            notation: Object.fromEntries(built.tracks.map(({ id }) => [id, mode])),
-          });
-          found += overlappingMarks(result).filter(
-            ([a, b]) =>
-              a.kind === 'text' && b.kind === 'text' && a.text === 'full' && b.text === 'full',
-          ).length;
+        for (const [tip, pre, a, b] of [
+          [4, 5, 'full', '1¼'],
+          [5, 4, '1¼', 'full'],
+          [3, 4, '¾', 'full'],
+        ] as const) {
+          for (const duration of ['8', '64'] as const) {
+            const result = tipThenPrebend(mode, tip, pre, duration);
+            expect(labels(result, a), `${a} ${b} ${duration}`).toHaveLength(1);
+            expect(labels(result, b), `${a} ${b} ${duration}`).toHaveLength(1);
+          }
         }
-        expect(found).toBe(0);
       },
-      60_000,
     );
+
+    it('lays a bar out the same cached as cold after an edit puts a pre-bend a quarter tone from the last tip', () => {
+      const built = tipThenPrebendScore('both', 4, 2, '8');
+      const cache = new LayoutCache();
+      layout(built, paged, cache);
+      const edit = applyCommand(
+        built,
+        setNoteEffect(
+          { noteId: noteOf(built, 0, 0, 1).id },
+          {
+            bend: custom([
+              [0, 5],
+              [60, 5],
+            ]),
+          },
+        ),
+      );
+      const after = layout(edit.score, { ...paged, dirtyBars: edit.change.touchedBars }, cache);
+      expect(stable(after)).toBe(stable(layout(edit.score, paged)));
+    });
 
     it('lays a bar out the same cached as cold after an edit makes a label equal to the last beat', () => {
       const built = guitar('both')

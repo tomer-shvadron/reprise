@@ -311,11 +311,11 @@ exports[`effects in both mode > puts the marks on the standard staff and the lan
   "text "5" @346.38,229.93 size 9.1 middle <note00000011>",
   "path filled M350.32 223.86h15.34v5.67h-15.34Z (paper) <note00000011>",
   "text "<17>" @352.18,228.96 size 6.37 start <note00000011>",
+  "line @296.15,239.3 -> 313.24,235.1 w 0.84 <note00000010>",
   "path stroked M322.29 237.2C327.26 237.2 332.23 237.2 332.23 201.15 <note00000010>",
   "path filled M332.23 195.55L334.68 201.15L329.78 201.15Z <note00000010>",
   "text "full" @332.23,193.45 size 7 middle <note00000010>",
   "line @332.23,195.55 -> 342.18,195.55 w 1.12 <note00000010>",
-  "line @296.15,239.3 -> 313.24,235.1 w 0.84 <note00000010>",
   "text "A.H." @346.38,174.2 size 7 middle <beat00000008>",
 ]
 `;
