@@ -129,6 +129,27 @@ describe('the effect commands', () => {
     expect(beats()[0]?.effects.brush).toBeUndefined();
   });
 
+  it('toggles wah with Shift+W and Alt+Shift+W, apart from the whammy-bar vibrato keys', async () => {
+    const { services, registry, press, beats } = await setup();
+    expect(press('W', { shiftKey: true })).toBe(false);
+    services.editing.getState().setEditing(true);
+    expect(press('W', { shiftKey: true })).toBe(true);
+    expect(beats()[0]?.effects.wah).toBe('closed');
+    // macOS: Option+Shift+W types a different character, so the physical key decides.
+    const mac = new KeyboardEvent('keydown', {
+      key: '\u201e',
+      code: 'KeyW',
+      altKey: true,
+      shiftKey: true,
+      cancelable: true,
+    });
+    expect(dispatchShortcut(mac, registry, 'mac')).toBe(true);
+    expect(beats()[0]?.effects.wah).toBe('open');
+    expect(press('W', { altKey: true, shiftKey: true })).toBe(true);
+    expect(beats()[0]?.effects.wah).toBeUndefined();
+    expect(beats()[0]?.effects.vibrato).toBeUndefined();
+  });
+
   it('sets hammerPull on the next note on the string, and reports a refusal on the status line', async () => {
     const { services, press, goTo, beats } = await setup();
     services.editing.getState().setEditing(true);

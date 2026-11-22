@@ -645,6 +645,11 @@ describe('planEffect: golpe and pick scrape', () => {
 });
 
 describe('planEffect: wah', () => {
+  /** The edited score, failing at the step that did not edit instead of carrying on unedited. */
+  const after = (result: ReturnType<typeof apply>): Score => {
+    if (!result.after) throw new Error(`no edit: ${JSON.stringify(result.plan)}`);
+    return result.after;
+  };
   const wah = (value: 'open' | 'closed'): EffectAction => ({ kind: 'wah', wah: value });
   const FRETTED_ONLY = 'That effect needs a fretted track';
 
@@ -653,16 +658,16 @@ describe('planEffect: wah', () => {
     const noteIds = ids(built, [0, 0, 0]);
     const closed = apply(built, { noteIds }, wah('closed'));
     expect(closed.label).toBe('Wah (closed)');
-    expect(beatOf(closed.after ?? built, 0, 0, 0).effects).toEqual({ wah: 'closed' });
-    const open = apply(closed.after ?? built, { noteIds }, wah('open'));
+    expect(beatOf(after(closed), 0, 0, 0).effects).toEqual({ wah: 'closed' });
+    const open = apply(after(closed), { noteIds }, wah('open'));
     expect(open.label).toBe('Wah (open)');
-    expect(beatOf(open.after ?? built, 0, 0, 0).effects).toEqual({ wah: 'open' });
-    const off = apply(open.after ?? built, { noteIds }, wah('open'));
+    expect(beatOf(after(open), 0, 0, 0).effects).toEqual({ wah: 'open' });
+    const off = apply(after(open), { noteIds }, wah('open'));
     expect(off.label).toBe('Remove wah (open)');
-    expect(beatOf(off.after ?? built, 0, 0, 0).effects).toEqual({});
-    const removed = apply(closed.after ?? built, { noteIds }, wah('open'), 'remove');
+    expect(beatOf(after(off), 0, 0, 0).effects).toEqual({});
+    const removed = apply(after(closed), { noteIds }, wah('open'), 'remove');
     expect(removed.label).toBe('Remove wah (open)');
-    expect(beatOf(removed.after ?? built, 0, 0, 0).effects.wah).toBeUndefined();
+    expect(beatOf(after(removed), 0, 0, 0).effects.wah).toBeUndefined();
   });
 
   it('refuses on a drums track and on a keys track, with the fretted-only reason', () => {
@@ -683,8 +688,8 @@ describe('planEffect: wah', () => {
     const built = editScore();
     const beatIds = [beatOf(built, 0, 0, 0).id, beatOf(built, 1, 0, 0).id];
     const result = apply(built, { beatIds }, wah('closed'));
-    expect(beatOf(result.after ?? built, 0, 0, 0).effects.wah).toBe('closed');
-    expect(beatOf(result.after ?? built, 1, 0, 0).effects.wah).toBeUndefined();
+    expect(beatOf(after(result), 0, 0, 0).effects.wah).toBe('closed');
+    expect(beatOf(after(result), 1, 0, 0).effects.wah).toBeUndefined();
     expect(result.plan).toMatchObject({ notice: `Skipped 1 of 2: ${FRETTED_ONLY}` });
   });
 
@@ -708,30 +713,61 @@ describe('planEffect: wah', () => {
       const beatIds = beatIdsOf(built, 0);
       const set = apply(built, { beatIds }, wah('closed'));
       expect(set.label).toBe('Wah (closed)');
-      expect(beatOf(set.after ?? built, 0, 0, 0).effects.wah).toBe('closed');
-      const off = apply(set.after ?? built, { beatIds }, wah('closed'));
+      expect(beatOf(after(set), 0, 0, 0).effects.wah).toBe('closed');
+      const off = apply(after(set), { beatIds }, wah('closed'));
       expect(off.label).toBe('Remove wah (closed)');
-      expect(beatOf(off.after ?? built, 0, 0, 0).effects.wah).toBeUndefined();
+      expect(beatOf(after(off), 0, 0, 0).effects.wah).toBeUndefined();
     });
 
     it('swaps a mark on a rest for the other one', () => {
       const built = withRests();
       const swapped = apply(built, { beatIds: beatIdsOf(built, 2) }, wah('closed'));
       expect(swapped.label).toBe('Wah (closed)');
-      expect(beatOf(swapped.after ?? built, 0, 0, 2).effects.wah).toBe('closed');
+      expect(beatOf(after(swapped), 0, 0, 2).effects.wah).toBe('closed');
+    });
+
+    it('swaps the mark of a marked rest in a range and leaves a bare rest bare', () => {
+      const built = withRests();
+      const range = beatIdsOf(built, 0, 1, 2);
+      const swapped = apply(built, { beatIds: range }, wah('closed'));
+      expect(swapped.label).toBe('Wah (closed)');
+      const result = after(swapped);
+      expect(beatOf(result, 0, 0, 0).effects.wah).toBeUndefined();
+      expect(beatOf(result, 0, 0, 1).effects.wah).toBe('closed');
+      expect(beatOf(result, 0, 0, 2).effects.wah).toBe('closed');
+    });
+
+    it('reports effectState with the cursor on a rest: bare, marked and on drums', () => {
+      const built = withRests();
+      const onRest = (at: number) => ({
+        score: built,
+        state: state({ beatIds: beatIdsOf(built, at) }),
+      });
+      expect(effectState(onRest(0), wah('closed'))).toBe('off');
+      expect(effectState(onRest(2), wah('open'))).toBe('on');
+      expect(effectState(onRest(2), wah('closed'))).toBe('off');
+      const drums = score().track('drums');
+      drums.bar().rest('4');
+      const drumScore = drums.build({ ids: 'sequential' });
+      const onDrums = {
+        score: drumScore,
+        state: state({ beatIds: [beatOf(drumScore, 0, 0, 0).id] }),
+      };
+      expect(effectState(onDrums, wah('closed'))).toBe('unavailable');
+      expect(effectReason(onDrums, wah('closed'))).toBe(FRETTED_ONLY);
     });
 
     it('takes a mark off a rest in a range, but never puts one on bare rests', () => {
       const built = withRests();
       const range = beatIdsOf(built, 0, 1, 2, 3);
       const set = apply(built, { beatIds: range }, wah('open'));
-      expect(beatOf(set.after ?? built, 0, 0, 0).effects.wah).toBeUndefined();
-      expect(beatOf(set.after ?? built, 0, 0, 1).effects.wah).toBe('open');
-      expect(beatOf(set.after ?? built, 0, 0, 3).effects.wah).toBe('open');
-      const off = apply(set.after ?? built, { beatIds: range }, wah('open'));
+      expect(beatOf(after(set), 0, 0, 0).effects.wah).toBeUndefined();
+      expect(beatOf(after(set), 0, 0, 1).effects.wah).toBe('open');
+      expect(beatOf(after(set), 0, 0, 3).effects.wah).toBe('open');
+      const off = apply(after(set), { beatIds: range }, wah('open'));
       expect(off.label).toBe('Remove wah (open)');
       for (const index of [0, 1, 2, 3]) {
-        expect(beatOf(off.after ?? built, 0, 0, index).effects.wah).toBeUndefined();
+        expect(beatOf(after(off), 0, 0, index).effects.wah).toBeUndefined();
       }
     });
   });
