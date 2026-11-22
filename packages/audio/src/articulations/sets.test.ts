@@ -87,7 +87,7 @@ describe('voicingOf', () => {
     ['pinch harmonic', { harmonic: { kind: 'pinch' } }, {}, 'artificialHarmonic', 'harmonic'],
     ['hammer-on', { hammerPull: true }, {}, 'legato', 'legato'],
     ['staccato', { staccato: true }, {}, 'staccato', undefined],
-    ['tap', {}, { tapping: true }, 'tap', undefined],
+    ['tap', {}, { tapping: true }, 'tap', 'legato'],
     ['slap', {}, { slapping: true }, 'slap', undefined],
     ['pop', {}, { popping: true }, 'pop', undefined],
   ] as const)(

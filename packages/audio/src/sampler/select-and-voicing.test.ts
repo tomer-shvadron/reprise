@@ -115,7 +115,12 @@ describe('the sampler sink fills select', () => {
     ];
     const hammer = hammered.notes[0] ?? fret;
     const play = (sink: ReturnType<typeof createSamplerSink>) => {
-      sink.noteOn(event(plain, fret, 0));
+      // The string passes straight to the hammer-on, as the scheduler's `nextOnString` says.
+      sink.noteOn({
+        ...event(plain, fret, 0),
+        duration: 0.5,
+        nextOnString: { beat: hammered, note: hammer, when: 0.5 },
+      });
       sink.noteOn(event(hammered, hammer, 0.5));
     };
     const voicing: Voicing = { sets: {}, legatoTrigger: true };
