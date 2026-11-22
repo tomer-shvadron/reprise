@@ -3,7 +3,7 @@ import { beatOf, midi, noteOf, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { bendPreset } from './bend-presets';
-import { effectState } from './effect-state';
+import { effectReason, effectState } from './effect-state';
 import { planEffect, type EffectAction, type EffectMode } from './effects';
 import { editScore } from './test/scores';
 
@@ -477,5 +477,169 @@ describe('planEffect: grace notes and mixed targets', () => {
     expect(tapped.plan).toMatchObject({
       notice: 'Skipped 1 of 2: That effect needs a fretted track',
     });
+  });
+});
+
+describe('planEffect: golpe and pick scrape', () => {
+  const golpe = (value: 'thumb' | 'finger'): EffectAction => ({ kind: 'golpe', golpe: value });
+  const scrape = (direction: 'down' | 'up'): EffectAction => ({ kind: 'pickScrape', direction });
+  const FRETTED_ONLY = 'That effect needs a fretted track';
+
+  it('toggles a golpe, swaps thumb for finger, and removes it', () => {
+    const built = riff();
+    const noteIds = ids(built, [0, 0, 0]);
+    const thumb = apply(built, { noteIds }, golpe('thumb'));
+    expect(thumb.label).toBe('Golpe (thumb)');
+    expect(beatOf(thumb.after ?? built, 0, 0, 0).effects).toEqual({ golpe: 'thumb' });
+    const finger = apply(thumb.after ?? built, { noteIds }, golpe('finger'));
+    expect(finger.label).toBe('Golpe (finger)');
+    expect(beatOf(finger.after ?? built, 0, 0, 0).effects).toEqual({ golpe: 'finger' });
+    const off = apply(finger.after ?? built, { noteIds }, golpe('finger'));
+    expect(off.label).toBe('Remove golpe (finger)');
+    expect(beatOf(off.after ?? built, 0, 0, 0).effects).toEqual({});
+    const removed = apply(thumb.after ?? built, { noteIds }, golpe('finger'), 'remove');
+    expect(removed.label).toBe('Remove golpe (finger)');
+    expect(beatOf(removed.after ?? built, 0, 0, 0).effects.golpe).toBeUndefined();
+  });
+
+  it('toggles a pick scrape and swaps its direction', () => {
+    const built = riff();
+    const noteIds = ids(built, [0, 0, 0]);
+    const down = apply(built, { noteIds }, scrape('down'));
+    expect(down.label).toBe('Pick scrape down');
+    expect(noteOf(down.after ?? built, 0, 0, 0).pickScrape).toBe('down');
+    const up = apply(down.after ?? built, { noteIds }, scrape('up'));
+    expect(noteOf(up.after ?? built, 0, 0, 0).pickScrape).toBe('up');
+    const off = apply(up.after ?? built, { noteIds }, scrape('up'));
+    expect(off.label).toBe('Remove pick scrape up');
+    expect(noteOf(off.after ?? built, 0, 0, 0).pickScrape).toBeUndefined();
+  });
+
+  it('refuses both on a drums track and on a keys track', () => {
+    for (const instrument of ['drums', 'piano'] as const) {
+      const other = score().track(instrument);
+      other.bar().beat('4', [note(0, instrument === 'drums' ? 0 : 60)]);
+      const built = other.build({ ids: 'sequential' });
+      const noteIds = [noteOf(built, 0, 0, 0).id];
+      for (const action of [golpe('thumb'), scrape('down')]) {
+        expect(planEffect({ score: built, state: state({ noteIds }) }, action)).toEqual({
+          refused: FRETTED_ONLY,
+        });
+      }
+    }
+  });
+
+  it('skips a drum beat when a golpe goes on two beats, and says so', () => {
+    const built = editScore();
+    const beatIds = [beatOf(built, 0, 0, 0).id, beatOf(built, 1, 0, 0).id];
+    const result = apply(built, { beatIds }, golpe('thumb'));
+    expect(beatOf(result.after ?? built, 0, 0, 0).effects.golpe).toBe('thumb');
+    expect(beatOf(result.after ?? built, 1, 0, 0).effects.golpe).toBeUndefined();
+    expect(result.plan).toMatchObject({ notice: `Skipped 1 of 2: ${FRETTED_ONLY}` });
+  });
+
+  it('refuses a pick scrape on a tied note and takes it elsewhere, saying what it skipped', () => {
+    const built = riff();
+    const tied = ids(built, [1, 2, 0]);
+    expect(planEffect({ score: built, state: state({ noteIds: tied }) }, scrape('down'))).toEqual({
+      refused: 'A tied note is held, not struck',
+    });
+    const mixed = ids(built, [1, 2, 0], [0, 0, 0]);
+    const result = apply(built, { noteIds: mixed }, scrape('down'));
+    expect(noteOf(result.after ?? built, 0, 0, 0).pickScrape).toBe('down');
+    expect(noteOf(result.after ?? built, 0, 1, 2).pickScrape).toBeUndefined();
+    expect(result.plan).toMatchObject({
+      notice: 'Skipped 1 of 2: A tied note is held, not struck',
+    });
+  });
+
+  it('refuses a pick scrape on a grace note', () => {
+    const built = score().track('guitar');
+    built
+      .bar()
+      .beat('4', [note(3, 5)], { grace: [{ before: true, duration: 32, notes: [note(3, 7)] }] });
+    const done = built.build({ ids: 'sequential' });
+    const grace = beatOf(done, 0, 0, 0).grace?.[0]?.notes[0];
+    if (!grace) throw new Error('no grace note');
+    expect(
+      planEffect({ score: done, state: state({ noteIds: [grace.id] }) }, scrape('down')),
+    ).toEqual({ refused: "A grace note can't take a pick scrape" });
+  });
+
+  describe('on rests', () => {
+    /** Beat 0 a rest, beat 1 a note, beat 2 a rest that already carries a golpe, beat 3 a note. */
+    function withRests(): Score {
+      const built = score().track('guitar');
+      built
+        .bar()
+        .rest('4')
+        .beat('4', [note(1, 5)])
+        .rest('4', { effects: { golpe: 'finger' } })
+        .beat('4', [note(2, 7)]);
+      return built.build({ ids: 'sequential' });
+    }
+    const beatIdsOf = (built: Score, ...at: number[]): Id[] =>
+      at.map((index) => beatOf(built, 0, 0, index).id);
+
+    it('sets a golpe on a rest under the cursor, and takes it off again', () => {
+      const built = withRests();
+      const beatIds = beatIdsOf(built, 0);
+      const set = apply(built, { beatIds }, golpe('thumb'));
+      expect(set.label).toBe('Golpe (thumb)');
+      expect(beatOf(set.after ?? built, 0, 0, 0).effects.golpe).toBe('thumb');
+      const off = apply(set.after ?? built, { beatIds }, golpe('thumb'));
+      expect(off.label).toBe('Remove golpe (thumb)');
+      expect(beatOf(off.after ?? built, 0, 0, 0).effects.golpe).toBeUndefined();
+    });
+
+    it('takes a golpe off a rest in a range, but never puts one on bare rests', () => {
+      const built = withRests();
+      const range = beatIdsOf(built, 0, 1, 2, 3);
+      // Set: the notes get it; the bare rest does not; the rest that has it is already there.
+      const set = apply(built, { beatIds: range }, golpe('finger'));
+      expect(beatOf(set.after ?? built, 0, 0, 0).effects.golpe).toBeUndefined();
+      expect(beatOf(set.after ?? built, 0, 0, 1).effects.golpe).toBe('finger');
+      expect(beatOf(set.after ?? built, 0, 0, 3).effects.golpe).toBe('finger');
+      // Toggle again: every target has it, so the rest's golpe comes off with the others.
+      const off = apply(set.after ?? built, { beatIds: range }, golpe('finger'));
+      expect(off.label).toBe('Remove golpe (finger)');
+      for (const index of [0, 1, 2, 3]) {
+        expect(beatOf(off.after ?? built, 0, 0, index).effects.golpe).toBeUndefined();
+      }
+    });
+
+    it('does not let one bare rest turn a remove into a set', () => {
+      const built = withRests();
+      const on = apply(built, { beatIds: beatIdsOf(built, 1, 3) }, golpe('thumb')).after ?? built;
+      const input = { score: on, state: state({ beatIds: beatIdsOf(on, 0, 1, 3) }) };
+      expect(effectState(input, golpe('thumb'))).toBe('on');
+      const off = apply(on, { beatIds: beatIdsOf(on, 0, 1, 3) }, golpe('thumb'));
+      expect(off.label).toBe('Remove golpe (thumb)');
+      expect(beatOf(off.after ?? on, 0, 0, 0).effects.golpe).toBeUndefined();
+      expect(beatOf(off.after ?? on, 0, 0, 1).effects.golpe).toBeUndefined();
+    });
+
+    it('gives other beat effects no rests', () => {
+      const built = withRests();
+      expect(
+        planEffect(
+          { score: built, state: state({ beatIds: beatIdsOf(built, 0) }) },
+          { kind: 'pickStroke', direction: 'down' },
+        ),
+      ).toEqual({ refused: 'Select a note first' });
+    });
+  });
+
+  it('reports on, off, mixed and unavailable through effectState and effectReason', () => {
+    const built = riff();
+    const noteIds = ids(built, [0, 0, 0], [0, 1, 0]);
+    const one = apply(built, { noteIds: noteIds.slice(0, 1) }, golpe('thumb')).after ?? built;
+    const input = (picked: Id[]) => ({ score: one, state: state({ noteIds: picked }) });
+    expect(effectState(input(noteIds.slice(0, 1)), golpe('thumb'))).toBe('on');
+    expect(effectState(input(noteIds.slice(0, 1)), golpe('finger'))).toBe('off');
+    expect(effectState(input(noteIds), golpe('thumb'))).toBe('mixed');
+    const tied = input(ids(one, [1, 2, 0]));
+    expect(effectState(tied, scrape('down'))).toBe('unavailable');
+    expect(effectReason(tied, scrape('down'))).toBe('A tied note is held, not struck');
   });
 });
