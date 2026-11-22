@@ -12,7 +12,7 @@ import {
 import { failedError, micErrorOf, tunerError, type TunerError } from './mic-errors';
 import { isValidReference, REFERENCE_HZ } from './notes';
 import { createDetector, rms, type Detector } from './pitch/mpm';
-import { createTracker, settleFramesFor, type Reading } from './pitch/tracker';
+import { createTracker, type Reading } from './pitch/tracker';
 import {
   FLAT_ALLOWANCE,
   MAX_DETECT_HZ,
@@ -176,7 +176,7 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
       const lowest = lowestTargetHz(targetsNow());
       minHz = lowest * FLAT_ALLOWANCE;
       const size = windowFor(sampleRate, lowest);
-      tracker.setSettleFrames(settleFramesFor((size / sampleRate) * 1000));
+      tracker.setWindow((size / sampleRate) * 1000);
       return size;
     };
 

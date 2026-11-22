@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { midiFromHz } from '../notes';
 import { lowpassChain, pluck, sine, simulate } from '../test-signals';
-import { createTracker, settleFramesFor, TRACKER, type Reading } from './tracker';
+import {
+  agreeFramesFor,
+  createTracker,
+  medianFramesFor,
+  settleFramesFor,
+  TRACKER,
+  type Reading,
+  type TrackerStep,
+} from './tracker';
 
 describe('the tracker', () => {
   const rate = 48000;
@@ -111,6 +119,20 @@ describe('the tracker', () => {
   // about 5 cents at clarity 1.0, so no gate sees it. Frames a hop apart share most of their
   // samples, so when the deadline falls inside the splice the first median of three was two bad
   // frames and one good, and the meter showed the bad one.
+  // #474 leaves the 2048 window as it was: the spread is judged over the whole fill, so a first
+  // frame 3 cents off holds the reading back until the fifth frame, not the fourth.
+  it('judges the first reading over the whole fill at the 2048 window', () => {
+    const tracker = createTracker({ windowMs: 42.7 });
+    const at = (timeMs: number, cents: number) =>
+      tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 1 }, 0.1, timeMs).reading;
+    at(0, 0);
+    at(20, 0);
+    const deadline = 20 + settleFramesFor(42.7) * TRACKER.hopMs;
+    for (let t = 40; t < deadline; t += 20) at(t, 0);
+    const shown = [3, 0, 0, 0, 0].map((cents, i) => at(deadline + i * 20, cents)?.held === false);
+    expect(shown).toEqual([false, false, false, false, true]);
+  });
+
   it('does not show a first reading whose frames disagree, but waits for a median of five', () => {
     const tracker = createTracker();
     const at = (timeMs: number, cents: number) =>
@@ -327,6 +349,58 @@ describe('the tracker', () => {
     expect(Math.abs(at(0, 0.1, 1200).cutoffHz - 275)).toBeLessThan(1);
   });
 
+  describe('a re-pluck inside the hold (#332)', () => {
+    const start = () => {
+      const tracker = createTracker();
+      const at = (cents: number, timeMs: number) =>
+        tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, 0.1, timeMs);
+      const settle = settleFramesFor(43);
+      for (let i = 0; i < settle + 8; i += 1) at(0, i * 20);
+      for (let i = 0; i < TRACKER.openAfterRejects + 2; i += 1)
+        tracker.push(undefined, 0, 400 + i * 20);
+      return { at, settle };
+    };
+    // An attack frame, then the body of the note; the cents are from the note held before.
+    const rePluck = (attack: number, body: number) => {
+      const { at, settle } = start();
+      const out = [at(attack, 600)];
+      for (let i = 1; i < settle + 6; i += 1) out.push(at(body, 600 + i * 20));
+      return { out, settle };
+    };
+    const centsOf = (step?: TrackerStep) => ((step?.reading?.midi ?? 0) - 45) * 100;
+
+    it('continues the reading when the attack frame sits on the other side of the note', () => {
+      // Each frame is near the old centre but 60 cents from the other, so a history emptied by
+      // the re-pluck would call the second away.
+      const { out, settle } = rePluck(-30, 30);
+      // The note continues: held readings until the cutoff change has cleared the window. A
+      // re-lock on the attack frame's centre would light a fresh live reading at once.
+      expect(out.every((s) => s.reading !== undefined)).toBe(true);
+      expect(out.slice(0, settle - 3).every((s) => s.reading?.held === true)).toBe(true);
+      expect(Math.abs(centsOf(out.at(-1)) - 30)).toBeLessThan(1);
+    });
+
+    it.each([
+      [45, 55],
+      [20, 70],
+      [40, 100],
+    ])('hides the frames in the cutoff change when the attack is +%i and the body +%i', (a, b) => {
+      // The body is beyond `awayCents` from the old note, so the lock moves, but the settle the
+      // re-pluck began is kept.
+      const { out, settle } = rePluck(a, b);
+      // The first frame is the attack; the away path may return the old reading unheld for the
+      // two frames that follow it, before the lock moves.
+      expect(out.slice(3, settle - 3).every((s) => s.reading?.held !== false)).toBe(true);
+      expect(Math.abs(centsOf(out.at(-1)) - b)).toBeLessThan(1);
+    });
+
+    it('re-locks on a different pitch whose attack frame is near the old note', () => {
+      const { out } = rePluck(40, 200);
+      expect(Math.abs(centsOf(out.at(-1)) - 200)).toBeLessThan(1);
+      expect(out.at(-1)?.reading?.held).toBe(false);
+    });
+  });
+
   it('keeps every reading within 3 cents when a string is plucked again inside the hold', () => {
     const hz = 82.41 * 2 ** (7 / 1200);
     const decayed = pluck({
@@ -351,5 +425,82 @@ describe('the tracker', () => {
     expect(frames.some((f) => f.timeMs > 1000 && f.timeMs < 1400 && f.cutoffHz === 1500)).toBe(
       true,
     );
+  });
+
+  describe('at the 4096 window (#474)', () => {
+    const windowMs = 85.3;
+    const settle = settleFramesFor(windowMs);
+    // The cents off A2 of a live reading; clarity 1.0 is what a splice keeps.
+    const setup = () => {
+      const tracker = createTracker({ windowMs });
+      let clock = 0;
+      const at = (cents: number) =>
+        tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 1 }, 0.1, (clock += TRACKER.hopMs));
+      const cents = (reading: Reading | undefined) =>
+        reading && !reading.held ? (reading.midi - 45) * 100 : undefined;
+      return { tracker, at, cents, now: () => clock };
+    };
+
+    it('keeps agreement within the median, for every window', () => {
+      for (let w = 20; w <= 200; w += 1) {
+        expect(agreeFramesFor(w)).toBeLessThanOrEqual(medianFramesFor(w));
+        // The agreeing frames stay a strict majority of the median, so a sliding exit emits a
+        // median inside the agreeing block.
+        expect(2 * agreeFramesFor(w)).toBeGreaterThan(medianFramesFor(w));
+      }
+      expect(medianFramesFor(42.7)).toBe(TRACKER.median);
+      expect(medianFramesFor(windowMs)).toBe(11);
+      expect(agreeFramesFor(windowMs)).toBe(6);
+    });
+
+    it('is not moved by five frames of a splice in a steady note', () => {
+      const { at, cents } = setup();
+      for (let i = 0; i < settle + 20; i += 1) at(0);
+      for (let i = 0; i < 12; i += 1) {
+        const shown = cents(at(i < 5 ? 10 : 0).reading);
+        expect(shown).toBeDefined();
+        expect(Math.abs(shown ?? 99)).toBeLessThan(0.5);
+      }
+    });
+
+    it('shows no splice at the first lock, and a reading within a median of frames', () => {
+      const { at, cents, now } = setup();
+      at(0);
+      at(0);
+      const deadline = now() + settle * TRACKER.hopMs;
+      while (now() + TRACKER.hopMs < deadline) at(0);
+      let firstLive = -1;
+      for (let i = 0; i < 20; i += 1) {
+        const shown = cents(at(i < 5 ? 10 : 0).reading);
+        if (shown === undefined) continue;
+        if (firstLive < 0) firstLive = i;
+        expect(Math.abs(shown)).toBeLessThan(2);
+      }
+      expect(firstLive).toBeGreaterThanOrEqual(0);
+      expect(firstLive).toBeLessThan(medianFramesFor(windowMs));
+    });
+
+    it('follows a peg turn without freezing, 5 hops behind', () => {
+      const { at, cents } = setup();
+      for (let i = 0; i < settle + 20; i += 1) at(0);
+      let previous = 0;
+      for (let i = 1; i <= 20; i += 1) {
+        const shown = cents(at(6 * i).reading);
+        expect(shown).toBeDefined();
+        // The median of eleven stays put for the first five hops, then follows every hop.
+        if (i > 6) expect(shown ?? 0).toBeGreaterThan(previous);
+        expect(6 * i - (shown ?? 0)).toBeLessThanOrEqual(5 * 6 + 1);
+        previous = shown ?? 0;
+      }
+    });
+
+    it('goes back to a median of five when the window shrinks mid-note', () => {
+      const { tracker, at, cents } = setup();
+      for (let i = 0; i < settle + 20; i += 1) at(0);
+      tracker.setWindow(windowMs / 2);
+      let shown: number | undefined;
+      for (let i = 0; i < 3; i += 1) shown = cents(at(20).reading);
+      expect(shown).toBeCloseTo(20, 1);
+    });
   });
 });
