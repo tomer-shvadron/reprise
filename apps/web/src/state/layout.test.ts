@@ -14,7 +14,7 @@ import { viewLayoutOptions } from '@/features/score';
 import { fakePlatform } from '@/test/services';
 
 import { createDocumentStore, type DocumentStore } from './document';
-import { createLayoutStore, FOLLOW_UP_DELAY_MS } from './layout';
+import { createLayoutStore, FOLLOW_UP_DELAY_MS, FOLLOW_UP_IDLE_TIMEOUT_MS } from './layout';
 import { createUiStore } from './ui';
 
 const options = viewLayoutOptions;
@@ -228,13 +228,13 @@ describe('the layout store, stale segments (#229)', () => {
     }
   });
 
-  it('follows up one call per frame with the follow-up reach until nothing is stale', async () => {
+  it('follows up one call per frame with the follow-up reach, and publishes only when none is stale', async () => {
     vi.useFakeTimers();
     try {
       const made = staleSetup(3);
       await open(made);
       edit(made.document, 5);
-      // The edit call itself reports 3 stale: its own call left one fewer.
+      // The edit call reports 3 stale, its own call leaving one fewer.
       expect(made.fake).toHaveBeenCalledTimes(1);
       expect(made.store.getState().result?.metrics.staleSystems).toBe(2);
       vi.advanceTimersByTime(FOLLOW_UP_DELAY_MS - 1);
@@ -243,11 +243,91 @@ describe('the layout store, stale segments (#229)', () => {
       expect(made.fake).toHaveBeenCalledTimes(2);
       expect(made.calls.at(-1)).toMatchObject({ verticalReach: VERTICAL_FOLLOW_UP_REACH });
       expect(made.calls.at(-1)?.dirtyBars).toBeUndefined();
-      expect(made.store.getState().result?.metrics.staleSystems).toBe(1);
+      // Off-screen progress is not published.
+      expect(made.store.getState().result?.metrics.staleSystems).toBe(2);
+      const published = vi.fn();
+      const stop = made.store.subscribe(published);
       vi.advanceTimersByTime(FOLLOW_UP_DELAY_MS);
       expect(made.store.getState().result?.metrics.staleSystems).toBe(0);
+      expect(published).toHaveBeenCalledTimes(1);
+      stop();
       vi.advanceTimersByTime(10 * FOLLOW_UP_DELAY_MS);
       expect(made.fake).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for an idle period, bounded by a timeout, where the browser has one', async () => {
+    vi.useFakeTimers();
+    const idle = vi.fn((task: () => void) => {
+      queued.push(task);
+      return queued.length;
+    });
+    const queued: (() => void)[] = [];
+    vi.stubGlobal('requestIdleCallback', idle);
+    vi.stubGlobal('cancelIdleCallback', vi.fn());
+    try {
+      const made = staleSetup(3);
+      await open(made);
+      edit(made.document, 5);
+      vi.advanceTimersByTime(10 * FOLLOW_UP_DELAY_MS);
+      expect(made.fake).toHaveBeenCalledTimes(1);
+      expect(idle).toHaveBeenCalledWith(expect.any(Function), {
+        timeout: FOLLOW_UP_IDLE_TIMEOUT_MS,
+      });
+      queued.shift()?.();
+      expect(made.fake).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it('passes the view’s mounted range as the window of an edit run', async () => {
+    const document = createDocumentStore({ platform: fakePlatform() });
+    const ui = createUiStore('dark');
+    const spy = vi.fn(layout);
+    createLayoutStore({
+      document,
+      ui,
+      options,
+      layout: spy,
+      visible: () => ({ start: 2, end: 5 }),
+    });
+    await document.getState().openBytes('a.reprise', await bytesOf('A', 3));
+    ui.getState().setViewMode('continuous');
+    spy.mockClear();
+    edit(document, 5);
+    expect(lastCall(spy).options.verticalWindow).toEqual({ start: 2, end: 5 });
+    ui.getState().setViewMode('paged');
+    ui.getState().setViewMode('continuous');
+    expect(lastCall(spy).options.verticalWindow).toBeUndefined();
+  });
+
+  it('cancels a pending follow-up on a view change, and the next call is exact', async () => {
+    vi.useFakeTimers();
+    try {
+      const made = staleSetup(50);
+      await open(made);
+      edit(made.document, 5);
+      made.reset(0);
+      made.ui.getState().setViewMode('paged');
+      const callsAfterSwitch = made.fake.mock.calls.length;
+      vi.advanceTimersByTime(5 * FOLLOW_UP_DELAY_MS);
+      expect(made.fake).toHaveBeenCalledTimes(callsAfterSwitch);
+      expect(made.calls.at(-1)?.verticalReach).toBeUndefined();
+
+      made.reset(50);
+      made.ui.getState().setViewMode('continuous');
+      edit(made.document, 6);
+      const trackId = made.document.getState().score?.tracks[0]?.id ?? '';
+      made.reset(0);
+      made.document.getState().setNotation(trackId, 'both');
+      const count = made.fake.mock.calls.length;
+      expect(made.calls.at(-1)?.verticalReach).toBeUndefined();
+      vi.advanceTimersByTime(5 * FOLLOW_UP_DELAY_MS);
+      expect(made.fake).toHaveBeenCalledTimes(count);
     } finally {
       vi.useRealTimers();
     }

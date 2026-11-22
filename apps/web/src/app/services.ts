@@ -1,3 +1,5 @@
+import type { Range } from '@reprise/layout';
+
 import { createDefaultSounds, createSoundPackStore, type SoundPackStore } from '@/features/sounds';
 import { createPrintStore, viewLayoutOptions, type PrintStore } from '@/features/score';
 // Not the feature's index: it re-exports the bar, whose services context imports this file.
@@ -73,12 +75,27 @@ export interface ScoreViewProbe {
   barInView(): number | undefined;
   /** The mounted view registers how to read it, and clears it on unmount. */
   attach(read: () => number | undefined): () => void;
+  /**
+   * The segments mounted now (indices into the shown layout's systems): what an edit's layout
+   * redraws at once (#229). Undefined with no view mounted.
+   */
+  mountedSystems(): Range | undefined;
+  /** The mounted view registers how to read its mounted range, and clears it on unmount. */
+  attachMounted(read: () => Range | undefined): () => void;
 }
 
 function createViewProbe(): ScoreViewProbe {
   let read: (() => number | undefined) | undefined;
+  let readMounted: (() => Range | undefined) | undefined;
   return {
     barInView: () => read?.(),
+    mountedSystems: () => readMounted?.(),
+    attachMounted(next) {
+      readMounted = next;
+      return () => {
+        if (readMounted === next) readMounted = undefined;
+      };
+    },
     attach(next) {
       read = next;
       // Clears only its own reader, so a second view unmounting cannot blank the live one.
@@ -133,9 +150,11 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   // any of `LAYOUT_SETTINGS` changes, so a new one is added to both.
   const LAYOUT_SETTINGS = [CHORD_DIAGRAMS_SETTING];
   const layoutSettings = () => ({ chordDiagrams: settings.get(CHORD_DIAGRAMS_SETTING) });
+  const viewProbe = createViewProbe();
   const layout = createLayoutStore({
     document,
     ui,
+    visible: () => viewProbe.mountedSystems(),
     options: (view, content) =>
       viewLayoutOptions(view, {
         tracks: visibleTrackIds(content, document.getState().score),
@@ -245,7 +264,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     settings,
     menuTarget,
     contextMenu: createContextMenuStore({ menuTarget }),
-    viewProbe: createViewProbe(),
+    viewProbe,
     dispose() {
       unsubscribeChordPick();
       uninstallClipboard();

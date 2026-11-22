@@ -14,6 +14,7 @@ import { beatOf, largeScore } from '@reprise/model/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { primitiveToSvg } from './primitive-svg';
+import { mountedSystems } from './viewport';
 import { ScoreView, type ScoreViewHandle } from './score-view';
 import { smallScore } from './test/small-score';
 import { stubViewport } from './test/viewport-stub';
@@ -168,6 +169,62 @@ describe('re-rendering after an edit', () => {
     }
     expect(calls).toBeGreaterThan(0);
   });
+
+  it.each([1, 0.5])(
+    'leaves no mounted segment stale for an edit at the right edge of the view, at zoom %s',
+    (zoom) => {
+      const options: LayoutOptions = { ...paged, mode: 'continuous', width: 640 };
+      const score = largeScore(2, 120, { structure: true });
+      const cache = new LayoutCache();
+      const before = layout(score, options, cache);
+      const handle = createRef<ScoreViewHandle>();
+      const { rerender, container } = render(
+        <ScoreView ref={handle} layout={before} zoom={zoom} />,
+      );
+      const region = container.querySelector<HTMLElement>('[data-score-view]');
+      if (!region) throw new Error('no region');
+      const edited = before.systems[20];
+      if (!edited) throw new Error('no segment');
+      // The edited segment's right end at the pane's right edge: the window reaches left of it.
+      region.scrollLeft = (edited.bbox.x + edited.bbox.width) * zoom - 1920 + 8;
+      fireEvent.scroll(region);
+
+      const note = beatOf(score, 0, edited.bars.start, 0).notes[0];
+      if (!note) throw new Error('no note');
+      const { score: next, change } = applyCommand(
+        score,
+        setNoteEffect({ noteId: note.id }, { letRing: true }),
+      );
+      const window = mountedSystems(before.systems, handle.current?.viewport() ?? edited.bbox);
+      const after = layout(
+        next,
+        {
+          ...options,
+          dirtyBars: change.touchedBars,
+          verticalReach: VERTICAL_EDIT_REACH,
+          verticalWindow: window,
+        },
+        cache,
+      );
+      expect(after.metrics.staleSystems).toBeGreaterThan(0);
+      rerender(<ScoreView ref={handle} layout={after} zoom={zoom} />);
+      const mountedIds = new Set(
+        [...container.querySelectorAll('svg[data-system-id]')].map((svg) =>
+          svg.getAttribute('data-system-id'),
+        ),
+      );
+      const mounted = after.systems.filter(({ id }) => mountedIds.has(id));
+      expect(mounted.length).toBeGreaterThan(2);
+      // The edit is at the right edge, so only the overscan lies beyond it.
+      expect(mounted.some((system) => system.index > 21)).toBe(false);
+      for (const system of mounted) {
+        const i = after.systems.indexOf(system);
+        expect(after.primitives[system.primitives.start]).not.toBe(
+          before.primitives[before.systems[i]?.primitives.start ?? -1],
+        );
+      }
+    },
+  );
 
   it('renders nothing inside a system for a zoom change', () => {
     const result = layout(smallScore(), paged);
