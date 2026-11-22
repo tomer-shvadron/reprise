@@ -1,7 +1,7 @@
 import { isTooltipEscape } from '@/components/ui/tooltip-escape';
 
 import { contextRank, runCommand, type CommandRegistry } from './command-registry';
-import { matchesShortcut, type KeyboardPlatform } from './keyboard';
+import { matchesShortcut, type KeyboardPlatform, type KeyMatch } from './keyboard';
 import { isEditable, isTextField } from './text-field';
 
 // Sliders are left out on purpose: Space plays while one has focus.
@@ -187,15 +187,20 @@ export function dispatchShortcut(
   const tooltipEscape = event.defaultPrevented && isTooltipEscape(event) && !otherLayerOpen();
   if (event.defaultPrevented && !tooltipEscape) return false;
 
-  const matching = registry.available().filter((candidate) => {
-    const shortcut = registry.shortcutOf(candidate);
-    if (!shortcut || candidate.native) return false;
-    if (tooltipEscape && !candidate.afterTooltipEscape) return false;
-    if (DELETE_KEYS.has(event.key) && isTextField(event.target)) return false;
-    if (NAVIGATION_KEYS.has(event.key) && isEditable(event.target)) return false;
-    if (!shortcut.mod && leavesKeyToTarget(event)) return false;
-    return matchesShortcut(event, shortcut, platform);
-  });
+  const matchingBy = (by: KeyMatch) =>
+    registry.available().filter((candidate) => {
+      const shortcut = registry.shortcutOf(candidate);
+      if (!shortcut || candidate.native) return false;
+      if (tooltipEscape && !candidate.afterTooltipEscape) return false;
+      if (DELETE_KEYS.has(event.key) && isTextField(event.target)) return false;
+      if (NAVIGATION_KEYS.has(event.key) && isEditable(event.target)) return false;
+      if (!shortcut.mod && leavesKeyToTarget(event)) return false;
+      return matchesShortcut(event, shortcut, platform, by);
+    });
+  // What the key prints decides first; the physical key stands in only when nothing matched it,
+  // so a layout's printed character never loses a command to the key's US-layout twin.
+  const byCharacter = matchingBy('character');
+  const matching = byCharacter.length > 0 ? byCharacter : matchingBy('physical');
   // An active context's binding shadows the context-free one on the same key; between active
   // contexts, the earlier one in COMMAND_CONTEXTS wins.
   const command = matching.sort((a, b) => contextRank(a.context) - contextRank(b.context))[0];
