@@ -592,7 +592,7 @@ describe('tab staff: words', () => {
     const b = digits.find((p) => p.text === '2');
     const centre = (p: typeof a): number => (p?.bbox.x ?? 0) + (p?.bbox.width ?? 0) / 2;
     expect(centre(a)).toBeCloseTo(centre(b), 1);
-    // One row apart, in string order: the string-2 note's digit on top, though it is voice 1's.
+    // One row apart, in string order: the string-2 note's digit on top, though it is the later voice's.
     expect(b?.bbox.y).toBeCloseTo((a?.bbox.y ?? 0) + TAB.fingerRow * STAFF_SPACE, 1);
     expect(overlappingMarks(result)).toEqual([]);
   });
