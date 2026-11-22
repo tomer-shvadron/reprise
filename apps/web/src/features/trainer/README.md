@@ -111,7 +111,8 @@ shared field is a `type:contract` issue for the lead.
   new note needs clarity 0.90, a lock continues to 0.80. Two accepted frames within 30 cents
   lock; three accepted frames more than 50 cents from the median move the lock, and a single
   octave-off frame is ignored. The reading is the median of the last five accepted frames in
-  fractional MIDI. When the gate closes the last reading is held 1.5 s (`held`, dimmed), then
+  fractional MIDI, or of eleven at the 4096 window (over 50 ms), where a splice from dropped
+  samples spans up to five frames; the gates still judge against the newest five (#474). When the gate closes the last reading is held 1.5 s (`held`, dimmed), then
   clears. In tune is entered after five readings within 3 cents and left beyond 5. A **glitch
   gate** freezes the reading (undimmed) for up to 8 frames that sit more than 2 cents from the
   median with the clarity 0.05 under the note's running clarity, or 0.02 under it when the frame
@@ -127,9 +128,12 @@ shared field is a `type:contract` issue for the lead.
   are dropped, and the first median is the frames after it. That first reading waits until its
   frames agree within 2 cents, or until there are five (at most 2 hops, 40 ms, more, only when
   the first three spread over 2 cents): dropped samples bias several frames in a row (#433). A
-  fresh note shows a reading about 8 hops (0.16 s) after the window fills. Known limit: at the
-  4096 window (bass, a low B, no track) a splice spans most of five frames, and 20 dropped
-  samples still read about 9.5 cents off.
+  fresh note shows a reading about 8 hops (0.16 s) after the window fills. At the 4096 window
+  six frames must agree, or eleven are taken (#474): dropped samples then stay within 1.1 cents,
+  at the cost of the first reading about 3 hops (60 ms) later, 8 hops (160 ms) in the worst
+  case, and a needle that trails a peg turn by 5 hops (100 ms) instead of 2. Moving to a nearby
+  note without the cutoff closing in still shows readings from three frames, so a splice in the
+  first 100 ms after such a move is not covered.
 - **Allocation.** `createDetector(n)` owns the FFT tables and every buffer, and the tracker sorts
   its median in a scratch array, so a frame allocates only its small result objects; the panel
   re-renders only the readout per frame. Over 5000 frames (100 s of hops) in Node: 0 GC events

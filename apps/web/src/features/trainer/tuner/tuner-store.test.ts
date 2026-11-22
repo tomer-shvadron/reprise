@@ -268,8 +268,10 @@ describe('the tuner store', () => {
   });
 
   it('chromatic without a song: no strings, and no auto string', async () => {
-    const { state, listen } = await setup({ score: false });
+    const { rig, state, listen } = await setup({ score: false });
     await listen();
+    // The chromatic window is 4096, whose first reading waits for six agreeing frames (#474).
+    rig.tick(16);
     expect(state().reading).toBeDefined();
     expect(state().autoString).toBeUndefined();
   });

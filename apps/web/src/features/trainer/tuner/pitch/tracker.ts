@@ -12,8 +12,8 @@ export interface Reading {
 export interface TrackerOptions {
   /** A4 in Hz; 440 by default. */
   referenceHz?: number;
-  /** Settle time after a lock closes the cutoff in, in 20 ms hops of the pushed clock; see `settleFramesFor`. */
-  settleFrames?: number;
+  /** The analysis window in ms, which sets the settle time and the median; 43 (2048 at 48 kHz) by default. */
+  windowMs?: number;
 }
 
 /**
@@ -22,6 +22,26 @@ export interface TrackerOptions {
  */
 export function settleFramesFor(windowMs: number): number {
   return Math.ceil((windowMs + TRACKER.settleMarginMs) / TRACKER.hopMs) + 2;
+}
+
+/**
+ * Frames the reading is the median of. A splice in the input (dropped samples, #433, #474)
+ * biases up to `floor(window / hop) + 1` frames in a row, 5 at the 4096 window, so a median of
+ * five can be mostly splice there; eleven always leaves a single splice a minority. Windows up
+ * to `longWindowMs` keep five, where the gates catch the splice.
+ */
+export function medianFramesFor(windowMs: number): number {
+  if (windowMs <= TRACKER.longWindowMs) return TRACKER.median;
+  return 2 * (Math.floor(windowMs / TRACKER.hopMs) + 1) + 1;
+}
+
+/**
+ * Agreeing frames the first reading waits for: more than one splice can span (#474), so they
+ * cannot all be biased the same way. Never more than `medianFramesFor`, or no reading would show.
+ */
+export function agreeFramesFor(windowMs: number): number {
+  if (windowMs <= TRACKER.longWindowMs) return TRACKER.settledFrames;
+  return Math.floor(windowMs / TRACKER.hopMs) + 2;
 }
 
 export interface TrackerStep {
@@ -86,16 +106,23 @@ export const TRACKER = {
    */
   settledFrames: 3,
   hopMs: 20,
+  /**
+   * Windows longer than this (the 4096 one, 85 to 93 ms; 8192 at 96 kHz) use the longer median
+   * and agreement of #474. At 2048 a splice reads 21 cents off in 2 or 3 frames, which the gates
+   * catch; at 4096 it reads 10 cents off in up to 5 frames at a clarity dip below both gates.
+   */
+  longWindowMs: 50,
   /** Rejected frames in a row before the cutoff opens up again for the next note. */
   openAfterRejects: 5,
 } as const;
 
-// The median of at most `TRACKER.median` values, sorted into a scratch array that is kept.
+// The median of `values` from index `from` on, sorted into a scratch array that is kept.
 const scratch: number[] = [];
-const median = (values: readonly number[]) => {
-  scratch.length = values.length;
-  for (let i = 0; i < values.length; i += 1) {
-    const value = values[i] ?? 0;
+const median = (values: readonly number[], from = 0) => {
+  const count = values.length - from;
+  scratch.length = count;
+  for (let i = 0; i < count; i += 1) {
+    const value = values[from + i] ?? 0;
     let at = i;
     while (at > 0 && (scratch[at - 1] ?? 0) > value) {
       scratch[at] = scratch[at - 1] ?? 0;
@@ -103,14 +130,22 @@ const median = (values: readonly number[]) => {
     }
     scratch[at] = value;
   }
-  return scratch[Math.floor(values.length / 2)] ?? 0;
+  return scratch[Math.floor(count / 2)] ?? 0;
 };
 
 const cutoffFor = (hz: number) =>
   Math.min(TRACKER.searchCutoffHz, Math.max(TRACKER.minCutoffHz, TRACKER.lockedCutoffFactor * hz));
 
-const spreadCents = (values: readonly number[]) =>
-  (Math.max(...values) - Math.min(...values)) * 100;
+const spreadCents = (values: readonly number[], from = 0) => {
+  let low = Infinity;
+  let high = -Infinity;
+  for (let i = from; i < values.length; i += 1) {
+    const value = values[i] ?? 0;
+    if (value < low) low = value;
+    if (value > high) high = value;
+  }
+  return (high - low) * 100;
+};
 
 const centsBetween = (a: number, b: number) => Math.abs(a - b) * 100;
 
@@ -145,7 +180,15 @@ export function createTracker(options: TrackerOptions = {}) {
   // After the dirty phase: 'waiting' for the settle deadline, 'filling' the history from it until
   // it holds `settledFrames`; no reading shows meanwhile.
   let refill: 'none' | 'waiting' | 'filling' = 'none';
-  let settleFrames = options.settleFrames ?? settleFramesFor(43);
+  let settleFrames = 0;
+  let medianFrames: number = TRACKER.median;
+  let agreeFrames: number = TRACKER.settledFrames;
+  const sizeFor = (windowMs: number) => {
+    settleFrames = settleFramesFor(windowMs);
+    medianFrames = medianFramesFor(windowMs);
+    agreeFrames = agreeFramesFor(windowMs);
+  };
+  sizeFor(options.windowMs ?? 43);
 
   /** Hops of settle time still to run at `timeMs`. */
   const settlingAt = (timeMs: number) =>
@@ -215,9 +258,10 @@ export function createTracker(options: TrackerOptions = {}) {
 
     reset: unlock,
 
-    /** The window changed size, so the time a cutoff change needs to clear it did too. */
-    setSettleFrames(frames: number) {
-      settleFrames = frames;
+    /** The window changed size, so the time a cutoff change needs to clear it and the median did too. */
+    setWindow(windowMs: number) {
+      sizeFor(windowMs);
+      if (history.length > medianFrames) history.splice(0, history.length - medianFrames);
     },
 
     /**
@@ -233,7 +277,10 @@ export function createTracker(options: TrackerOptions = {}) {
       // The clock, not the count of pushes, is what moves the window past the change: ticks that
       // arrive late or in a burst read the same window and must not count as elapsed time.
       const midi = detection ? midiOf(detection.hz) : undefined;
-      const centre = locked ? median(history) : undefined;
+      // The gates judge against the newest frames only, so a long median does not slow them.
+      const centre = locked
+        ? median(history, Math.max(0, history.length - TRACKER.median))
+        : undefined;
       const near =
         midi !== undefined &&
         centre !== undefined &&
@@ -331,16 +378,17 @@ export function createTracker(options: TrackerOptions = {}) {
           refill = 'filling';
         }
         history.push(midi);
-        if (history.length > TRACKER.median) history.shift();
+        if (history.length > medianFrames) history.shift();
         peakRms = Math.max(peakRms, rmsValue);
         // Frames a hop apart share most of their samples, so a splice in the input (dropped
         // samples, #433) biases several in a row and a median of three can be mostly bad: the
-        // first reading waits until they agree, or until the history is a full median. At the 4096
-        // window a splice spans most of five frames and this does not help; see the README.
+        // first reading waits until `agreeFrames` of them agree, or until the history is a full
+        // median. At the 4096 window a splice spans up to five frames, so six must agree (#474).
         if (
           refill === 'filling' &&
-          history.length >= TRACKER.settledFrames &&
-          (history.length >= TRACKER.median || spreadCents(history) <= TRACKER.glitchCents)
+          history.length >= agreeFrames &&
+          (history.length >= medianFrames ||
+            spreadCents(history, history.length - agreeFrames) <= TRACKER.glitchCents)
         )
           refill = 'none';
         if (dirty || refill !== 'none')
