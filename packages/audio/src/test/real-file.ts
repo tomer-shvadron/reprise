@@ -11,6 +11,7 @@ import {
 } from '@reprise/model';
 import type { Score, Track } from '@reprise/model';
 
+import { isHammered } from '../articulations/plan';
 import type { NoteEvent } from '../sink';
 import type { CheckViolation } from './check-meta';
 import { START } from './harness';
@@ -163,7 +164,7 @@ export function completeness(score: Score, scheduled: readonly NoteEvent[]): Com
 /** True for a note the sampler sink carries on the previous voice instead of striking. */
 function carried(event: NoteEvent, previous: NoteEvent | undefined): boolean {
   return (
-    event.note.hammerPull ||
+    isHammered(event.note, event.beat.effects) ||
     (event.note.string > 0 && previous?.note.slide?.includes('legato') === true)
   );
 }
@@ -249,7 +250,7 @@ export function expectedAttacks(
     const previous = lastOnString.get(stringKey);
     lastOnString.set(stringKey, event);
     if (!audible(score, event.track)) continue;
-    if (event.note.hammerPull || attackless(event)) continue;
+    if (isHammered(event.note, event.beat.effects) || attackless(event)) continue;
     if (event.note.string > 0 && previous?.note.slide?.includes('legato') === true) continue;
     const strikes = (struck[index] ?? []).filter((strike) => strike.track === event.track.id);
     const when = strikes.length === 0 ? event.when : Math.min(...strikes.map((s) => s.when));
