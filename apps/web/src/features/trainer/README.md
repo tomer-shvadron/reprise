@@ -187,7 +187,7 @@ together: starting one stops the other.
   it from anywhere. While it runs, a "Metronome on" segment in the status bar
   (`app/status-bar/click-status.tsx`, #220) shows it and stops it when pressed; it shrinks to its
   dot in a narrow window. The practice mode hides the status bar, so the practice capsule
-  (`app/practice-mode/practice-capsule.tsx`, #492) carries a pulsing-dot button for it instead,
+  (`app/practice-mode/practice-capsule.tsx`, #492) carries a pulsing dot and the word "Click" (the word hidden below 900px), behind a divider, for it instead,
   which runs the same toggle; it is not the capsule's Metronome toggle, which is the song's click.
 - Alt+B starts or stops it; only starting shows the panel (stopping, from the status bar too, opens
   nothing). `metronome.browser.test.ts` renders the click

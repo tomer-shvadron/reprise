@@ -16,7 +16,10 @@ const divider = <Separator orientation="vertical" className="h-6! max-[900px]:hi
 /**
  * Shows that the standalone metronome click is running (the status bar that shows it is hidden in
  * this mode) and stops it. Not the capsule's Metronome toggle, which is the song's own click.
- * Absent while it is off; the press unmounts it, so a keyboard press first moves focus to the score.
+ * The dot is paired
+ * with the word "Click" (hidden below 900px, like the dividers) so it does not read as the state of
+ * the Metronome toggle beside it. Absent while it is off; the press unmounts it, so a keyboard
+ * press first moves focus to the score.
  */
 function StandaloneClickIndicator() {
   const { playback } = useAppServices();
@@ -24,28 +27,32 @@ function StandaloneClickIndicator() {
   const toggle = useCommand('trainer.metronomeToggle');
   if (!running) return null;
   return (
-    <CommandTooltip command="trainer.metronomeToggle" label="Stop the standalone metronome">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Standalone metronome on"
-        data-command="trainer.metronomeToggle"
-        data-click-indicator
-        className="shrink-0"
-        onMouseDown={keepFocus}
-        onClickCapture={(event) => {
-          if (globalThis.document.activeElement === event.currentTarget) {
-            scoreRegion()?.focus({ preventScroll: true });
-          }
-        }}
-        onClick={toggle.run}
-      >
-        <span
-          aria-hidden="true"
-          className="bg-primary size-2 rounded-full motion-safe:animate-pulse"
-        />
-      </Button>
-    </CommandTooltip>
+    <>
+      {divider}
+      <CommandTooltip command="trainer.metronomeToggle" label="Stop the standalone metronome">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Click, standalone metronome on"
+          data-command="trainer.metronomeToggle"
+          data-click-indicator
+          className="shrink-0"
+          onMouseDown={keepFocus}
+          onClickCapture={(event) => {
+            if (globalThis.document.activeElement === event.currentTarget) {
+              scoreRegion()?.focus({ preventScroll: true });
+            }
+          }}
+          onClick={toggle.run}
+        >
+          <span
+            aria-hidden="true"
+            className="bg-primary size-2 rounded-full motion-safe:animate-pulse"
+          />
+          <span className="max-[900px]:hidden">Click</span>
+        </Button>
+      </CommandTooltip>
+    </>
   );
 }
 
