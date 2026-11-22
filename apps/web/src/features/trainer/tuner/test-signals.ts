@@ -1,5 +1,5 @@
 import { detectPitch, rms } from './pitch/mpm';
-import { createTracker, settleFramesFor, type Reading, type TrackerOptions } from './pitch/tracker';
+import { createTracker, type Reading, type TrackerOptions } from './pitch/tracker';
 import { windowFor } from './strings';
 
 /** Test-only signal generators and the pipeline emulation; nothing in the app imports this. */
@@ -186,7 +186,7 @@ export function simulate(
   const hop = Math.round((hopMs / 1000) * sampleRate);
   const sections = [new Lowpass(sampleRate, 1500), new Lowpass(sampleRate, 1500)];
   const tracker = createTracker({
-    settleFrames: settleFramesFor((size / sampleRate) * 1000),
+    windowMs: (size / sampleRate) * 1000,
     ...trackerOptions,
   });
   const ring = new Float32Array(size);

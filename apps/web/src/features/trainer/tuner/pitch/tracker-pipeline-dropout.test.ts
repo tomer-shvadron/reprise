@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { midiFromHz } from '../notes';
+import { windowFor } from '../strings';
 import { simulate } from '../test-signals';
 
 const RATE = 48000;
@@ -14,26 +16,56 @@ function harmonicTone(hz: number, length: number) {
   return out;
 }
 
-describe('the tuning pipeline across dropped samples (#433)', () => {
+const DROPS = [2, 5, 20];
+// First lock (the splice before, on and after the settle deadline), then a steady note.
+const POSITIONS_MS = [
+  ...Array.from({ length: 33 }, (_, i) => 160 + 5 * i),
+  ...Array.from({ length: 11 }, (_, i) => 450 + 15 * i),
+];
+
+/** The worst live reading, in cents off `targetMidi` plus `detune`, over every splice. */
+function worstAcross(base: Float32Array, lowestHz: number, targetMidi: number, detune: number) {
+  let worst = 0;
+  for (const samples of DROPS)
+    for (const atMs of POSITIONS_MS) {
+      const at = Math.round((atMs / 1000) * RATE);
+      const signal = new Float32Array(base.length - samples);
+      signal.set(base.subarray(0, at));
+      signal.set(base.subarray(at + samples), at);
+      for (const { reading } of simulate(signal, RATE, { lowestHz })) {
+        if (reading && !reading.held)
+          worst = Math.max(worst, Math.abs((reading.midi - targetMidi) * 100 - detune));
+      }
+    }
+  return worst;
+}
+
+describe('the tuning pipeline across dropped samples (#433, #474)', () => {
   // Dropping `samples` at `atMs` splices the tone; the frames holding the splice read 4 to 6
-  // cents off at clarity 1.0, which is what the CI run that failed showed. The positions cover
-  // the splice landing before, on and after the settle deadline of the first lock. Known limit:
-  // at the 4096-sample window (bass, a low B, no track) a splice biases four or five frames in a
-  // row, most of a median of five, and 20 dropped samples still read about 9.5 cents off there.
+  // cents off at clarity 1.0 at the 2048 window and about 10 at the 4096 one, where a splice
+  // spans up to five frames; the long median and agreement of #474 cover that.
   it('never shows a reading more than 2 cents off a clean A2 +7 cents', { timeout: 30_000 }, () => {
     const base = harmonicTone(A2_PLUS_7, Math.round(RATE * 1.2));
-    let worst = 0;
-    for (const samples of [2, 5, 20])
-      for (let atMs = 160; atMs <= 320; atMs += 5) {
-        const at = Math.round((atMs / 1000) * RATE);
-        const signal = new Float32Array(base.length - samples);
-        signal.set(base.subarray(0, at));
-        signal.set(base.subarray(at + samples), at);
-        for (const { reading } of simulate(signal, RATE, { lowestHz: 82.41 })) {
-          if (reading && !reading.held)
-            worst = Math.max(worst, Math.abs((reading.midi - 45) * 100 - 7));
-        }
-      }
-    expect(worst).toBeLessThan(2);
+    expect(windowFor(RATE, 82.41)).toBe(2048);
+    expect(worstAcross(base, 82.41, 45, 7)).toBeLessThan(2);
+  });
+
+  // lowestHz 30 is the chromatic tuner's floor: a 4096 window.
+  it('holds at the 4096 window: A2 +7 cents, chromatic', { timeout: 30_000 }, () => {
+    const base = harmonicTone(A2_PLUS_7, Math.round(RATE * 1.2));
+    expect(windowFor(RATE, 30)).toBe(4096);
+    expect(worstAcross(base, 30, 45, 7)).toBeLessThan(2);
+  });
+
+  it('holds at the 4096 window: E1, a bass', { timeout: 30_000 }, () => {
+    const base = harmonicTone(41.2, Math.round(RATE * 1.2));
+    expect(windowFor(RATE, 41.2)).toBe(4096);
+    expect(worstAcross(base, 41.2, midiFromHz(41.2), 0)).toBeLessThan(2);
+  });
+
+  it('holds at the 4096 window: B0, a five-string bass', { timeout: 30_000 }, () => {
+    const base = harmonicTone(30.87, Math.round(RATE * 1.2));
+    expect(windowFor(RATE, 30.87)).toBe(4096);
+    expect(worstAcross(base, 30.87, midiFromHz(30.87), 0)).toBeLessThan(2);
   });
 });
