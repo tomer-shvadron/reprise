@@ -347,11 +347,17 @@ function analyseBeat(
   for (const grace of beat.grace ?? []) {
     for (const note of grace.notes) if (note.bend || note.slide) drawn = true;
   }
-  if (slideOut) right = Math.max(right, half + TAB.slideRoom * space);
-  if (bent) right = Math.max(right, half + TAB.bendRoom * space);
+  // What hangs right of a number starts past its suffix (a harmonic's brackets), as the drawing
+  // in effects.ts places it, so the room counts from there.
+  let edge = half;
   for (const label of labels) {
-    if (label.suffix) right = Math.max(right, labelHalf(label, size) + suffixRoom(label, size));
+    if (label.suffix) {
+      edge = Math.max(edge, labelHalf(label, size) + suffixRoom(label, size));
+      right = Math.max(right, labelHalf(label, size) + suffixRoom(label, size));
+    }
   }
+  if (slideOut) right = Math.max(right, edge + TAB.slideRoom * space);
+  if (bent) right = Math.max(right, edge + TAB.bendRoom * space);
   const played = !beat.rest && beat.notes.length > 0;
   const stroke =
     played && (beat.effects.arpeggio || beat.effects.brush) ? TAB.strokeRoom * space : 0;

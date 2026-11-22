@@ -96,7 +96,16 @@ function drawArc(
   drawTie(sink, left, right, y, direction, space, { node: note.id });
   if (letter === undefined || right - left < space * 0.2) return;
   const apex = y + s * tieHeight(right - left, space);
-  drawLetter(sink, (left + right) / 2, apex, direction, space, note.id, letter);
+  drawLetter(
+    sink,
+    (left + right) / 2,
+    apex,
+    direction,
+    space,
+    note.id,
+    letter,
+    contentEnd(context),
+  );
 }
 
 function drawSlideLine(
@@ -216,7 +225,8 @@ function drawBendGroup(
   const [top] = bent;
   if (!band || !top) return;
   const x0 = at + Math.max(...bent.map((label) => rightEdge(label, size))) + BEND.gap * space;
-  const xEnd = Math.max(stop, x0 + min * space);
+  // The shortest length must not pass the bar's end where the room is squeezed.
+  const xEnd = Math.max(at, Math.min(Math.max(stop, x0 + min * space), contentEnd(context)));
   const releaseTop = lineY(context, top.note.string) - labelHalfHeight(size);
   drawn.columns = bendColumns(bent.map((label) => label.note.bend));
   for (const label of bent) {
@@ -268,7 +278,10 @@ function drawScrape(context: TabContext, label: NoteLabel, x: number, next: numb
   if (!note.pickScrape) return;
   const size = TAB.fretSize * space;
   const start = x + rightEdge(label, size) + SCRAPE.gap * space;
-  const end = Math.max(next - SCRAPE.stop * space, start + SCRAPE.min * space);
+  const end = Math.min(
+    Math.max(next - SCRAPE.stop * space, start + SCRAPE.min * space),
+    contentEnd(context),
+  );
   const y = lineY(context, note.string);
   const drop = (note.pickScrape === 'down' ? 1 : -1) * SCRAPE.drop * space;
   const wave = diagonalWave(start, y, end, y + drop, WAVES.slight, space, { node: note.id });
@@ -282,6 +295,8 @@ function drawLooseSlides(context: TabContext, label: NoteLabel, x: number): void
   const { note } = label;
   const before = x - leftEdge(label, size) - SLIDE.clear * space;
   const after = x + rightEdge(label, size) + SLIDE.clear * space;
+  // Where the bar's room is squeezed below what the slide reserved, the stub stops at its end.
+  const out = Math.min(after + SLIDE.length * space, contentEnd(context));
   const length = SLIDE.length * space;
   for (const kind of note.slide ?? []) {
     // A scrape replaces a slide-out, as in Guitar Pro, which keeps one of them.
@@ -290,10 +305,8 @@ function drawLooseSlides(context: TabContext, label: NoteLabel, x: number): void
       drawSlideLine(context, note, before - length, before, SLIDE.rise, -SLIDE.rise);
     if (kind === 'intoFromAbove')
       drawSlideLine(context, note, before - length, before, -SLIDE.rise, SLIDE.rise);
-    if (kind === 'outDown')
-      drawSlideLine(context, note, after, after + length, -SLIDE.rise, SLIDE.rise);
-    if (kind === 'outUp')
-      drawSlideLine(context, note, after, after + length, SLIDE.rise, -SLIDE.rise);
+    if (kind === 'outDown') drawSlideLine(context, note, after, out, -SLIDE.rise, SLIDE.rise);
+    if (kind === 'outUp') drawSlideLine(context, note, after, out, SLIDE.rise, -SLIDE.rise);
   }
 }
 
