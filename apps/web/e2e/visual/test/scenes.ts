@@ -744,6 +744,20 @@ export const SCENES: readonly Scene[] = [
     },
   },
   {
+    id: 'wah',
+    covers: 'Wah-wah marks above the staff, + closed and o open, from a real file (#355)',
+    source: { fixture: 'gp5/wah-wah.gp5' },
+    notations: ['tab', 'standard'],
+    pages: [0],
+    guard: (result) => {
+      const marks = result.primitives.filter(
+        (p) =>
+          p.kind === 'glyph' && (p.glyph === 'guitarClosePedal' || p.glyph === 'guitarOpenPedal'),
+      );
+      expect(marks.length).toBeGreaterThanOrEqual(2);
+    },
+  },
+  {
     id: 'multivoice',
     covers: 'A real two-voice file',
     source: { fixture: 'gp/multivoice-rhythm.gp' },

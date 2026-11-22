@@ -206,15 +206,16 @@ Everything above or below a staff that is not attached to a note head goes in a 
 | 7 | `pickScrape` | 1.4 |
 | 8 | `harmonic` | 1.4 |
 | 9 | `fade` | 1.9 |
-| 10 | `tap` | 1.3 |
-| 11 | `vibrato` | slight 1.0, wide 1.6 |
-| 12 | `beatVibrato` | slight 1.2, wide 1.7 |
-| 13 | `trill` | 2.0 |
-| 14 | `whammy` | 5.0 |
-| 15 | `chord` | 2.2 |
-| 16 | `fingering` (tab mode) | 1.1 per row |
-| 17 | `text` | 2.0 |
-| 18 | `repeatCount`, the system's first staff | 1.6 |
+| 10 | `wah` | glyph height + 0.5 |
+| 11 | `tap` | 1.3 |
+| 12 | `vibrato` | slight 1.0, wide 1.6 |
+| 13 | `beatVibrato` | slight 1.2, wide 1.7 |
+| 14 | `trill` | 2.0 |
+| 15 | `whammy` | 5.0 |
+| 16 | `chord` | 2.2 |
+| 17 | `fingering` (tab mode) | 1.1 per row |
+| 18 | `text` | 2.0 |
+| 19 | `repeatCount`, the system's first staff | 1.6 |
 
 | Below the staff, from the staff out | Lane | Height |
 | --- | --- | --- |
@@ -242,6 +243,7 @@ The room around a staff is the larger of its floor (tab 2 above and 1 below, fiv
 | Whammy | `Beat.effects.whammy` | `w/bar` (0.9 text) at the run's first onset; per beat a polyline from its onset to the next onset less 0.3, 0.25 per quarter tone around a middle low enough that a label over the highest point clears `w/bar` (clamped at 4); labels (0.8 text) at the extreme point and at a non-zero final point that differs from it. |
 | Tapping, slapping, popping | `Beat.effects` | `T`, `S` or `P` centred on the beat in the tap lane; the first of the three that is set. |
 | Pick stroke | `Beat.effects.pickStroke` | `stringsDownBow` or `stringsUpBow`, centred. |
+| Wah | `Beat.effects.wah` | `guitarClosePedal` (+) for closed and `guitarOpenPedal` (o) for open, centred on the beat in the `wah` lane above the staff, on a rest too, as Guitar Pro and alphaTab draw them. The first voice with a mark at an onset draws it. |
 | Golpe | `Beat.effects.golpe` | `guitarGolpe` centred on the beat, on a rest too: a finger golpe in the `golpeFinger` lane above the staff, a thumb golpe in the `golpeThumb` lane below it, as Guitar Pro draws them. The first voice with a finger golpe and the first with a thumb golpe at an onset each draw theirs. |
 | Pick scrape | `Note.pickScrape` | `P.S.` and a dashed line as palm mute, a run per direction (`down`, `up`; down wins in a beat holding both); and on each scraped note a slight-vibrato wave (λ 0.9, amplitude 0.22) from 0.2 right of its number to 0.6 before the next onset (at least 1.3 long), falling 0.5 for down and rising 0.5 for up, with 1.5 of room right of the number and the staff's floor extended by the wave's reach. A note holding both a slide-out and a pick scrape draws the wave only, as Guitar Pro keeps one of them. |
 | Fade in, fade out, volume swell | `Beat.effects` | `guitarFadeIn`, `guitarFadeOut` or `guitarVolumeSwell`, centred. |
@@ -281,7 +283,7 @@ Fermatas, hairpins, tenuto, staccatissimo and the other techniques the model doe
 | Hammer-on, pull-off | `Note.hammerPull` on the target | Fretted tracks: a slur between the heads, `H` or `P` when alone | Not drawn |
 | Arpeggio | `Beat.effects.arpeggio` | A vertical wave left of the chord with an arrowhead, in every mode | Not drawn |
 | Brush | `Beat.effects.brush` | Alone only: a line left of the chord with an arrowhead; in both mode the tab draws it | Not drawn |
-| Vibrato, whammy-bar vibrato, palm mute, let ring, pick scrape (`P.S.`), trill, whammy, tapping, slapping, popping, pick stroke, golpe, fades | `Note.*`, `Beat.effects.*` | Alone only: the standard staff's own lanes, drawn as on the tab. A trill gets no head for its other note. | Not drawn |
+| Vibrato, whammy-bar vibrato, palm mute, let ring, pick scrape (`P.S.`), trill, whammy, tapping, slapping, popping, pick stroke, golpe, wah, fades | `Note.*`, `Beat.effects.*` | Alone only: the standard staff's own lanes, drawn as on the tab. A trill gets no head for its other note. | Not drawn |
 
 What each mode draws where:
 
