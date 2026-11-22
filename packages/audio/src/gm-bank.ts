@@ -24,13 +24,24 @@ function bankOf(track: TrackKey, program: number): number {
   if (
     track.kind === 'fretted' &&
     program === MANDOLIN_PROGRAM &&
-    track.bank === 0 &&
+    soundfontBankOf(track.bank) === 0 &&
     track.tuning &&
     stringInstrumentOf({ ...track, tuning: track.tuning, program }) === 'mandolin'
   ) {
     return MANDOLIN_BANK;
   }
-  return track.bank;
+  return soundfontBankOf(track.bank);
+}
+
+/**
+ * The SF2 `wBank` for a track's bank. `Track.bank` is 14-bit MIDI, `(msb << 7) | lsb`, and SF2
+ * banks are numbered by the MSB (GeneralUser GS keeps its variations at wBank 1 to 127, percussion
+ * at 128), so the LSB is dropped, as a GS synth does. A bank the font lacks falls back to bank 0
+ * in `Sf2Soundfont.resolve`. The result is at most 127, so a melodic track never asks for the
+ * percussion bank.
+ */
+export function soundfontBankOf(bank: number): number {
+  return bank >> 7;
 }
 
 interface Entry {

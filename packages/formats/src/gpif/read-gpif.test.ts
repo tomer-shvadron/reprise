@@ -36,6 +36,23 @@ const codes = (result: Pick<GpifReadResult, 'warnings'>): string[] =>
 
 const QUARTERS = [rhythm('0', 'Quarter')];
 
+describe('the track bank (#411)', () => {
+  const bankOf = (msb: number, lsb: number): number | undefined =>
+    read(
+      oneBar([beat('0', '0', '0')], [note('0', 0, 3)], QUARTERS, {
+        tracks: [guitarTrack('0', { msb, lsb })],
+      }),
+    ).score.tracks[0]?.bank;
+
+  it('reads MSB 8 and LSB 0 as 8 << 7', () => {
+    expect(bankOf(8, 0)).toBe(8 << 7);
+  });
+
+  it('reads MSB 0 and LSB 5 as 5, which is still bank 0 to the soundfont', () => {
+    expect(bankOf(0, 5)).toBe(5);
+  });
+});
+
 const brushOf = (ticks: number): string =>
   `<Properties>${property('Brush', '<Direction>Up</Direction>')}</Properties><XProperties><XProperty id="687935489"><Int>${String(ticks)}</Int></XProperty></XProperties>`;
 

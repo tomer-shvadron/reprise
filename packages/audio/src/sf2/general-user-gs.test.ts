@@ -143,6 +143,19 @@ describe.skipIf(!font)('GeneralUser GS', () => {
     expect(font?.presets.some((p) => p.bank === PERCUSSION_BANK)).toBe(true);
   });
 
+  it('keeps its variations at the MSB bank, where a 14-bit gpif bank is looked up (#411)', () => {
+    const banks = new Set(font?.presets.map((p) => p.bank));
+    expect([...banks].filter((bank) => bank > 0 && bank < PERCUSSION_BANK).length).toBeGreaterThan(
+      0,
+    );
+    expect(banks.has(8 << 7)).toBe(false);
+    expect(font?.preset(8, 25)).toBeDefined();
+    const nameOf = (bank: number) =>
+      font?.presets.find((p) => p.bank === bank && p.program === 25)?.name;
+    expect(nameOf(8)).toBe('12-String Guitar');
+    expect(nameOf(0)).not.toBe(nameOf(8));
+  });
+
   it('resolves every GM program in bank 0 to a non-empty region map', () => {
     for (const [program, preset] of programs.entries()) {
       expect(preset, `program ${String(program)}`).toBeDefined();

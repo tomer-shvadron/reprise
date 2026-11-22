@@ -265,7 +265,7 @@ interface Track {
   courses?: (number | null)[];   // doubled courses (#348): per string, tuning order and length, the second string's offset in semitones (0 unison, 12 octave above, -12 below), null = single; absent = all single
   drone?: { string: number; fret: number };   // a short string (#348), 1-based, 1 = highest, starting at neck fret `fret` (banjo { string: 5, fret: 5 }); its frets are stored from its own nut, so midiNote is unchanged
   fretCount: number;             // neck length, 24 by default; 0 on drums; the drone string holds stored frets up to fretCount - drone.fret
-  program: number; bank: number; // GM program 0..127 and bank 0..16383; on drums, program is the GM2 kit
+  program: number; bank: number; // GM program 0..127 and bank 0..16383, always 14-bit `(msb << 7) | lsb` (the gp3-gp5 reader shifts its byte in as the MSB; the sampler looks up the MSB; changed by #411, no migration for older native documents); on drums, program is the GM2 kit
   channel: { volume; pan; chorus; reverb; phaser; tremolo: number; mute: boolean; solo: boolean };   // 0..127, pan 64 = centre
   display: { notation: 'tab' | 'standard' | 'both'; clef?: Clef; octaveShift: number };   // clef absent = treble, percussion on drums; octaveShift: written minus sounding, in octaves (1 fretted, 0 otherwise)
   sound?: { packId?: Id; instrument?: string; preset?: string };       // the sound choice: optional HQ packId, optional instrument (a key into the pack's instruments, absent = its first; only meaningful with packId), optional effects preset; with no packId the GM tier plays `program`; preset is an effects-preset id, opaque to the model, valid without packId, unknown = automatic (#234)

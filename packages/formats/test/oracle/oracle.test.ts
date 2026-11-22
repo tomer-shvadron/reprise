@@ -38,6 +38,7 @@ function compare(path: string, reader: OracleReader): Comparison {
     alphaTab: projectAlphaTab(
       loadWithAlphaTab(bytes),
       score.tracks.map((track) => track.kind),
+      { bankIsByte: ['gp3', 'gp4', 'gp5'].includes(reader.extension) },
     ),
   };
   return {
