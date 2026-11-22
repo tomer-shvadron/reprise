@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CHANNEL_CHORUS,
+  CHORUS_MIX_AT_FULL,
   EFFECT_FAMILIES,
   EFFECT_PRESETS,
   EFFECT_PRESET_IDS,
   EFFECT_STAGES,
+  REVERB_SEND_AT_FULL,
+  channelEffects,
+  effectSpecOf,
   presetFamilyOf,
   resolveEffects,
   stagesOf,
@@ -120,5 +125,84 @@ describe('stagesOf', () => {
       reverb: undefined,
     });
     expect(Object.keys(stagesOf('distortion', new Set(EFFECT_STAGES)))).toEqual([]);
+  });
+});
+
+describe('channelEffects', () => {
+  it('is nothing for 0 and 0', () => {
+    expect(channelEffects({ reverb: 0, chorus: 0 })).toEqual({});
+  });
+
+  it('is the SF2 figures at 127', () => {
+    expect(channelEffects({ reverb: 127, chorus: 127 })).toEqual({
+      reverb: { send: 0.2 },
+      modulation: { rate: 0.8, depth: 0.002, mix: 0.4 },
+    });
+  });
+
+  it('is linear, and one part alone builds only that part', () => {
+    expect(channelEffects({ reverb: 64, chorus: 0 })).toEqual({
+      reverb: { send: (0.2 * 64) / 127 },
+    });
+    expect(channelEffects({ reverb: 0, chorus: 64 }).modulation?.mix).toBeCloseTo((0.4 * 64) / 127);
+    // GP's 0 to 16 slider is the CC scale in steps of 8.
+    for (const g of [1, 4, 8, 16]) {
+      const cc = Math.min(8 * g, 127);
+      expect(channelEffects({ reverb: cc, chorus: 0 }).reverb?.send).toBeCloseTo(
+        (REVERB_SEND_AT_FULL * cc) / 127,
+      );
+    }
+    expect(CHORUS_MIX_AT_FULL).toBe(0.4);
+  });
+});
+
+describe('CHANNEL_CHORUS', () => {
+  it('has the rate and depth of the clean preset, so a retune of one is a decision about both', () => {
+    expect(CHANNEL_CHORUS).toEqual({
+      rate: EFFECT_PRESETS.clean.modulation?.rate,
+      depth: EFFECT_PRESETS.clean.modulation?.depth,
+    });
+  });
+});
+
+describe('effectSpecOf', () => {
+  const channel = { reverb: 100, chorus: 50 };
+  const GM_ON = { tier: 'gm', gmTierBypass: true } as const;
+  const GM_OFF = { tier: 'gm', gmTierBypass: false } as const;
+  const HQ = { tier: 'hq', gmTierBypass: true } as const;
+  const on = { channelEffects: true };
+  const track = (sound?: { preset?: string }, program = 30) => ({
+    kind: 'fretted' as const,
+    program,
+    ...(sound ? { sound } : {}),
+    channel,
+  });
+  const cc = channelEffects(channel);
+
+  it('lets a named preset win over the file, and `off` is nothing', () => {
+    expect(effectSpecOf(track({ preset: 'keys' }), { ...GM_ON, ...on })).toEqual(
+      EFFECT_PRESETS.keys,
+    );
+    expect(effectSpecOf(track({ preset: 'off' }), { ...GM_ON, ...on })).toEqual({});
+  });
+
+  it('gives the family preset on the HQ tier and on the GM tier with the bypass off', () => {
+    expect(effectSpecOf(track(), { ...HQ, ...on })).toEqual(EFFECT_PRESETS.distortion);
+    expect(effectSpecOf(track(), { ...GM_OFF, ...on })).toEqual(EFFECT_PRESETS.distortion);
+  });
+
+  it('gives the file on the GM tier with the bypass on, and nothing with it switched off', () => {
+    expect(effectSpecOf(track(), { ...GM_ON, ...on })).toEqual(cc);
+    expect(effectSpecOf(track(), { ...GM_ON, channelEffects: false })).toEqual({});
+  });
+
+  it('drops a bypassed part', () => {
+    const context = { ...GM_ON, ...on };
+    expect(effectSpecOf(track(), context, new Set(['reverb']))).toEqual({
+      modulation: cc.modulation,
+    });
+    expect(effectSpecOf(track(), context, new Set(['modulation']))).toEqual({
+      reverb: cc.reverb,
+    });
   });
 });
