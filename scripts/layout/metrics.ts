@@ -164,6 +164,8 @@ export const GLYPHS = [
   'stringsDownBow',
   'stringsUpBow',
   'guitarGolpe',
+  'guitarClosePedal',
+  'guitarOpenPedal',
   'guitarFadeIn',
   'guitarFadeOut',
   'guitarVolumeSwell',

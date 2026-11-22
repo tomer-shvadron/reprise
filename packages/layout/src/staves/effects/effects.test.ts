@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   LayoutCache,
+  STAFF_SPACE,
   layout,
   type LayoutResult,
   type Primitive,
@@ -12,6 +13,7 @@ import {
 import { overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import { BENDS, content, everyEffectScore, guitar, laid, paged, texts } from '../../test/effects';
+import { analyseEffects, glyphHeight } from './analysis';
 import { bendLabel } from './labels';
 
 const isText = (value: string) => (p: Primitive) => p.kind === 'text' && p.text === value;
@@ -1353,5 +1355,135 @@ describe('golpe and pick scrape (#354)', () => {
     expect(
       intersects(scrape.bbox, knockout(result, beatOf(built, 0, 0, 1).notes[0]?.id ?? '')),
     ).toBe(false);
+  });
+});
+
+describe('wah marks (#355)', () => {
+  const pedals = (result: LayoutResult) =>
+    result.primitives.filter(
+      (p) =>
+        p.kind === 'glyph' && (p.glyph === 'guitarClosePedal' || p.glyph === 'guitarOpenPedal'),
+    );
+  const names = (result: LayoutResult) =>
+    pedals(result).map((p) => (p.kind === 'glyph' ? p.glyph : ''));
+
+  it('draws + for closed and o for open above the staff', () => {
+    const built = guitar()
+      .bar()
+      .beat('4', [note(3, 5)], { effects: { wah: 'closed' } })
+      .beat('4', [note(3, 5)], { effects: { wah: 'open' } })
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(names(result)).toEqual(['guitarClosePedal', 'guitarOpenPedal']);
+    const tab = result.systems[0]?.staves.find((s) => s.type === 'tab');
+    const [closed] = pedals(result);
+    expect(closed && tab && closed.bbox.y + closed.bbox.height).toBeLessThan(tab?.top ?? 0);
+    expect(closed?.node).toBe('beat00000001');
+  });
+
+  it('draws a mark on a rest, once per onset across voices', () => {
+    const built = guitar()
+      .bar()
+      .beat('4', [note(3, 5)], { effects: { wah: 'closed' } })
+      .beat('4', [note(3, 5)])
+      .beat('2', [note(3, 5)])
+      .voice(1)
+      .beat('4', [note(2, 3)], { effects: { wah: 'open' } })
+      .beat('4', [note(2, 3)])
+      .beat('2', [note(2, 3)])
+      .build({ ids: 'sequential' });
+    const first = built.tracks[0]?.bars[0]?.voices[0]?.beats[0];
+    if (!first) throw new Error('no first beat');
+    first.rest = true;
+    first.notes = [];
+    const result = laid(built);
+    // The rest's closed mark wins, as the first voice in order, and the open one is not drawn.
+    expect(names(result)).toEqual(['guitarClosePedal']);
+    expect(pedals(result)[0]?.node).toBe(beatOf(built, 0, 0, 0).id);
+  });
+
+  it('draws a mark that only a rest carries, with no other voice at that onset', () => {
+    const built = guitar()
+      .bar()
+      .rest('4', { effects: { wah: 'closed' } })
+      .beat('4', [note(3, 5)])
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    expect(names(laid(built))).toEqual(['guitarClosePedal']);
+  });
+
+  it('keeps a bar without a mark free of the lane', () => {
+    const plain = guitar()
+      .bar()
+      .beat('4', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    expect(pedals(laid(plain))).toEqual([]);
+    const withMark = guitar()
+      .bar()
+      .beat('4', [note(3, 5)], { effects: { wah: 'open' } })
+      .build({ ids: 'sequential' });
+    // The lane is the glyph's height plus 0.5 staff spaces; the tab's floor hides it in a system.
+    const bar = withMark.tracks[0]?.bars[0];
+    if (!bar) throw new Error('no bar');
+    const { lanes } = analyseEffects(bar, STAFF_SPACE, { articulations: false });
+    expect(lanes.wah).toBeCloseTo((glyphHeight('guitarOpenPedal') + 0.5) * STAFF_SPACE, 5);
+    const plainBar = plain.tracks[0]?.bars[0];
+    if (!plainBar) throw new Error('no bar');
+    expect(
+      analyseEffects(plainBar, STAFF_SPACE, { articulations: false }).lanes.wah,
+    ).toBeUndefined();
+  });
+
+  it('draws once, on the tab, in both mode', () => {
+    const built = guitar('both')
+      .bar()
+      .beat('4', [note(3, 5)], { effects: { wah: 'closed' } })
+      .beat('4', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(pedals(result)).toHaveLength(1);
+    const standard = result.systems[0]?.staves.find((s) => s.type === 'standard');
+    expect(pedals(result)[0]?.bbox.y).toBeGreaterThan(standard?.bottom ?? Infinity);
+  });
+
+  it('keeps the lane after fade and before tap, by band position', () => {
+    const built = guitar()
+      .bar()
+      .beat('4', [note(3, 5)], { effects: { fadeIn: true, wah: 'closed', tapping: true } })
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const y = (p: Primitive | undefined) => p?.bbox.y ?? NaN;
+    const glyphOf = (name: string) =>
+      result.primitives.find((p) => p.kind === 'glyph' && p.glyph === name);
+    const tap = result.primitives.find(isText('T'));
+    // Nearest the staff has the greatest y: fade, wah, tap.
+    expect(y(glyphOf('guitarFadeIn'))).toBeGreaterThan(y(glyphOf('guitarClosePedal')));
+    expect(y(glyphOf('guitarClosePedal'))).toBeGreaterThan(y(tap));
+  });
+
+  it('draws a mark in each system that has one', () => {
+    const wah = { effects: { wah: 'open' as const } };
+    const built = guitar()
+      .bar()
+      .beat('2', [note(3, 5)], wah)
+      .beat('2', [note(3, 5)])
+      .bar()
+      .beat('2', [note(3, 5)])
+      .beat('2', [note(3, 5)])
+      .bar()
+      .beat('2', [note(3, 5)], wah)
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built, { width: 400 });
+    expect(result.systems.length).toBeGreaterThanOrEqual(2);
+    expect(pedals(result)).toHaveLength(2);
+    const [a, b] = pedals(result);
+    const system = (p: Primitive | undefined) =>
+      result.systems.findIndex(
+        (s) => p !== undefined && p.bbox.y >= s.bbox.y && p.bbox.y <= s.bbox.y + s.bbox.height,
+      );
+    expect(system(a)).not.toBe(system(b));
   });
 });

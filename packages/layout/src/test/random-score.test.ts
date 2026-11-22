@@ -5,8 +5,8 @@ import { randomScore } from './random-score';
 const PINNED = [2147483622, 2001385099, 157889746, 80002139, 771020175];
 
 describe('randomScore techniques', () => {
-  it.each(PINNED)('keeps the pinned #141 seed %i free of golpe and pick scrape', (seed) => {
-    expect(JSON.stringify(randomScore(seed))).not.toMatch(/golpe|pickScrape/);
+  it.each(PINNED)('keeps the pinned #141 seed %i free of golpe, pick scrape and wah', (seed) => {
+    expect(JSON.stringify(randomScore(seed))).not.toMatch(/golpe|pickScrape|"wah"/);
   });
 
   it('adds them on request and changes nothing else', () => {
@@ -14,10 +14,11 @@ describe('randomScore techniques', () => {
     for (const seed of PINNED) {
       const plain = JSON.stringify(randomScore(seed));
       const withTechniques = JSON.stringify(randomScore(seed, { techniques: true }));
-      if (/golpe|pickScrape/.test(withTechniques)) found++;
+      if (/golpe|pickScrape|"wah"/.test(withTechniques)) found++;
       const stripped = withTechniques
         .replace(/"golpe":"(thumb|finger)",?/g, '')
         .replace(/"pickScrape":"(down|up)",?/g, '')
+        .replace(/"wah":"(open|closed)",?/g, '')
         .replace(/,}/g, '}');
       expect(stripped.replace(/"id":"[^"]*"/g, '')).toBe(plain.replace(/"id":"[^"]*"/g, ''));
     }
