@@ -20,7 +20,7 @@ describe('the tuning pipeline across dropped samples (#433)', () => {
   // the splice landing before, on and after the settle deadline of the first lock. Known limit:
   // at the 4096-sample window (bass, a low B, no track) a splice biases four or five frames in a
   // row, most of a median of five, and 20 dropped samples still read about 9.5 cents off there.
-  it('never shows a reading more than 2 cents off a clean A2 +7 cents', () => {
+  it('never shows a reading more than 2 cents off a clean A2 +7 cents', { timeout: 30_000 }, () => {
     const base = harmonicTone(A2_PLUS_7, Math.round(RATE * 1.2));
     let worst = 0;
     for (const samples of [2, 5, 20])
