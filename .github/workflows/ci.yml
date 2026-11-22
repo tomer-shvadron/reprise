@@ -281,7 +281,8 @@ jobs:
     name: bench-compare
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Above the bench step's 20 plus two installs; a slow runner must not fail a job that measured nothing wrong (#480).
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -333,7 +334,8 @@ jobs:
 
       - name: Bench against main
         if: steps.gate.outputs.run == 'true'
-        timeout-minutes: 10
+        # Rounds take 434-599 s on recent runs and a slow EPYC runner hit 10 minutes with every row passing (#480).
+        timeout-minutes: 20
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/bench/compare-run.ts "$RUNNER_TEMP/main" ${{ steps.label.outputs.accepted == 'true' && '--accept-slower' || '' }}
