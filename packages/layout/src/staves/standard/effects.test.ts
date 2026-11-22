@@ -1493,3 +1493,26 @@ describe('standard staff room for a pick scrape (#354)', () => {
     expect(first(3, 5, 'down').right).toBeGreaterThan(first(3, 5).right);
   });
 });
+
+describe('wah on the standard staff (#355)', () => {
+  const pedal = (p: Primitive): boolean =>
+    p.kind === 'glyph' && (p.glyph === 'guitarClosePedal' || p.glyph === 'guitarOpenPedal');
+
+  it('alone: draws the marks in the standard staff lanes', () => {
+    const built = guitar('standard')
+      .bar()
+      .beat('4', [note(3, 5)], { effects: { wah: 'closed' } })
+      .beat('4', [note(3, 5)], { effects: { wah: 'open' } })
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    expect(laid(built).primitives.filter(pedal)).toHaveLength(2);
+  });
+
+  it('does not draw on a percussion track', () => {
+    const built = drums()
+      .bar()
+      .beat('4', [midi(38)], { effects: { wah: 'closed' } })
+      .build({ ids: 'sequential' });
+    expect(laid(built).primitives.filter(pedal)).toEqual([]);
+  });
+});

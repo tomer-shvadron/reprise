@@ -671,6 +671,16 @@
       "advance": 1.08,
       "bbox": { "left": 0.004, "bottom": 0, "right": 1.08, "top": 1.128 }
     },
+    "guitarClosePedal": {
+      "codepoint": 59455,
+      "advance": 1.144,
+      "bbox": { "left": 0, "bottom": -0.004, "right": 1.144, "top": 1.14 }
+    },
+    "guitarOpenPedal": {
+      "codepoint": 59453,
+      "advance": 1.144,
+      "bbox": { "left": 0, "bottom": 0, "right": 1.144, "top": 1.144 }
+    },
     "guitarFadeIn": {
       "codepoint": 59459,
       "advance": 1.448,

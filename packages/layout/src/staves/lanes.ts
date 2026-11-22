@@ -12,6 +12,7 @@ export const LANES_ABOVE = [
   'pickScrape',
   'harmonic',
   'fade',
+  'wah',
   'tap',
   'vibrato',
   'beatVibrato',
