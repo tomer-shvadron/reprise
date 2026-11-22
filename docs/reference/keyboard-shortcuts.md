@@ -63,7 +63,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Redo | Edit | Global | ⇧⌘Z | Ctrl+Shift+Z or Ctrl+Y |
 | Copy as ASCII tab | Edit | Global | — | — |
 | Copy as image | Edit | Global | — | — |
-| Zoom in | View | Global | ⌘= or ⌥⌘↑ | Ctrl+= or Ctrl+Alt+Up |
+| Zoom in | View | Global | ⌘= or ⌥⌘↑ | Ctrl+= |
 | Zoom out | View | Global | ⌘- | Ctrl+- |
 | Actual size | View | Global | ⌘0 | Ctrl+0 |
 | Toggle light and dark theme | View | Global | ⇧⌘L | Ctrl+Shift+L |
@@ -195,8 +195,8 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Insert bar before | Editor | Editing | ⌘+ or ⌘= | Insert |
 | Insert bar after | Editor | Editing | — | — |
 | Delete bars | Editor | Editing | ⌘Backspace | Ctrl+Delete |
-| Toggle repeat start | Editor | Editing | [ or ⌘[ | [ or Ctrl+[ |
-| Toggle repeat end | Editor | Editing | ⌘] or ] | Ctrl+] or ] |
+| Toggle repeat start | Editor | Editing | [ or ⇧⌘[ | [ or Ctrl+Shift+[ |
+| Toggle repeat end | Editor | Editing | ] or ⇧⌘] | ] or Ctrl+Shift+] |
 | Bar properties… | Editor | Editing | ⌘T | Ctrl+T |
 | Key signature… | Editor | Editing | — | — |
 | Tempo change… | Editor | Editing | — | — |
@@ -295,7 +295,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 
 ### Layout notes
 
-- Repeat start and end have a second key, ⌘⇧[ and ⌘⇧] (Ctrl+Shift+[ and ]), matched by the position of the bracket keys, so every layout reaches them even where the bare brackets are an Option or AltGr layer (German and Swiss Mac ⌥5 and ⌥6, Nordic Mac ⌥8 and ⌥9, German, Spanish and Italian Windows and Linux) that another command owns.
-- Zoom in has a second key, ⌥⌘↑ (Ctrl+Alt+Up), because ⌘= is ⇧⌘0 on German, Swiss, Swedish, Spanish and Italian Macs, which is Insert bar before there, and ⌘+ is that command's own key. A named key prints the same on every layout. Off macOS, Ctrl+= also works on those layouts.
+- Repeat start and end have a second key, ⌘⇧[ and ⌘⇧] (Ctrl+Shift+[ and ]), matched by the position of the bracket keys (the Shift is part of the press), so every layout reaches them even where the bare brackets are an Option or AltGr layer (German and Swiss Mac ⌥5 and ⌥6, Nordic Mac ⌥8 and ⌥9, German, Spanish and Italian Windows and Linux) that another command owns. In a browser on macOS ⌘⇧[ and ⌘⇧] are the browser's own previous and next tab, so there use the desktop app or rebind them. On Dvorak the alias leaves the bracket keys' own shifted characters (`+`, `?`) to the commands that name them.
+- On macOS, zoom in has a second key, ⌥⌘↑, because ⌘= is ⇧⌘0 on German, Swiss, Swedish, Spanish and Italian Macs, which is Insert bar before there, and ⌘+ is that command's own key. A named key prints the same on every layout. Off macOS none is needed: Ctrl+= works, and where `=` is a Shift key (German, Spanish, Italian) so does Ctrl+Shift+0.
 - Still without a bare key: `[` and `]` (slow down and speed up outside edit mode, repeat start and end in it) on German, Swiss, Nordic, Spanish and Italian layouts where the bracket is an Option or AltGr layer that a digit or another binding owns; use the second keys above. A Windows AltGr bracket (Ctrl+Alt) is not matched as a bare bracket.
 - Dvorak's `/` and `=` sit on the bracket keys' positions and still match the bracket bindings physically; triplet and shorter duration win in edit mode by registration order.

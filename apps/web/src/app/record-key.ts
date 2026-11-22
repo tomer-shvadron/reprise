@@ -1,5 +1,10 @@
 import { bindingId, isShortcutCharacter, isShortcutKey, type KeyBinding } from './keymap';
-import { shortcutId, type KeyboardPlatform, type Shortcut } from './keyboard';
+import {
+  bracketKeyPrintsPunctuation,
+  shortcutId,
+  type KeyboardPlatform,
+  type Shortcut,
+} from './keyboard';
 
 export type KeyEventInfo = Pick<
   KeyboardEvent,
@@ -68,7 +73,7 @@ function characterOf(
   platform: KeyboardPlatform,
 ): { key: string } | { reason: RefuseReason } {
   const bracket = BRACKETS[event.code];
-  if (bracket !== undefined) return { key: bracket };
+  if (bracket !== undefined && !bracketKeyPrintsPunctuation(event)) return { key: bracket };
   const digit = /^Digit(\d)$/.exec(event.code);
   if (digit?.[1]) return { key: digit[1] };
   const letter = /^Key([A-Z])$/.exec(event.code)?.[1]?.toLowerCase();

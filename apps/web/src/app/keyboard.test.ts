@@ -177,6 +177,17 @@ describe('keyboard', () => {
         mac: true,
         runs: 'view.zoomInAlt',
       },
+      {
+        layout: 'Dvorak Ctrl++ key',
+        event: e('+', 'BracketRight', { ctrlKey: true, shiftKey: true }),
+        runs: undefined,
+      },
+      {
+        layout: 'Mac Dvorak Cmd++ key',
+        event: e('+', 'BracketRight', { metaKey: true, shiftKey: true }),
+        mac: true,
+        runs: 'editor.insertBarBeforeMacShift',
+      },
       { layout: 'Dvorak [', event: e('[', 'Minus'), runs: 'editor.toggleRepeatStart' },
       { layout: 'Dvorak ]', event: e(']', 'Equal'), runs: 'editor.toggleRepeatEnd' },
       {
@@ -248,6 +259,16 @@ describe('keyboard', () => {
 
     it.each(SAMPLES)('$layout runs $runs', ({ event, mac, runs: expected }) => {
       expect(runs(event, mac ? 'mac' : 'other')).toBe(expected);
+    });
+
+    it('prints the Shift of a bracket alias, which matches by position', () => {
+      const alias = { key: '[', mod: true, shift: true };
+      expect(formatShortcut(alias, 'mac')).toBe('⇧⌘[');
+      expect(formatShortcut(alias, 'other')).toBe('Ctrl+Shift+[');
+      expect(ariaKeyShortcuts({ key: ']', mod: true, shift: true }, 'other')).toBe(
+        'Control+Shift+]',
+      );
+      expect(formatShortcut({ key: '[' }, 'other')).toBe('[');
     });
 
     it('keeps the relaxed pass off a binding that names the other modifier', () => {

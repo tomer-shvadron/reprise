@@ -112,20 +112,20 @@ export function barCommands(services: BarServices): BarCommand[] {
       { shortcut: { key: '[', mod: true, shift: true }, ...hidden },
     ),
     command(
-      'editor.toggleRepeatEndAlt',
-      'Toggle repeat end',
-      () => {
-        toggleRepeatEnd(services);
-      },
-      { shortcut: { key: ']', mod: true, shift: true }, ...hidden },
-    ),
-    command(
       'editor.toggleRepeatEnd',
       'Toggle repeat end',
       () => {
         toggleRepeatEnd(services);
       },
       { shortcut: { key: ']' } },
+    ),
+    command(
+      'editor.toggleRepeatEndAlt',
+      'Toggle repeat end',
+      () => {
+        toggleRepeatEnd(services);
+      },
+      { shortcut: { key: ']', mod: true, shift: true }, ...hidden },
     ),
     command('editor.barProperties', 'Bar properties…', dialog(), {
       shortcut: { key: 't', mod: true },

@@ -225,10 +225,12 @@ export function appCommands(services: AppServices): AppCommand[] {
     },
     {
       // ⌘= is ⇧⌘0 on German, Swiss, Swedish, Spanish and Italian Macs, which is insert bar
-      // before there, and ⌘+ is that command's own key. A named key prints the same everywhere.
+      // before there, and ⌘+ is that command's own key. A named key prints the same everywhere. Off
+      // macOS Ctrl+= and, through the relaxed pass, Ctrl+Shift+0 already zoom, and Ctrl+Alt+Up is
+      // a screen rotation or workspace key on some drivers and desktops.
       id: 'view.zoomInAlt',
       title: 'Zoom in',
-      shortcut: { key: 'ArrowUp', mod: true, alt: true },
+      shortcut: { key: 'ArrowUp', mod: true, alt: true, only: 'mac' },
       inPalette: false,
       run: () => {
         zoomBy(ZOOM_STEP);

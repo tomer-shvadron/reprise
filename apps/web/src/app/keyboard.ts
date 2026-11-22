@@ -59,6 +59,18 @@ const SHIFTED_PUNCTUATION: Readonly<Record<string, string>> = {
 // A layout without bracket keys of its own (Dvorak types `[` and `]` on the minus and equal
 // keys) still prints the character. A digit key printing one is an AltGr layer that a digit
 // shortcut owns (Linux German AltGr+8 reports no modifier and stays fret 8).
+/**
+ * Whether the bracket key prints a punctuation character of its own under Shift (Dvorak's `+` and
+ * `?` on the bracket positions), which a Shift bracket binding must leave to the command that
+ * names the character (zoom, the cheat sheet). A brace, a letter, a dead key and a symbol such as
+ * German `*` still count as the bracket key. The recorder asks the same, to record what is printed.
+ */
+export function bracketKeyPrintsPunctuation(
+  event: Pick<KeyEventLike, 'key' | 'shiftKey'>,
+): boolean {
+  return event.shiftKey && (event.key in BASE_PUNCTUATION || event.key in SHIFTED_PUNCTUATION);
+}
+
 function onOtherKey(event: KeyEventLike, key: string): boolean {
   return event.key === key && !/^(Bracket|Digit)/.test(event.code);
 }
@@ -107,7 +119,10 @@ function matchesKey(
   if (by === 'relaxed') return matchesKey(event, key, platform, 'character');
   if (by === 'character') {
     const bracket = BRACKETS[key];
-    if (bracket !== undefined) return event.code === bracket || onOtherKey(event, key);
+    if (bracket !== undefined) {
+      if (event.code === bracket) return !bracketKeyPrintsPunctuation(event);
+      return onOtherKey(event, key);
+    }
     // The printed digit still counts, for the numpad.
     if (/^\d$/.test(key)) return event.code === `Digit${key}` || event.key === key;
     // Option rewrites the character on a Mac, and types ASCII on German, Nordic and Spanish.
@@ -196,7 +211,10 @@ function keyName(key: string, platform: KeyboardPlatform): string {
 export function shortcutParts(shortcut: Shortcut, platform: KeyboardPlatform): string[] {
   // A punctuation character already implies Shift where the layout needs it (`?`, `+`, `:`), and
   // is what the user types, so its Shift is not printed.
-  const shift = shortcut.shift && (/^[a-z\d ]$/i.test(shortcut.key) || shortcut.key.length > 1);
+  // A bracket matches by position like a letter, so its Shift is a part of the press.
+  const shift =
+    shortcut.shift &&
+    (/^[a-z\d ]$/i.test(shortcut.key) || shortcut.key.length > 1 || shortcut.key in BRACKETS);
   const key = keyName(shortcut.key, platform);
   const parts =
     platform === 'mac'
@@ -240,7 +258,8 @@ export function ariaKeyShortcuts(shortcut: Shortcut, platform: KeyboardPlatform)
             ? shortcut.key.toUpperCase()
             : shortcut.key;
   // Punctuation that has no mapped base key already implies its Shift, as in `shortcutParts`.
-  const shift = based !== undefined || !punctuation ? shortcut.shift : false;
+  const shift =
+    based !== undefined || !punctuation || shortcut.key in BRACKETS ? shortcut.shift : false;
   const mod = platform === 'mac' ? 'Meta' : 'Control';
   return [shortcut.mod && mod, shortcut.alt && 'Alt', shift && 'Shift', key]
     .filter(Boolean)
