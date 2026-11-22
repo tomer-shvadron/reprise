@@ -10,6 +10,7 @@ const engine = vi.hoisted(() => ({
   previewBeat: vi.fn<(...args: unknown[]) => void>(),
   unlock: vi.fn(),
   setGmTierBypass: vi.fn<(on: boolean) => void>(),
+  setChannelEffects: vi.fn<(on: boolean) => void>(),
   setMemoryBudget: vi.fn<(bytes: number) => void>(),
   unloadUnused: vi.fn<() => number>(() => 3),
   setStageBypass: vi.fn<(...args: unknown[]) => void>(),
@@ -39,6 +40,7 @@ vi.mock('@reprise/audio', async (importOriginal) => {
       setCountInVolume: vi.fn(),
       setMasterVolume: vi.fn(),
       setGmTierBypass: engine.setGmTierBypass,
+      setChannelEffects: engine.setChannelEffects,
       setStageBypass: engine.setStageBypass,
       updateClick: vi.fn(),
       setSoundfont: vi.fn(),
@@ -79,6 +81,7 @@ beforeEach(() => {
   engine.previewBeat.mockClear();
   engine.unlock.mockClear();
   engine.setGmTierBypass.mockClear();
+  engine.setChannelEffects.mockClear();
 });
 
 describe('AudioService.previewNote', () => {
@@ -205,6 +208,16 @@ describe('AudioService.setGmTierBypass', () => {
     audio.setGmTierBypass(true);
     expect(engine.setGmTierBypass).toHaveBeenLastCalledWith(true);
     expect(playback.getState().settings.gmTierBypass).toBe(true);
+  });
+});
+
+describe('AudioService.setChannelEffects', () => {
+  it('reaches the engine on creation and on change, and is mirrored', async () => {
+    const { audio, playback } = await open();
+    expect(engine.setChannelEffects).toHaveBeenCalledWith(true);
+    audio.setChannelEffects(false);
+    expect(engine.setChannelEffects).toHaveBeenLastCalledWith(false);
+    expect(playback.getState().settings.channelEffects).toBe(false);
   });
 });
 

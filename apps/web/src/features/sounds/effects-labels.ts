@@ -37,12 +37,16 @@ export function automaticLabel(
   track: Track,
   gmTierBypass: boolean,
   tier: 'gm' | 'hq' = 'gm',
+  channelEffects: boolean,
 ): string {
   const { preset } = resolveEffects(
     { kind: track.kind, program: track.program },
     { tier, gmTierBypass },
   );
-  return preset === undefined
-    ? 'Automatic (off on GM sounds)'
-    : `Automatic (${presetLabel(presetFamilyOf(track))})`;
+  if (preset === undefined) {
+    return channelEffects && (track.channel.reverb > 0 || track.channel.chorus > 0)
+      ? 'Automatic (the file’s reverb and chorus)'
+      : 'Automatic (off on GM sounds)';
+  }
+  return `Automatic (${presetLabel(presetFamilyOf(track))})`;
 }
