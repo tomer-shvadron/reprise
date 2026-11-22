@@ -47,7 +47,7 @@ describe('arpeggioDots', () => {
     expect(Math.min(...capo.map((dot) => dot.absolute))).toBeGreaterThanOrEqual(2);
     const banjo = arpeggioDots(
       { strings: 5, frets: 17, capo: 0, drone: { string: 5, fret: 5 } },
-      [62, 55, 59, 62, 67],
+      [67, 50, 55, 59, 62],
       am,
     );
     expect(
@@ -61,8 +61,17 @@ describe('arpeggioDots', () => {
       arpeggioDots({ strings: 7, frets: 24, capo: 0 }, seven, am).some((dot) => dot.string === 7),
     ).toBe(true);
     const ten = [28, 33, 38, 43, 47, 52, 57, 62, 67, 72];
-    const dots = arpeggioDots({ strings: 10, frets: 48, capo: 0 }, ten, am);
+    const c13 = arpeggioOf('C13');
+    if (!c13) throw new Error('C13');
+    // Six tones on 10 strings over 60 frets is about 305 positions: past the cap.
+    const dots = arpeggioDots({ strings: 10, frets: 60, capo: 0 }, ten, c13);
     expect(dots.length).toBeLessThanOrEqual(MAX_NECK_TONES);
+    expect(dots.length).toBeGreaterThan(MAX_NECK_TONES - 10);
+    const last = Math.max(...dots.map((dot) => dot.absolute));
+    expect(last).toBeLessThan(60);
+    // It stops at a whole fret: the last fret kept has every string that sounds a tone.
+    const full = arpeggioDots({ strings: 10, frets: last, capo: 0 }, ten, c13);
+    expect(dots).toEqual(full);
   });
 
   it('flags a tone outside the given scale', () => {

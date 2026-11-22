@@ -167,16 +167,16 @@ const chordEvents = (bars: number) =>
   Array.from({ length: bars }, (_, bar) => ({ bar, onset: 0, name: `C${String(bar % 24)}` }));
 
 // What the fretboard's arpeggio overlay pays once per analysis result. Reported, not budgeted.
-test('Chord timeline index, long score', BENCH, async (context) => {
+test('Chord timeline build, long score', BENCH, async (context) => {
   const score = longScore();
   const outline = songOutline(score, mapOf(score));
   const events = chordEvents(outline.bars.length);
   const result = await context
-    .bench('Chord timeline index, long score', () => {
+    .bench('Chord timeline build, long score', () => {
       chordTimelineIndex(chordTimeline(events, outline, 8));
     })
     .run(RUN);
-  await report(context, 'Chord timeline index, long score', result.latency.p50, false);
+  await report(context, 'Chord timeline build, long score', result.latency.p50, false);
 });
 
 // The per-frame work: one lookup per playhead position, mostly inside the span of the one before.
