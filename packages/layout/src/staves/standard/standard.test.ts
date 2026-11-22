@@ -18,7 +18,7 @@ import {
   type LayoutResult,
   type Rect,
 } from '../../index';
-import { expectValid, stable, strayPrimitives } from '../../test/check-result';
+import { expectValid, overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
 import { MARGIN, planBar, type BarPlan } from './plan';
@@ -473,6 +473,30 @@ describe('standard staff', () => {
     expect(glyphNames(result, /^dynamic/)).toEqual(['dynamicPP', 'dynamicMF']);
     expect(glyphNames(result, /^fingering/)).toEqual(['fingering3', 'fingeringILower']);
     expect(content(result)).toMatchSnapshot();
+  });
+
+  it('stacks the fingering of voices that start together, the higher head on top (#511)', () => {
+    for (const notation of ['standard', 'both'] as const) {
+      const built = score()
+        .track('guitar', { display: { notation, octaveShift: 1 } })
+        .bar()
+        .beat('4', [note(5, 2, { leftHandFinger: 'middle' })])
+        .voice(1)
+        .beat('4', [note(2, 1, { leftHandFinger: 'index' })])
+        .build({ ids: 'sequential' });
+      const result = laid(built);
+      const fingers = result.primitives.flatMap((p) =>
+        p.kind === 'glyph' && p.glyph.startsWith('fingering') ? [p] : [],
+      );
+      const one = fingers.find((p) => p.glyph === 'fingering1');
+      const two = fingers.find((p) => p.glyph === 'fingering2');
+      const centre = (p: typeof one): number => (p?.bbox.x ?? 0) + (p?.bbox.width ?? 0) / 2;
+      expect(fingers, notation).toHaveLength(2);
+      expect(centre(one), notation).toBeCloseTo(centre(two), 1);
+      // The string-2 note sounds higher, so its finger stands above the string-5 note's.
+      expect(one?.bbox.y, notation).toBeLessThan(two?.bbox.y ?? 0);
+      expect(overlappingMarks(result), notation).toEqual([]);
+    }
   });
 
   it('anchors every note head to its note', () => {
