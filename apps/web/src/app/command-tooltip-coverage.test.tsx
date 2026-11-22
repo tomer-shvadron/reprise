@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { scaleOverlayFor } from '@/features/trainer/fretboard/scale-overlay';
 import { stubViewport } from '@/features/score/test/viewport-stub';
 import type { PanelView } from '@/state/ui';
-import { aMinorRiff } from '@/test/a-minor-riff';
+import { modulating } from '@/test/two-sections';
 import { createTestServices, fakePlatform } from '@/test/services';
 
 import { App } from './app';
@@ -39,7 +39,7 @@ type Scenario = {
   scale?: boolean;
   /** Loops the first section from the strip, the one state where its button runs a command. */
   loop?: boolean;
-  /** A song with a key to find, for the insights cards (`fullScore` has too few notes). */
+  /** A song with a key, sections and a modulation, for the insights cards (`fullScore` has too few notes). */
   riff?: boolean;
 };
 
@@ -85,7 +85,7 @@ async function mount(scenario: Scenario, bindAll = false) {
   stubViewport(1280, 800);
   const services = createTestServices({ platform: fakePlatform() });
   render(<App services={services} keyboard="mac" onMenuCommand={() => () => undefined} />);
-  const { bytes } = await write(scenario.riff ? aMinorRiff() : fullScore(), 'reprise');
+  const { bytes } = await write(scenario.riff ? modulating() : fullScore(), 'reprise');
   await act(async () => {
     await services.document.getState().openBytes('full.reprise', bytes);
   });

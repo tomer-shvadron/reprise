@@ -12,8 +12,7 @@ export function showScaleOnFretboard(
   services: Pick<AppServices, 'document' | 'ui'>,
   tonic: number,
   scaleId: ScaleId,
-  source: 'section' | 'manual' = 'section',
 ): void {
   services.ui.getState().showBottomPanelView('fretboard');
-  scaleOverlayFor(services).getState().show(tonic, scaleId, source);
+  scaleOverlayFor(services).getState().show(tonic, scaleId, 'section');
 }

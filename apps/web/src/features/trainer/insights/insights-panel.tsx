@@ -24,7 +24,7 @@ export function InsightsPanel() {
   const services = useAppServices();
   const store = insightsFor(services);
   const score = useStore(services.document, (state) => state.score);
-  const { status, insights, slow, error, focus } = useStore(store);
+  const { status, insights, slow, error, focus, marked } = useStore(store);
   const currentTrackId = useStore(services.selection, (state) => state.currentTrack);
   const currentTrack = score?.tracks.findIndex((track) => track.id === currentTrackId);
 
@@ -63,6 +63,7 @@ export function InsightsPanel() {
                     currentTrack !== undefined && currentTrack >= 0 ? currentTrack : undefined
                   }
                   focus={focus}
+                  marked={marked}
                 />
                 <ChordsCard chords={insights.chords} />
               </>

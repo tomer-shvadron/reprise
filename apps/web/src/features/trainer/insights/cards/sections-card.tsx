@@ -1,11 +1,15 @@
 import { useEffect, useRef } from 'react';
 
+import { HintTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
 import { seekToBar } from '@/features/transport';
 import type { SectionInsight, SongInsights } from '@/lib/insights';
 
+import { songScaleOf } from '../../fretboard/scale-overlay';
+import { insightsFor } from '../insights-for';
+
 import { InsightCard } from './card';
-import { ShowScaleButton } from './show-scale-button';
+import { ScaleToggle } from './scale-toggle';
 
 const clock = (seconds: number): string => {
   const whole = Math.round(seconds);
@@ -17,36 +21,71 @@ const barsOf = ({ fromBar, toBar }: SectionInsight): string =>
     ? `Bar ${String(fromBar + 1)}`
     : `Bars ${String(fromBar + 1)}–${String(toBar + 1)}`;
 
+function SoloBadge() {
+  return (
+    <span className="bg-muted text-muted-foreground rounded px-1 text-[10px] uppercase">Solo</span>
+  );
+}
+
 /**
- * One row per section: its bars, length, key and scale, and the scale each track plays in it. A
- * section's name seeks to its first bar. `focus` is a request from the section's context menu: the
- * row holding that bar scrolls into view.
+ * One row per section: its bars, length, what differs from the song's key and scale, and the scale
+ * each track plays in it. A section's name seeks to its first bar. `focus` is a request from the
+ * section's context menu (or the palette): the row holding that bar scrolls in, takes focus and is
+ * announced, and is tinted until the next key or pointer press.
  */
 export function SectionsCard({
   insights,
   currentTrack,
   focus,
+  marked: markedBar,
 }: {
   insights: SongInsights;
   /** Index into `Score.tracks`, listed first in every section. */
   currentTrack: number | undefined;
   focus: { bar: number; request: number } | undefined;
+  /** The bar to tint, from `focus` once it is acted on. */
+  marked: number | undefined;
 }) {
   const services = useAppServices();
   const root = useRef<HTMLDivElement>(null);
-  const handled = useRef<number>(0);
   const { sections, tracks } = insights;
-  const tonicOfSong = insights.key.found ? insights.key.tonic : undefined;
+  const songScale = songScaleOf(insights);
 
   useEffect(() => {
-    if (!focus || focus.request === handled.current) return;
-    handled.current = focus.request;
-    const row = root.current?.querySelector<HTMLElement>(
-      `[data-section-bar="${String(focus.bar)}"]`,
+    if (!focus) return;
+    const target = sections.find(
+      ({ fromBar, toBar }) => focus.bar >= fromBar && focus.bar <= toBar,
+    );
+    if (!target) {
+      insightsFor(services).getState().clearFocus();
+      return;
+    }
+    const element = root.current?.querySelector<HTMLElement>(
+      `[data-section-from="${String(target.fromBar)}"]`,
     );
     // jsdom has no scrollIntoView.
-    if (typeof row?.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
-  }, [focus, sections]);
+    if (typeof element?.scrollIntoView === 'function') element.scrollIntoView({ block: 'nearest' });
+    element?.querySelector('button')?.focus({ preventScroll: true });
+    services.transport
+      .getState()
+      .announce(
+        `${target.name}, ${barsOf(target).toLowerCase()}${target.scale ? `, ${target.scale.name}` : ''}`,
+      );
+    insightsFor(services).getState().clearFocus();
+  }, [focus, sections, services]);
+
+  useEffect(() => {
+    if (markedBar === undefined) return;
+    const clear = () => {
+      insightsFor(services).getState().unmark();
+    };
+    window.addEventListener('pointerdown', clear, { once: true });
+    window.addEventListener('keydown', clear, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', clear);
+      window.removeEventListener('keydown', clear);
+    };
+  }, [markedBar, services]);
 
   if (sections.length === 0) return null;
   return (
@@ -54,58 +93,72 @@ export function SectionsCard({
       <div ref={root}>
         <ul className="flex flex-col gap-2.5">
           {sections.map((section) => {
-            const tonic = section.key?.tonic ?? tonicOfSong;
             const ordered = [...section.tracks].sort(
               (a, b) => Number(b.track === currentTrack) - Number(a.track === currentTrack),
             );
             const here =
-              focus !== undefined && focus.bar >= section.fromBar && focus.bar <= section.toBar;
+              markedBar !== undefined && markedBar >= section.fromBar && markedBar <= section.toBar;
+            // Only what differs from the song says anything: a modulation or another mode.
+            const differs =
+              section.key !== undefined &&
+              (section.scale
+                ? section.key.tonic !== songScale?.tonic || section.scale.id !== songScale.scaleId
+                : !insights.key.found ||
+                  section.key.tonic !== insights.key.tonic ||
+                  section.key.quality !== insights.key.quality);
             return (
               <li
                 key={section.fromBar}
                 data-insight-section={section.name}
-                data-section-bar={section.fromBar}
+                data-section-from={section.fromBar}
                 data-focused={here || undefined}
                 className="data-[focused]:bg-accent flex flex-col gap-0.5 rounded-sm"
               >
                 <div className="flex flex-wrap items-baseline gap-x-2">
-                  <button
-                    type="button"
-                    className="text-sm font-medium underline-offset-2 hover:underline focus-visible:underline"
-                    onClick={() => {
-                      const { score } = services.document.getState();
-                      if (score)
-                        seekToBar(services, score, { masterBarIndex: section.fromBar, tick: 0 });
-                    }}
-                  >
-                    {section.name}
-                  </button>
-                  {section.solo && (
-                    <span className="bg-muted text-muted-foreground rounded px-1 text-[10px] uppercase">
-                      Solo
-                    </span>
-                  )}
+                  <HintTooltip label={`Go to bar ${String(section.fromBar + 1)}`}>
+                    <button
+                      type="button"
+                      aria-label={`${section.name}, go to bar ${String(section.fromBar + 1)}`}
+                      className="text-sm font-medium underline-offset-2 hover:underline focus-visible:underline"
+                      onClick={() => {
+                        const { score } = services.document.getState();
+                        // A bar that is never played announces itself; a refusal needs nothing more.
+                        if (score)
+                          seekToBar(services, score, { masterBarIndex: section.fromBar, tick: 0 });
+                      }}
+                    >
+                      {section.name}
+                    </button>
+                  </HintTooltip>
+                  {section.solo && <SoloBadge />}
                   <span className="text-muted-foreground text-xs">
                     {barsOf(section)}, {clock(section.seconds)}
                   </span>
                 </div>
-                {section.key && (
-                  <p className="text-muted-foreground text-xs">
-                    {section.key.name}
-                    {section.scale ? `, ${section.scale.name}` : ''}
+                {differs && section.key && (
+                  <p className="text-xs">
+                    {section.scale ? (
+                      <ScaleToggle
+                        tonic={section.key.tonic}
+                        scaleId={section.scale.id}
+                        name={section.scale.name}
+                        whose={section.name}
+                        songScale={songScale}
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">{section.key.name}</span>
+                    )}
                   </p>
-                )}
-                {section.scale && section.key && (
-                  <ShowScaleButton
-                    tonic={section.key.tonic}
-                    scaleId={section.scale.id}
-                    what={`${section.scale.name} in ${section.name}`}
-                  />
                 )}
                 {ordered.length > 0 && (
                   <ul className="flex flex-col gap-0.5 pt-0.5">
                     {ordered.map((entry) => {
                       const name = tracks[entry.track]?.name ?? `Track ${String(entry.track + 1)}`;
+                      const whole = tracks[entry.track]?.scale;
+                      // The Tracks card offers the track's own scale: only a different one is a control here.
+                      const novel =
+                        entry.scale !== undefined &&
+                        (whole?.id !== entry.scale.id || whole.tonic !== entry.scale.tonic);
                       return (
                         <li
                           key={entry.track}
@@ -113,20 +166,19 @@ export function SectionsCard({
                           data-section-track={name}
                         >
                           <span className="font-medium">{name}</span>
-                          {entry.solo && (
-                            <span className="bg-muted text-muted-foreground rounded px-1 text-[10px] uppercase">
-                              Solo
-                            </span>
-                          )}
-                          <span className="text-muted-foreground">
-                            {entry.scale ? entry.scale.name : 'No scale fits'}
-                          </span>
-                          {entry.scale && tonic !== undefined && (
-                            <ShowScaleButton
-                              tonic={tonic}
+                          {entry.solo && <SoloBadge />}
+                          {entry.scale && novel ? (
+                            <ScaleToggle
+                              tonic={entry.scale.tonic}
                               scaleId={entry.scale.id}
-                              what={`${entry.scale.name} for ${name} in ${section.name}`}
+                              name={entry.scale.name}
+                              whose={`${name} in ${section.name}`}
+                              songScale={songScale}
                             />
+                          ) : (
+                            <span className="text-muted-foreground">
+                              {entry.scale ? entry.scale.name : 'No scale fits'}
+                            </span>
                           )}
                         </li>
                       );

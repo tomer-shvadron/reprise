@@ -138,13 +138,14 @@ export function trainerCommands(
       repeat: false,
       enabled: () => services.document.getState().score !== undefined,
       run: () => {
-        // The right-clicked section, read before the host clears the target.
+        // The right-clicked section, read before the host clears the target; from the palette or
+        // a key, the section under the edit cursor.
         const { score } = services.document.getState();
         const target = services.menuTarget.getState().target;
         const bar =
           score && target?.kind === 'section'
             ? scoreIndex(score).barIndex.get(target.masterBar)
-            : undefined;
+            : services.selection.getState().cursor?.at.bar;
         ui.getState().showPanelView('insights');
         if (bar !== undefined) insightsFor(services).getState().focusSection(bar);
       },

@@ -28,6 +28,10 @@ export interface InsightsState {
    */
   focus: { bar: number; request: number } | undefined;
   focusSection: (bar: number) => void;
+  /** The Sections card has acted on the request: the bar stays tinted (`marked`) until `unmark`. */
+  clearFocus: () => void;
+  marked: number | undefined;
+  unmark: () => void;
   /** Something shows the insights (the panel, a song-following overlay): analyse and keep fresh. */
   retain: () => void;
   release: () => void;
@@ -79,6 +83,14 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
     focus: undefined,
     focusSection: (bar) => {
       store.setState((state) => ({ focus: { bar, request: (state.focus?.request ?? 0) + 1 } }));
+    },
+    marked: undefined,
+    clearFocus: () => {
+      const { focus } = store.getState();
+      if (focus) store.setState({ focus: undefined, marked: focus.bar });
+    },
+    unmark: () => {
+      if (store.getState().marked !== undefined) store.setState({ marked: undefined });
     },
     retain: () => {
       retained++;
@@ -207,6 +219,7 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
         error: undefined,
         slow: false,
         focus: undefined,
+        marked: undefined,
       });
       for (const waiter of waiters.splice(0)) waiter.resolve(undefined);
       dirty = false;

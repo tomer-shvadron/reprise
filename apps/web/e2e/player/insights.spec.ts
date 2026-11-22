@@ -19,12 +19,12 @@ test('the Song tab shows the key, sections, chords and tracks, and marks a scale
 
   const sections = panel.getByRole('region', { name: 'Sections' });
   await expect(sections.locator('[data-insight-section]')).toHaveCount(INSIGHTS.sections.length);
-  await expect(sections.getByRole('button', { name: 'Verse', exact: true })).toBeVisible();
+  await expect(sections.getByRole('button', { name: 'Verse, go to bar 5' })).toBeVisible();
 
   const chords = panel.getByRole('region', { name: 'Chords' });
   for (const name of ['Am', 'F', 'C', 'G']) {
     await expect(
-      chords.getByRole('button', { name: new RegExp(`^${name}, \\d+ times`) }),
+      chords.getByRole('button', { name: new RegExp(`^${name}\\. Comes in \\d+ times`) }),
     ).toBeVisible();
   }
   await expect(
@@ -37,17 +37,20 @@ test('the Song tab shows the key, sections, chords and tracks, and marks a scale
   await expect(tracks.locator('[data-insight-track="Lead"]')).toBeVisible();
   await expect(tracks.getByText(/^Difficulty \d of 5 \(rough\)$/).first()).toBeVisible();
 
-  // Show on fretboard on a section's scale opens the dock with the scale marked.
-  await sections
-    .locator('[data-insight-section="Verse"]')
-    .getByRole('button', { name: /^Show .* on fretboard$/ })
-    .first()
-    .click();
+  // A scale's name is its switch: the lead's scale marks the fretboard, and pressing again hides it.
+  const lead = tracks.getByRole('button', {
+    name: /^Show A minor pentatonic for Lead on fretboard$/,
+  });
+  await lead.click();
+  await expect(lead).toHaveAttribute('aria-pressed', 'true');
   const board = page.getByRole('tabpanel', { name: 'Fretboard' });
   await expect(board.locator('[data-fretboard-scale] [data-scale-tone]').first()).toBeVisible();
+  await lead.click();
+  await expect(lead).toHaveAttribute('aria-pressed', 'false');
+  await expect(board.locator('[data-fretboard-scale]')).toHaveCount(0);
 
   // A chord chip opens the Chords sub-tab on that chord.
-  await chords.getByRole('button', { name: /^Am, \d+ times/ }).click();
+  await chords.getByRole('button', { name: /^Am\. Comes in \d+ times/ }).click();
   await expect(page.getByRole('tab', { name: 'Chords' })).toHaveAttribute('aria-selected', 'true');
   await expect(
     page.getByRole('region', { name: 'Chord shapes' }).getByLabel('Chord', { exact: true }),
