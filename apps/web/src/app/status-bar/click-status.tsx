@@ -5,7 +5,7 @@ import { useAppServices } from '@/app/services-context';
 import { StatusSegment } from './segment';
 
 /** The score's region, where focus goes before the segment that had it unmounts. */
-const scoreRegion = () =>
+export const scoreRegion = () =>
   globalThis.document.querySelector<HTMLElement>('[role="region"][aria-roledescription="score"]') ??
   globalThis.document.querySelector<HTMLElement>('main');
 
