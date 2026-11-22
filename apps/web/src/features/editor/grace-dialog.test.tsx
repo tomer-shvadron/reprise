@@ -32,6 +32,10 @@ describe('the grace-note dialog', () => {
     expect(beats()[0]?.grace?.[0]?.notes[0]).toMatchObject({ string: 1, fret: 4 });
     expect(services.document.getState().revision).toBe(before + 1);
     expect(services.document.getState().undoLabel).toBe('Grace note');
+    expect(services.fakeAudio.previewBeat).toHaveBeenCalledWith(
+      services.document.getState().score?.tracks[0]?.id,
+      beats()[0]?.id,
+    );
     act(() => {
       services.document.getState().undo();
     });

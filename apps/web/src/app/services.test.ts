@@ -5,8 +5,9 @@ import { describe, expect, it } from 'vitest';
 
 import { createMemorySettingsBackend, createTestSettings } from '@/test/settings-backend';
 import { createSettingsStore } from '@/state/settings';
-import { DEFAULT_NOTATION_STRINGS_SETTING } from '@/state/app-settings';
+import { DEFAULT_NOTATION_STRINGS_SETTING, EDIT_SOUND_SETTING } from '@/state/app-settings';
 import { readFixture } from '@/test/read-fixture';
+import { cursorAtPosition, entryController } from '@/features/editor';
 import { createTestServices } from '@/test/services';
 
 async function bytes(song: Score) {
@@ -103,6 +104,35 @@ describe('the notation defaults at open', () => {
     release();
     await opening;
     expect(new Set(notations(services))).toEqual(new Set(['standard']));
+  });
+});
+
+describe('the note-entry sound', () => {
+  async function typeDigit(sound: boolean) {
+    const services = createTestServices();
+    await services.document.getState().openBytes('a.reprise', await bytes(twoTracks()));
+    services.settings.set(EDIT_SOUND_SETTING, sound);
+    services.editing.getState().setEditing(true);
+    const opened = services.document.getState().score;
+    const cursor =
+      opened &&
+      cursorAtPosition(
+        opened,
+        { track: 0, bar: 0, voice: 0, stop: 0 },
+        { string: 1, staff: 'tab' },
+      );
+    services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
+    entryController(services.entry)?.fret(3);
+    entryController(services.entry)?.flush();
+    return services.fakeAudio.previewNote;
+  }
+
+  it('sounds with the editing sound on', async () => {
+    expect(await typeDigit(true)).toHaveBeenCalled();
+  });
+
+  it('is silent with it off', async () => {
+    expect(await typeDigit(false)).not.toHaveBeenCalled();
   });
 });
 
