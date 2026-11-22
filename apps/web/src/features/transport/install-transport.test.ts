@@ -245,6 +245,22 @@ describe('installTransport', () => {
     expect(playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 75 });
   });
 
+  it('keeps a song in fixed tempo with the percent it returns to, per song', async () => {
+    const services = createTestServices();
+    mirrorAudio(services);
+    const { document, audio, playback, transport } = services;
+    const first = await bytes();
+    await document.getState().openBytes('a.reprise', first);
+    audio.setTempo('bpm', 90);
+    transport.getState().setFixedReturn(80);
+    await document.getState().openBytes('b.reprise', await bytes());
+    expect(playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 100 });
+    expect(transport.getState().fixedReturn).toBeUndefined();
+    await document.getState().openBytes('a.reprise', first);
+    expect(playback.getState().settings.tempo).toEqual({ mode: 'bpm', value: 90 });
+    expect(transport.getState().fixedReturn).toBe(80);
+  });
+
   it('keeps the speed across a save, for the saved file reopened', async () => {
     const written: Uint8Array[] = [];
     const services = createTestServices({

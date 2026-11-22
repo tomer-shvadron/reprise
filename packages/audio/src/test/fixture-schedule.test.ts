@@ -18,7 +18,13 @@ const NOTES_ONSETS = [
 /** Walks `advance` the way the 25 ms timer does, from the start to the end of the song. */
 function scheduleAll(timeline: Timeline): ScheduledNote[] {
   const notes: ScheduledNote[] = [];
-  let run = startRun(timeline, { tick: 0, time: 0, rate: 1, loop: undefined, countIn: false });
+  let run = startRun(timeline, {
+    tick: 0,
+    time: 0,
+    pace: { kind: 'scaled', rate: 1 },
+    loop: undefined,
+    countIn: false,
+  });
   for (let now = 0; !run.finished; now += 0.025) {
     for (;;) {
       const result = advance(timeline, run, { now, horizon: now + 0.2, metronome: false });

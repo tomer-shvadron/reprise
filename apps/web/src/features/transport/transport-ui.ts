@@ -11,6 +11,9 @@ export interface TransportUiState {
   announcement: { text: string; nonce: number } | undefined;
   /** The speed the relative-speed toggle returns to; set when it switches to 100%. */
   rememberedSpeed: number | undefined;
+  /** The percent fixed tempo returns to when it is turned off. */
+  fixedReturn: number | undefined;
+  setFixedReturn(percent: number | undefined): void;
   setPopover(popover: TransportPopover | undefined): void;
   requestFocus(target: 'tempo'): void;
   announce(text: string): void;
@@ -24,6 +27,10 @@ export function createTransportUi() {
     focus: undefined,
     announcement: undefined,
     rememberedSpeed: undefined,
+    fixedReturn: undefined,
+    setFixedReturn(percent) {
+      set({ fixedReturn: percent });
+    },
     setPopover(popover) {
       set({ popover });
     },

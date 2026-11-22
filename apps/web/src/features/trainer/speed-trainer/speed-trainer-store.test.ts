@@ -58,6 +58,19 @@ describe('the speed trainer store', () => {
     expect(services.ui.getState().rightPanelView).toBe('speedTrainer');
   });
 
+  it('leaves fixed tempo at Start and says so', async () => {
+    const { services, trainer, tempo } = await setup();
+    trainer.getState().setConfig(ramp);
+    services.audio.setTempo('bpm', 90);
+    services.transport.getState().setFixedReturn(80);
+    trainer.getState().start();
+    expect(tempo()).toEqual({ mode: 'percent', value: 100 });
+    expect(services.transport.getState().announcement?.text).toBe(
+      'Fixed tempo off. Speed trainer: 100 percent',
+    );
+    expect(services.transport.getState().fixedReturn).toBeUndefined();
+  });
+
   it('does not hold on the notifications of its own Start', async () => {
     const { services, trainer } = await setup();
     // The real service notifies on stop and play; the tempo it still shows is the user's old one.

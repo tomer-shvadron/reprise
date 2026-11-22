@@ -33,6 +33,7 @@ describe('transport commands', () => {
       'transport.playFromSelection',
       'transport.loopSelection',
       'transport.loopSection',
+      'transport.toggleFixedTempo',
     ];
     expect(transport).toHaveLength(22 + menuOnly.length);
     for (const command of transport) {
@@ -78,6 +79,68 @@ describe('transport commands', () => {
     expect(percent()).toBe(100);
     await run('transport.toggleSpeed');
     expect(percent()).toBe(105);
+  });
+
+  it('fixed tempo: on at the current BPM, steps in BPM, F9 only announces, off returns', async () => {
+    const { services, run } = await setup(fourBars());
+    const tempo = () => services.playback.getState().settings.tempo;
+    await run('transport.speedUp');
+    await run('transport.speedUp');
+    expect(tempo()).toEqual({ mode: 'percent', value: 110 });
+
+    await run('transport.toggleFixedTempo');
+    expect(tempo()).toEqual({ mode: 'bpm', value: 132 });
+    expect(services.transport.getState().fixedReturn).toBe(110);
+
+    await run('transport.speedUp');
+    expect(tempo()).toEqual({ mode: 'bpm', value: 137 });
+    await run('transport.slowDown');
+    await run('transport.slowDown');
+    expect(tempo()).toEqual({ mode: 'bpm', value: 127 });
+
+    await run('transport.toggleSpeed');
+    expect(tempo()).toEqual({ mode: 'bpm', value: 127 });
+    expect(services.transport.getState().announcement?.text).toBe('Fixed tempo is on');
+
+    await run('transport.toggleFixedTempo');
+    expect(tempo()).toEqual({ mode: 'percent', value: 110 });
+    expect(services.transport.getState().fixedReturn).toBeUndefined();
+  });
+
+  it('names the step keys in BPM while fixed tempo is on', async () => {
+    const { services, registry, run } = await setup(fourBars());
+    const title = (id: string) => registry.get(id)?.title;
+    expect(title('transport.slowDown')).toBe('Slow down 5%');
+    await run('transport.toggleFixedTempo');
+    expect(title('transport.slowDown')).toBe('Slow down 5 BPM');
+    expect(title('transport.speedUp')).toBe('Speed up 5 BPM');
+    expect(registry.get('transport.slowDown')?.searchTitle).toBe('Slow down');
+    services.audio.setTempo('percent', 100);
+    expect(title('transport.speedUp')).toBe('Speed up 5%');
+  });
+
+  it('turns fixed tempo on at the written tempo of the section under the playhead', async () => {
+    const { services, run } = await setup(fourBars());
+    const song = services.document.getState().score;
+    if (!song) throw new Error('no score');
+    // Bar 3 carries a tempo mark of 160.
+    services.playback.setState({ position: positionEventAt(song, 2 * 3840) });
+    await run('transport.speedUp');
+    await run('transport.toggleFixedTempo');
+    expect(services.playback.getState().settings.tempo).toEqual({ mode: 'bpm', value: 168 });
+    // Crossing back to another tempo mark leaves the fixed BPM as it is.
+    services.playback.setState({ position: positionEventAt(song, 0) });
+    expect(services.playback.getState().settings.tempo).toEqual({ mode: 'bpm', value: 168 });
+  });
+
+  it('keeps fixed tempo within 20 to 400 BPM', async () => {
+    const { services, run } = await setup(fourBars());
+    services.audio.setTempo('bpm', 22);
+    await run('transport.slowDown');
+    expect(services.playback.getState().settings.tempo.value).toBe(20);
+    services.audio.setTempo('bpm', 398);
+    await run('transport.speedUp');
+    expect(services.playback.getState().settings.tempo.value).toBe(400);
   });
 
   it('loop the selection, or the whole song with none', async () => {
