@@ -30,6 +30,63 @@ describe('keyboard', () => {
     );
   });
 
+  describe('non-US layouts', () => {
+    // As a Hebrew layout reports them: the physical Slash key prints `.`, the physical Q key
+    // prints `/`, the physical Period key prints a Hebrew letter.
+    const hebrewDot = key({ key: '.', code: 'Slash' });
+    const hebrewSlash = key({ key: '/', code: 'KeyQ' });
+    const hebrewPeriodKey = key({ key: 'ץ', code: 'Period' });
+    const hebrewSemicolonKey = key({ key: 'ף', code: 'Semicolon' });
+
+    it('matches the printed punctuation character, so Hebrew dot and triplet follow the keycap', () => {
+      expect(matchesShortcut(hebrewDot, { key: '.' }, 'mac')).toBe(true);
+      expect(matchesShortcut(hebrewSlash, { key: '/' }, 'mac')).toBe(true);
+      expect(matchesShortcut(hebrewSlash, { key: '.' }, 'mac')).toBe(false);
+    });
+
+    it('does not let a printed punctuation character trigger the letter on its physical key', () => {
+      expect(matchesShortcut(hebrewSlash, { key: 'q' }, 'mac')).toBe(false);
+      expect(matchesShortcut(key({ key: "'", code: 'KeyW' }), { key: 'w' }, 'mac')).toBe(false);
+    });
+
+    it('falls back to the physical key when the layout prints a non-ASCII character', () => {
+      expect(matchesShortcut(hebrewPeriodKey, { key: '.' }, 'mac')).toBe(true);
+      expect(matchesShortcut(hebrewSemicolonKey, { key: ';' }, 'mac')).toBe(true);
+      expect(
+        matchesShortcut(
+          { ...hebrewSemicolonKey, shiftKey: true },
+          { key: ':', shift: true },
+          'mac',
+        ),
+      ).toBe(true);
+      expect(matchesShortcut(hebrewPeriodKey, { key: ',' }, 'mac')).toBe(false);
+      expect(matchesShortcut(key({ key: 'ש', code: 'KeyA' }), { key: 'a' }, 'mac')).toBe(true);
+      expect(
+        matchesShortcut(
+          key({ key: '≈', code: 'KeyX', altKey: true }),
+          { key: 'x', alt: true },
+          'mac',
+        ),
+      ).toBe(true);
+    });
+
+    it('keeps AZERTY and QWERTZ keys by character, so $ and " do not become ] and 3', () => {
+      const azertyDollar = key({ key: '$', code: 'BracketRight' });
+      expect(matchesShortcut(azertyDollar, { key: '$' }, 'mac')).toBe(true);
+      expect(matchesShortcut(azertyDollar, { key: '4' }, 'mac')).toBe(false);
+      expect(matchesShortcut(key({ key: '"', code: 'Digit3' }), { key: '3' }, 'mac')).toBe(false);
+      expect(matchesShortcut(key({ key: 'z', code: 'KeyY' }), { key: 'z' }, 'mac')).toBe(true);
+      expect(matchesShortcut(key({ key: 'y', code: 'KeyZ' }), { key: 'z' }, 'mac')).toBe(false);
+    });
+
+    it('still matches a US layout by character', () => {
+      expect(matchesShortcut(key({ key: '.', code: 'Period' }), { key: '.' }, 'mac')).toBe(true);
+      expect(matchesShortcut(key({ key: '/', code: 'Slash' }), { key: '/' }, 'mac')).toBe(true);
+      expect(matchesShortcut(key({ key: 'q', code: 'KeyQ' }), { key: 'q' }, 'mac')).toBe(true);
+      expect(matchesShortcut(key({ key: '.', code: 'Period' }), { key: '/' }, 'mac')).toBe(false);
+    });
+  });
+
   it('matches mod+, as Cmd+comma on macOS and Ctrl+comma elsewhere', () => {
     const shortcut = { key: ',', mod: true };
     const event = (init: Partial<KeyboardEvent>) => key({ key: ',', code: 'Comma', ...init });

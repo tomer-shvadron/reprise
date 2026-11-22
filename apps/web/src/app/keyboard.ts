@@ -2,8 +2,9 @@ export type KeyboardPlatform = 'mac' | 'other';
 
 export interface Shortcut {
   /**
-   * A letter or digit matches its printed character, or the physical key on a non-Latin layout;
-   * a bracket always matches its physical key. `' '` is Space; named keys (`Enter`, `F9`) are
+   * A key matches the ASCII character the layout prints; when the layout prints something else
+   * (Hebrew letters, an Option symbol on macOS) the physical key stands in, so a letter, digit or
+   * punctuation shortcut stays reachable. A bracket always matches its physical key. `' '` is Space; named keys (`Enter`, `F9`) are
    * spelled as `KeyboardEvent.key` spells them.
    */
   key: string;
@@ -24,12 +25,36 @@ export function detectKeyboardPlatform(): KeyboardPlatform {
   return /Mac|iPhone|iPad/.test(navigator.userAgent) ? 'mac' : 'other';
 }
 
-const LATIN_KEY = /^[a-z\d]$/i;
+// Any printable ASCII character, punctuation included: on the Hebrew layout the physical Q key
+// prints `/`, and that `/` is the triplet key, not a Q.
+const ASCII_KEY = /^[\x20-\x7e]$/;
+
+// The US-layout key that types each punctuation character, shifted or not. Used only when the
+// layout printed a non-ASCII character, so AZERTY's `$` (physical `]`) and `"` (physical `3`)
+// keep resolving by character and never collide with the bracket and digit keys.
+const PUNCTUATION_CODES: Readonly<Record<string, string>> = {
+  ';': 'Semicolon',
+  ':': 'Semicolon',
+  "'": 'Quote',
+  '"': 'Quote',
+  ',': 'Comma',
+  '<': 'Comma',
+  '.': 'Period',
+  '>': 'Period',
+  '/': 'Slash',
+  '?': 'Slash',
+  '-': 'Minus',
+  '=': 'Equal',
+  '+': 'Equal',
+  '!': 'Digit1',
+  ')': 'Digit0',
+  $: 'Digit4',
+};
 
 function physicalCode(key: string): string | undefined {
   if (/^[a-z]$/i.test(key)) return `Key${key.toUpperCase()}`;
   if (/^\d$/.test(key)) return `Digit${key}`;
-  return undefined;
+  return PUNCTUATION_CODES[key];
 }
 
 // On the Hebrew layout the physical `[` key types `]`, which would swap the pair by character.
@@ -38,9 +63,9 @@ const BRACKETS: Record<string, string> = { '[': 'BracketLeft', ']': 'BracketRigh
 function matchesKey(event: KeyEventLike, key: string): boolean {
   const bracket = BRACKETS[key];
   if (bracket !== undefined) return event.code === bracket;
-  // A Latin character is what the keycap shows (QWERTZ, Dvorak); only when the layout printed
+  // An ASCII character is what the keycap shows (QWERTZ, Dvorak); only when the layout printed
   // something else (Hebrew, an Option symbol on macOS) does the physical key stand in for it.
-  if (!LATIN_KEY.test(event.key)) {
+  if (!ASCII_KEY.test(event.key)) {
     const code = physicalCode(key);
     if (code !== undefined) return event.code === code;
   }
