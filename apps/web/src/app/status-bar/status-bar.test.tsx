@@ -94,4 +94,53 @@ describe('StatusBar', () => {
     renderHeader(<StatusBar />);
     expect(fireEvent.mouseDown(screen.getByRole('button', { name: '100%' }))).toBe(false);
   });
+
+  it('shows the metronome only while the standalone click runs, and a press stops it', async () => {
+    const { services } = renderHeader(<StatusBar />);
+    expect(screen.queryByRole('button', { name: /Metronome/ })).toBeNull();
+    act(() => {
+      services.playback.setState({
+        click: { ...services.playback.getState().click, running: true },
+      });
+    });
+    const indicator = screen.getByRole('button', { name: 'Metronome on' });
+    expect(indicator).toHaveAttribute('aria-keyshortcuts');
+    await userEvent.setup().click(indicator);
+    expect(services.fakeAudio.stopClick).toHaveBeenCalledOnce();
+    // Stopping from here opens no panel.
+    expect(services.ui.getState().panels.rightPanel).toBe(false);
+    act(() => {
+      services.playback.setState({
+        click: { ...services.playback.getState().click, running: false },
+      });
+    });
+    expect(screen.queryByRole('button', { name: /Metronome/ })).toBeNull();
+  });
+
+  it('moves focus to the score when a keyboard press stops the metronome', async () => {
+    const { services } = renderHeader(
+      <>
+        <main aria-roledescription="score" role="region" tabIndex={-1}>
+          score
+        </main>
+        <StatusBar />
+      </>,
+    );
+    act(() => {
+      services.playback.setState({
+        click: { ...services.playback.getState().click, running: true },
+      });
+    });
+    const user = userEvent.setup();
+    const indicator = screen.getByRole('button', { name: 'Metronome on' });
+    indicator.focus();
+    expect(indicator).toHaveFocus();
+    await user.keyboard('{Enter}');
+    act(() => {
+      services.playback.setState({
+        click: { ...services.playback.getState().click, running: false },
+      });
+    });
+    expect(document.activeElement).toBe(screen.getByText('score'));
+  });
 });
