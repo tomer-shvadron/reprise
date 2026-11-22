@@ -55,7 +55,8 @@ export interface Spring {
 
 /**
  * A spring's minimum width in a bar squeezed by `squeeze`: only the part above `rigid` and
- * `movable` shrinks. `rigidScale` scales the movable part and is below 1 only when the rigid and
+ * `movable` and `marks` shrinks. `markScale` scales the fingering clearance and is below 1 only
+ * when the rigid and movable parts plus it overflow the line. `rigidScale` scales the movable part and is below 1 only when the rigid and
  * movable parts alone overflow the line; `fixedScale` scales the rigid part and is below 1 only
  * when the rigid parts alone overflow it.
  */
@@ -76,7 +77,7 @@ export function squeezedMin(
 
 /**
  * Each spring at `factor` times its natural width, never below its minimum, which `squeeze`,
- * `rigidScale` and `fixedScale` shrink only in a bar whose minimums alone overflow its line.
+ * `markScale`, `rigidScale` and `fixedScale` shrink only in a bar whose minimums alone overflow its line.
  */
 export function stretch(
   springs: readonly Spring[],

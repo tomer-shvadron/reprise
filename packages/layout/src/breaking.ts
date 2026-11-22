@@ -50,12 +50,13 @@ export interface SystemPlan {
   squeeze: number;
   /**
    * Below 1 when even the minimums' fixed and movable parts overflow: the movable part (the
-   * voice shifts) is scaled by it, and `squeeze` is 0.
+   * voice shifts) is scaled by it, after the fingering clearance (`markScale`) has gone to 0, and
+   * `squeeze` is 0.
    */
   rigidScale: number;
   /** Below 1 only when the fixed parts alone overflow: only their spacing room shrinks by it (the glyphs keep their size and may still pass the bar), and `rigidScale` is 0. */
   fixedScale: number;
-  /** Below 1 only when the hard parts leave less room than the fingering clearance asks: it alone shrinks by it (#523). */
+  /** Below 1 only when the rigid and movable parts leave less room than the fingering clearance (`Spring.marks`) asks: the clearance shrinks by it, and `squeeze` is 0. */
   markScale: number;
   /** Header pad taken back from an over-wide bar, from its bars' `pad` in order. */
   trim: number;
@@ -123,7 +124,8 @@ export function courtesyWidth(
 /**
  * The spring factor that makes the bars' springs fill `content`, solved with the minimums in place:
  * a spring held at its minimum stays there and the others shrink further. When even the minimums
- * overflow, `squeeze` scales the part of each above its `rigid` and `movable` ones; `rigidScale`
+ * overflow, `squeeze` scales the part of each above its `rigid`, `movable` and `marks` ones, then
+ * `markScale` the fingering clearance when the hard parts and it overflow; `rigidScale`
  * scales the movable parts too when those with the rigid ones overflow, and `fixedScale` the
  * rigid parts last, when they alone overflow. `natural` is the springs' natural total.
  */
@@ -141,7 +143,7 @@ export function fitSprings(
   let mins = 0;
   let rigids = 0;
   let movables = 0;
-  let markss = 0;
+  let clearances = 0;
   let squeezable = 0;
   let tightest = 0;
   for (const springs of bars) {
@@ -149,18 +151,25 @@ export function fitSprings(
       mins += min;
       rigids += rigid;
       movables += movable;
-      markss += marks;
+      clearances += marks;
       squeezable += Math.max(0, min - rigid - movable - marks);
       tightest = Math.max(tightest, min / width);
     }
   }
   if (content < mins) {
     const hard = rigids + movables;
-    if (content >= hard + markss) {
-      return { factor: 0, squeeze: squeezable > 0 ? (content - hard - markss) / squeezable : 1 };
+    if (content >= hard + clearances) {
+      return {
+        factor: 0,
+        squeeze: squeezable > 0 ? (content - hard - clearances) / squeezable : 1,
+      };
     }
     if (content >= hard) {
-      return { factor: 0, squeeze: 0, markScale: markss > 0 ? (content - hard) / markss : 1 };
+      return {
+        factor: 0,
+        squeeze: 0,
+        markScale: clearances > 0 ? (content - hard) / clearances : 1,
+      };
     }
     if (content >= rigids) {
       return {
