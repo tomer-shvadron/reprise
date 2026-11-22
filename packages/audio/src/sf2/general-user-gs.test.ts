@@ -143,6 +143,16 @@ describe.skipIf(!font)('GeneralUser GS', () => {
     expect(font?.presets.some((p) => p.bank === PERCUSSION_BANK)).toBe(true);
   });
 
+  it('keeps its variations at the MSB bank, where a 14-bit gpif bank is looked up (#411)', () => {
+    const banks = new Set(font?.presets.map((p) => p.bank));
+    expect([...banks].filter((bank) => bank > 0 && bank < PERCUSSION_BANK).length).toBeGreaterThan(
+      0,
+    );
+    expect(banks.has(8 << 7)).toBe(false);
+    expect(font?.preset(8, 25)).toBeDefined();
+    expect(font?.preset(8, 25)?.id).not.toBe(font?.preset(0, 25)?.id);
+  });
+
   it('resolves every GM program in bank 0 to a non-empty region map', () => {
     for (const [program, preset] of programs.entries()) {
       expect(preset, `program ${String(program)}`).toBeDefined();

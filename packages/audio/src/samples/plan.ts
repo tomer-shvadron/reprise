@@ -7,6 +7,7 @@ import {
 } from '@reprise/model';
 import type { Beat, BeatEffects, Id, Note, Score, Track } from '@reprise/model';
 
+import { soundfontBankOf } from '../gm-bank';
 import { availableSets, voicingOf } from '../articulations/sets';
 import type { ArticulationSet, PlanVoicing } from '../articulations/sets';
 import type { RegionMap, SampleRef } from '../sampler/region-map';
@@ -52,7 +53,7 @@ export interface PlanOptions {
 export function gmInstrumentId(track: Pick<Track, 'kind' | 'bank'>, program: number): InstrumentId {
   return track.kind === 'drums'
     ? `gm:drums:${String(program)}`
-    : `gm:${String(track.bank)}:${String(program)}`;
+    : `gm:${String(soundfontBankOf(track.bank))}:${String(program)}`;
 }
 
 /** The keys the sink strikes: a harmonic's sounding pitch, rounded as it is, and a trill's alternate. */

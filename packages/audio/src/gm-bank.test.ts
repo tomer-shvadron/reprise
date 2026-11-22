@@ -2,7 +2,7 @@ import { createTrack } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { GmBank } from './gm-bank';
+import { GmBank, soundfontBankOf } from './gm-bank';
 import { GM_BUDGET_BYTES, ManagedSampleSource } from './samples/managed-sample-source';
 import { planInstruments } from './samples/plan';
 import { Sf2Soundfont } from './sf2/soundfont';
@@ -40,6 +40,29 @@ describe('GmBank', () => {
     expect(gm.instrumentId(guitar(9), 25)).toBe('gm:0:25');
     expect(gm.instrumentId(drums, 5)).toBe('gm:drums:0');
     expect(gm.instrumentId(guitar(0), 40)).toBe('gm:0:0');
+  });
+
+  describe('a 14-bit bank', () => {
+    const gm = () => bank();
+    it('takes the exact bank when it is a byte (a gp5 file, or an MSB already)', () => {
+      expect(soundfontBankOf(8)).toBe(8);
+      expect(gm().instrumentId(guitar(8), 25)).toBe('gm:8:25');
+    });
+    it('takes the MSB of a (msb << 7) | lsb bank, as a gpif file stores it', () => {
+      expect(soundfontBankOf(8 << 7)).toBe(8);
+      expect(gm().instrumentId(guitar(8 << 7), 25)).toBe('gm:8:25');
+    });
+    it('takes the MSB alone when the LSB is set too', () => {
+      expect(gm().instrumentId(guitar((8 << 7) | 3), 25)).toBe('gm:8:25');
+    });
+    it('falls back to bank 0 when the MSB bank lacks the program or does not exist', () => {
+      expect(gm().instrumentId(guitar(9 << 7), 25)).toBe('gm:0:25');
+      expect(gm().instrumentId(guitar(8 << 7), 40)).toBe('gm:0:0');
+    });
+    it('never reads a melodic bank as the percussion bank', () => {
+      expect(soundfontBankOf(128)).toBe(1);
+      expect(soundfontBankOf(16383)).toBe(127);
+    });
   });
 
   describe('the mandolin variation', () => {
