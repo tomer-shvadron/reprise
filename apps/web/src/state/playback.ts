@@ -38,6 +38,10 @@ export interface TransportSettings {
    * samples are already processed. A track's known `sound.preset` applies either way.
    */
   gmTierBypass: boolean;
+  /**
+   * Whether the file's channel reverb and chorus (CC91, CC93) play where no effects preset
+   * applies; on by default.
+   */
   channelEffects: boolean;
   /**
    * "Memory for sounds" in bytes, the engine's memory setting: the HQ tier's budget, and a cap on

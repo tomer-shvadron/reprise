@@ -37,7 +37,7 @@ export function automaticLabel(
   track: Track,
   gmTierBypass: boolean,
   tier: 'gm' | 'hq' = 'gm',
-  channelEffects = false,
+  channelEffects: boolean,
 ): string {
   const { preset } = resolveEffects(
     { kind: track.kind, program: track.program },
