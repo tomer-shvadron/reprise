@@ -55,12 +55,44 @@ const SHIFTED_PUNCTUATION: Readonly<Record<string, string>> = {
   '+': 'Equal',
 };
 
+// A layout without bracket keys of its own (Dvorak types `[` and `]` on the minus and equal
+// keys) still prints the character, with no modifier a bracket shortcut would not take. A digit
+// key printing one is a Mac's Option layer (German ⌥5 prints `[`), which stays the digit's.
+function onOtherKey(event: KeyEventLike, key: string): boolean {
+  return event.key === key && !/^(Bracket|Digit|Numpad)/.test(event.code);
+}
+
+// The dead Quote key of US-International: `'` bare and `"` with Shift (true).
+const DEAD_QUOTE: Readonly<Record<string, boolean>> = { "'": false, '"': true };
+
 /**
  * `character` is the pass that decides first: what the key prints. `physical` runs only when no
  * command matched by character, so a printed `/` stays the triplet while a Hebrew W key, which
  * prints `'` that nothing uses, still reaches W.
  */
-export type KeyMatch = 'character' | 'physical';
+export type KeyMatch = 'character' | 'relaxed' | 'physical';
+
+// Keys the pass between the two rescues, by what the layout prints:
+// - a punctuation character that a layout types with Shift (German `=` is Shift+0, `;` is
+//   Shift+comma) still runs the binding that names no Shift, since no US key types that
+//   character shifted, so no shifted binding can own the key;
+// - a bracket typed with Option on a Mac that has no bracket key of its own to put it on
+//   (Spanish ⌥+ prints `]`), on the bracket's own physical key.
+function relaxedModifiers(
+  event: KeyEventLike,
+  shortcut: Shortcut,
+  platform: KeyboardPlatform,
+): boolean {
+  const { key } = shortcut;
+  if (!shortcut.shift && event.shiftKey && !event.altKey) {
+    return BASE_PUNCTUATION[key] !== undefined && event.key === key;
+  }
+  if (!shortcut.alt && event.altKey && !event.shiftKey && platform === 'mac') {
+    const bracket = BRACKETS[key];
+    return bracket !== undefined && event.code === bracket && event.key === key;
+  }
+  return false;
+}
 
 function matchesKey(
   event: KeyEventLike,
@@ -68,9 +100,10 @@ function matchesKey(
   platform: KeyboardPlatform,
   by: KeyMatch,
 ): boolean {
+  if (by === 'relaxed') return matchesKey(event, key, platform, 'character');
   if (by === 'character') {
     const bracket = BRACKETS[key];
-    if (bracket !== undefined) return event.code === bracket;
+    if (bracket !== undefined) return event.code === bracket || onOtherKey(event, key);
     // The printed digit still counts, for the numpad.
     if (/^\d$/.test(key)) return event.code === `Digit${key}` || event.key === key;
     // Option rewrites the character on a Mac, and types ASCII on German, Nordic and Spanish.
@@ -80,6 +113,10 @@ function matchesKey(
     return event.key.toLowerCase() === key.toLowerCase();
   }
   if (event.key === 'Process' || event.key === 'Unidentified') return false;
+  // US-International types `"` and `'` with a dead key, which prints no character to compare.
+  if (event.key === 'Dead' && DEAD_QUOTE[key] !== undefined) {
+    return event.code === 'Quote' && DEAD_QUOTE[key] === event.shiftKey;
+  }
   if (/^[a-z]$/i.test(key)) {
     return !LATIN_KEY.test(event.key) && event.code === `Key${key.toUpperCase()}`;
   }
@@ -117,13 +154,19 @@ export function matchesShortcut(
   const mod = platform === 'mac' ? event.metaKey : event.ctrlKey;
   const otherModifier = platform === 'mac' ? event.ctrlKey : event.metaKey;
   if (otherModifier || mod !== Boolean(shortcut.mod)) return false;
-  if (event.shiftKey !== Boolean(shortcut.shift) || event.altKey !== Boolean(shortcut.alt)) {
-    return false;
+  const exact =
+    event.shiftKey === Boolean(shortcut.shift) && event.altKey === Boolean(shortcut.alt);
+  if (by === 'relaxed') {
+    return (
+      relaxedModifiers(event, shortcut, platform) && matchesKey(event, shortcut.key, platform, by)
+    );
   }
-  if (by !== undefined) return matchesKey(event, shortcut.key, platform, by);
+  if (by !== undefined) return exact && matchesKey(event, shortcut.key, platform, by);
   return (
-    matchesKey(event, shortcut.key, platform, 'character') ||
-    matchesKey(event, shortcut.key, platform, 'physical')
+    (exact && matchesKey(event, shortcut.key, platform, 'character')) ||
+    (exact && matchesKey(event, shortcut.key, platform, 'physical')) ||
+    (relaxedModifiers(event, shortcut, platform) &&
+      matchesKey(event, shortcut.key, platform, 'relaxed'))
   );
 }
 
