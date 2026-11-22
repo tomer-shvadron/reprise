@@ -1,4 +1,4 @@
-import type { Bend, Note, Track } from '@reprise/model';
+import type { Bar, Bend, Note, Track } from '@reprise/model';
 
 import type { ChordPlan } from './chord';
 
@@ -81,9 +81,35 @@ export function bendTargets(bend: Bend): BendTarget[] {
   return kept;
 }
 
-/** The targets a note's bend draws: none on a harmonic, a dead note or a track that is not fretted. */
-export function targetsOf(track: Pick<Track, 'kind'>, note: Note): BendTarget[] {
-  if (track.kind !== 'fretted' || !note.bend || note.dead || note.harmonic) return [];
+/**
+ * Whether `note`, the beat at `beat` of voice `voice` in its bar, is tied into the very next beat
+ * of the voice: in the bar, or the next bar's first beat. The ties `drawTies` draws, so a bend
+ * is tied exactly when a tie leaves its head.
+ */
+export function tiedOnward(
+  track: Pick<Track, 'kind'>,
+  bar: Bar,
+  next: Bar | undefined,
+  voice: number,
+  beat: number,
+  note: Note,
+): boolean {
+  const beats = bar.voices[voice]?.beats ?? [];
+  const following = beat + 1 < beats.length ? beats[beat + 1] : next?.voices[voice]?.beats[0];
+  const fretted = track.kind === 'fretted';
+  return (
+    following?.notes.some(
+      (other) => other.tie && (fretted ? other.string === note.string : other.fret === note.fret),
+    ) ?? false
+  );
+}
+
+/**
+ * The targets a note's bend draws: none on a harmonic, a dead note or a track that is not fretted,
+ * and none on a note tied onward, whose tie would cross a head (alphaTab skips them too, #111).
+ */
+export function targetsOf(track: Pick<Track, 'kind'>, note: Note, tied = false): BendTarget[] {
+  if (tied || track.kind !== 'fretted' || !note.bend || note.dead || note.harmonic) return [];
   return bendTargets(note.bend);
 }
 
@@ -114,4 +140,18 @@ export function bendSpan(
     if (f < 1) need = Math.max(need, (group.width + gap - tail) / (1 - f));
   }
   return { need, tail };
+}
+
+/**
+ * What a bar's first beats tie back into the bar before: a bent note tied onward draws no target
+ * heads, so the previous bar's plan and measure read it. A string compares by value, so an edit
+ * elsewhere in the bar does not re-measure the bar before.
+ */
+export function tiesIntoNext(next: Bar | undefined): string {
+  if (!next?.voices.some((voice) => voice.beats[0]?.notes.some((note) => note.tie))) return '';
+  return JSON.stringify(
+    next.voices.map((voice) =>
+      voice.beats[0]?.notes.filter((note) => note.tie).map((note) => [note.string, note.fret]),
+    ),
+  );
 }
