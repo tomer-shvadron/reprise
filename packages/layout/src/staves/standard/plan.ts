@@ -982,8 +982,12 @@ function planSlurs(
   // A slur between grace notes bends down, away from their stems, below the heads it joins.
   if (track.kind === 'fretted') {
     for (const { from, to, origin, target } of graceLinks(plan.beat.grace)) {
-      const start = plan.graces[from]?.chord.heads.find((head) => head.note === origin);
-      const end = plan.graces[to]?.chord.heads.find((head) => head.note === target);
+      const start = plan.graces[from]?.chord.heads.find(
+        (head) => !head.sounding && head.note === origin,
+      );
+      const end = plan.graces[to]?.chord.heads.find(
+        (head) => !head.sounding && head.note === target,
+      );
       if (start && end) plan.bottom = Math.max(plan.bottom, Math.max(start.y, end.y) + reach);
     }
   }

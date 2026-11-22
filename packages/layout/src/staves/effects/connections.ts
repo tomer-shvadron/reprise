@@ -56,10 +56,6 @@ export function connections(bar: Bar | undefined): { shifts: boolean; hammers: b
         if (shifts(note)) found.shifts = true;
         if (note.hammerPull) found.hammers = true;
       }
-      // A hammer-on between grace notes is a connection too, so a bar of only those gets its room.
-      for (const grace of beat.grace ?? []) {
-        if (grace.notes.some((note) => note.hammerPull)) found.hammers = true;
-      }
     }
   }
   connectionsMemo.set(bar, found);
@@ -85,19 +81,18 @@ export interface GraceLink {
 }
 
 /**
- * The index of the nearest grace column before `before` with a note on `string`, or undefined.
- * A main note's origin is searched the same way, from the column after the last.
+ * The note on `string` in the grace column just before `before`, or undefined. Only that column
+ * counts, as for a main note: a link never reaches over a column between, since its slur or
+ * letter would be drawn through what that column holds. A main note passes `graces.length`.
  */
 export function graceOrigin(
   graces: readonly { notes: readonly Note[] }[],
   before: number,
   string: number,
 ): { column: number; note: Note } | undefined {
-  for (let g = Math.min(before, graces.length) - 1; g >= 0; g--) {
-    const note = graces[g]?.notes.find((candidate) => candidate.string === string);
-    if (note) return { column: g, note };
-  }
-  return undefined;
+  const column = Math.min(before, graces.length) - 1;
+  const note = graces[column]?.notes.find((candidate) => candidate.string === string);
+  return note ? { column, note } : undefined;
 }
 
 /** The links between the grace columns of a beat, one per hammered grace note with an origin. */

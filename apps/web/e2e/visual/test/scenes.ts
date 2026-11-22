@@ -749,8 +749,13 @@ export const SCENES: readonly Scene[] = [
       const arcs = result.primitives.filter(
         (p) => p.kind === 'path' && p.fill && p.d.includes('C') && p.node !== undefined,
       );
-      // Standard staff alone: three slurs; both mode adds the tab's three arcs.
-      expect(arcs.length).toBeGreaterThanOrEqual(3);
+      // Three letters: on the standard staff when it is alone, on the tab in both mode. Three
+      // slurs, or those and the tab's three arcs.
+      const letters = result.primitives.flatMap((p) =>
+        p.kind === 'text' && /^[HP]$/.test(p.text) ? [p.text] : [],
+      );
+      expect(letters).toEqual(['H', 'P', 'H']);
+      expect([3, 6]).toContain(arcs.length);
     },
   },
   {

@@ -49,7 +49,7 @@ export const TAB = {
   graceScale: 0.7,
   graceGap: 0.25,
   /** Extra gap between two grace columns joined by a hammer-on, in staff spaces. */
-  graceLink: 0.5,
+  graceLink: 1,
   /** From the outer string to where stems start, and a stem's length to its beam or flag. */
   stemGap: 0.75,
   stem: 3.25,
@@ -471,7 +471,9 @@ function arcRoom(
       for (const grace of beat.grace ?? []) {
         for (const note of grace.notes) {
           const side = arcSide(note, strings);
-          if (note.slide?.includes('legato')) keep(note.string, side, lettered(side));
+          if (note.hammerPull || note.slide?.includes('legato')) {
+            keep(note.string, side, lettered(side));
+          }
         }
       }
     }

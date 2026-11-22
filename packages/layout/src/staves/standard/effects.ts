@@ -595,14 +595,13 @@ export function drawConnections(
         () => 'down',
         ({ origin, from }) => {
           const grace = beat.graces[from];
-          return grace?.chord.heads.find((head) => head.note === origin)?.y ?? 0;
+          return grace?.chord.heads.find((head) => !head.sounding && head.note === origin)?.y ?? 0;
         },
       );
       for (const { from, to, origin, target } of links) {
         const start = headOf(from, origin);
         const end = headOf(to, target);
-        // A legato slide already draws its slur, labelled `sl.`.
-        if (!start || !end || origin.slide?.includes('legato')) continue;
+        if (!start || !end) continue;
         const letter = linkLetters.has(target) ? hammerLetter(origin, target) : undefined;
         // A grace note's stem points up, so its slur bends down, away from it.
         slur(context, start.right + tie, start.y, end.left - tie, end.y, 'down', target.id, letter);

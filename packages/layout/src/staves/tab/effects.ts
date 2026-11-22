@@ -357,8 +357,6 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
       const left = centres[from];
       const right = centres[to];
       if (!originLabel || !targetLabel || left === undefined || right === undefined) continue;
-      // A legato slide already draws its arc, labelled `sl.`.
-      if (origin.slide?.includes('legato')) continue;
       const letter = linkLetters.has(target) ? hammerLetter(origin, target) : undefined;
       drawArc(
         context,
