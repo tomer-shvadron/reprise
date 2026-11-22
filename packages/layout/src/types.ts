@@ -69,6 +69,13 @@ export interface LayoutOptions {
    * follow-up calls need at least 1. Paged mode and a call without a cache ignore it.
    */
   verticalReach?: number | undefined;
+  /**
+   * With `verticalReach`: the segments (indices into the previous result's `systems`) a caller has
+   * on screen. Every stale one in the range is redrawn in this call too, besides the `verticalReach`
+   * nearest the edit, so what is visible is never drawn with an older vertical layout. Ignored
+   * when `verticalReach` is unset (everything is redrawn then) and in paged mode.
+   */
+  verticalWindow?: Range | undefined;
 }
 
 /** In layout coordinates, or in the segment's own frame in continuous mode (see `System.offsetX`). */
