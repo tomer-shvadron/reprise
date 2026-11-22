@@ -342,7 +342,12 @@ function noteSpec(action: EffectAction): NoteSpec | undefined {
         { pickScrape: action.direction },
         { pickScrape: null },
         {
-          unavailable: (ref) => (ref.note.tie ? 'A tied note is held, not struck' : undefined),
+          unavailable: (ref) =>
+            ref.grace
+              ? "A grace note can't take a pick scrape"
+              : ref.note.tie
+                ? 'A tied note is held, not struck'
+                : undefined,
         },
       );
     case 'harmonic':
@@ -410,6 +415,8 @@ interface BeatSpec {
   present?(beat: Beat): boolean;
   set: BeatChanges;
   clear: BeatChanges;
+  /** A rest can carry the effect: see `resolveEffect` for which rests join the target. */
+  onRests?: boolean;
 }
 
 function strokeSpec(field: 'brush' | 'arpeggio', direction: StrokeDirection): BeatSpec {
@@ -461,6 +468,7 @@ function beatSpec(action: EffectAction): BeatSpec | undefined {
     case 'golpe':
       // One field holds the value, so thumb and finger exclude each other; a rest may carry one.
       return {
+        onRests: true,
         label: `golpe (${action.golpe})`,
         anyTrack: false,
         has: (beat) => beat.effects.golpe === action.golpe,
@@ -561,11 +569,18 @@ export function resolveEffect(
     return noteBased ? resolveNotes(refs, noteBased) : resolveHammer(refs);
   }
   const spec = beatSpec(action);
-  if (!spec || target.beats.length === 0) return refuse(NOTHING_SELECTED);
+  // A rest joins only when it already carries the effect (so a range toggle can take it off) or
+  // when it is all that is targeted (the cursor on a rest, which can set it): a range never gets
+  // the effect sprayed onto bare rests, and one bare rest does not turn a remove into a set.
+  const rests = spec?.onRests
+    ? target.rests.filter(({ beat }) => target.beats.length === 0 || spec.present?.(beat))
+    : [];
+  const targeted = [...target.beats, ...rests];
+  if (!spec || targeted.length === 0) return refuse(NOTHING_SELECTED);
   return {
     kind: 'beat',
     label: spec.label,
-    items: target.beats.map(({ beat, track }) => {
+    items: targeted.map(({ beat, track }) => {
       const has = spec.has(beat);
       return {
         id: beat.id,
