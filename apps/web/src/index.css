@@ -37,6 +37,7 @@
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
+  --color-track: var(--track);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -86,12 +87,15 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  /* The selected row and the active rail button: 1.58:1 on the card and sidebar, 1.75:1 on the background. */
+  --accent: oklch(0.35 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+  /* The unfilled part of a slider: 3:1 on the card (WCAG 1.4.11). */
+  --track: oklch(0.52 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -101,9 +105,9 @@
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent: oklch(0.35 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-accent-muted-foreground: oklch(0.708 0 0);
+  --sidebar-accent-muted-foreground: oklch(0.78 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
   --paper: oklch(0.965 0.012 85);
@@ -137,13 +141,15 @@
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.54 0 0);
-  --accent: oklch(0.97 0 0);
+  /* The selected row and the active rail button: 1.67:1 on the sidebar, 1.75:1 on white. */
+  --accent: oklch(0.82 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   /* 3:1 on the background and the sidebar (WCAG 1.4.11): the outline of an input and the off track of a switch. `--border` stays a soft hairline. */
   --input: oklch(0.65 0 0);
   --ring: oklch(0.6 0 0);
+  --track: oklch(0.65 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -153,10 +159,10 @@
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: oklch(0.82 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  /* 5.5:1 on the accent; the shared muted foreground is 4.64:1 there. */
-  --sidebar-accent-muted-foreground: oklch(0.5 0 0);
+  /* Over 4.5:1 on the accent, which the shared muted foreground is not. */
+  --sidebar-accent-muted-foreground: oklch(0.4 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.6 0 0);
   --paper: var(--paper-light);
