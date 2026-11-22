@@ -1,7 +1,12 @@
-import { HintTooltip } from '@/app/command-tooltip';
+import { useStore } from 'zustand';
+
+import { CommandTooltip, HintTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
+import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import type { ChordsInsight } from '@/lib/insights';
+
+import { arpeggioOverlayFor } from '../../fretboard/arpeggio-overlay';
 
 import { InsightCard } from './card';
 
@@ -14,6 +19,8 @@ const shareText = (share: number): string =>
  */
 export function ChordsCard({ chords }: { chords: ChordsInsight }) {
   const services = useAppServices();
+  const on = useStore(arpeggioOverlayFor(services), (state) => state.on);
+  const toggle = useCommand('trainer.fretboardArpeggio');
   if (chords.source === 'none' || chords.chords.length === 0) return null;
   return (
     <InsightCard title="Chords" data-insight-card="chords">
@@ -41,6 +48,22 @@ export function ChordsCard({ chords }: { chords: ChordsInsight }) {
           );
         })}
       </ul>
+      <CommandTooltip
+        command="trainer.fretboardArpeggio"
+        label={on ? 'Hide chord tones from fretboard' : 'Show chord tones on fretboard'}
+      >
+        <Button
+          variant="outline"
+          size="xs"
+          className="self-start"
+          aria-pressed={on}
+          onClick={() => {
+            toggle.run();
+          }}
+        >
+          Show chord tones on fretboard
+        </Button>
+      </CommandTooltip>
       {chords.source === 'inferred' && (
         <p className="text-muted-foreground text-xs" data-insight-inferred>
           Inferred from the notes.

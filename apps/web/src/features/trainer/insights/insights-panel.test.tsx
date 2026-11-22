@@ -9,6 +9,7 @@ import { App } from '@/app/app';
 import { createAppRegistry } from '@/app/app-registry';
 import { chord, repeat, song } from '@/lib/insights/test/songs';
 import { modulating, twoSections } from '@/test/two-sections';
+import { arpeggioOverlayFor } from '../fretboard/arpeggio-overlay';
 import { aMinorRiff } from '@/test/a-minor-riff';
 import { createTestServices } from '@/test/services';
 import type { Score } from '@reprise/model';
@@ -168,6 +169,19 @@ describe('the Sections, Chords and Tracks cards', () => {
     await userEvent.click(chip);
     expect(services.ui.getState().chordsName).toBe('Am');
     expect(services.ui.getState().rightPanelView).toBe('chords');
+  });
+
+  it('toggles the chord tones on the fretboard from the Chords card', async () => {
+    const services = await setup(twoSections());
+    const chords = await card('Chords');
+    const toggle = within(chords).getByRole('button', { name: 'Show chord tones on fretboard' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(arpeggioOverlayFor(services).getState().on).toBe(true);
+    expect(services.ui.getState().bottomPanel.open).toBe(true);
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('marks chords read from the notes as inferred', async () => {

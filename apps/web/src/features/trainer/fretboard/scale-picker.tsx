@@ -9,7 +9,7 @@ import { SCALES, type ScaleId } from '@/lib/insights';
 import type { ScaleOverlayStore } from './scale-overlay';
 
 /** The picker's own spelling of each tonic; the chip, the dots and the labels keep it. */
-const TONICS = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'] as const;
+export const TONICS = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'] as const;
 const DEFAULT_TONIC = 9;
 const DEFAULT_SCALE: ScaleId = 'minorPentatonic';
 

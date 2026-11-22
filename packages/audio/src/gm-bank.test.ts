@@ -2,7 +2,7 @@ import { createTrack } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { GmBank } from './gm-bank';
+import { GmBank, soundfontBankOf } from './gm-bank';
 import { GM_BUDGET_BYTES, ManagedSampleSource } from './samples/managed-sample-source';
 import { planInstruments } from './samples/plan';
 import { Sf2Soundfont } from './sf2/soundfont';
@@ -36,10 +36,28 @@ describe('GmBank', () => {
   it('names the preset the soundfont resolves, falling back as a GM player does', () => {
     const gm = bank();
     expect(gm.instrumentId(guitar(0), 25)).toBe('gm:0:25');
-    expect(gm.instrumentId(guitar(8), 25)).toBe('gm:8:25');
-    expect(gm.instrumentId(guitar(9), 25)).toBe('gm:0:25');
+    expect(gm.instrumentId(guitar(8 << 7), 25)).toBe('gm:8:25');
+    expect(gm.instrumentId(guitar(9 << 7), 25)).toBe('gm:0:25');
     expect(gm.instrumentId(drums, 5)).toBe('gm:drums:0');
     expect(gm.instrumentId(guitar(0), 40)).toBe('gm:0:0');
+  });
+
+  describe('a 14-bit bank', () => {
+    it('looks up the MSB, as a gpif or gp file stores it', () => {
+      expect(soundfontBankOf(8 << 7)).toBe(8);
+      expect(bank().instrumentId(guitar(8 << 7), 25)).toBe('gm:8:25');
+    });
+    it('ignores the LSB, as a GS synth does', () => {
+      expect(bank().instrumentId(guitar((8 << 7) | 3), 25)).toBe('gm:8:25');
+      expect(bank().instrumentId(guitar(8), 25)).toBe('gm:0:25');
+    });
+    it('falls back to bank 0 when the MSB bank lacks the program or does not exist', () => {
+      expect(bank().instrumentId(guitar(9 << 7), 25)).toBe('gm:0:25');
+      expect(bank().instrumentId(guitar(8 << 7), 40)).toBe('gm:0:0');
+    });
+    it('never reads a melodic bank as the percussion bank', () => {
+      expect(soundfontBankOf(16383)).toBe(127);
+    });
   });
 
   describe('the mandolin variation', () => {
@@ -81,7 +99,7 @@ describe('GmBank', () => {
       gm.instrumentId(twelveString, 25);
       gm.instrumentId(guitar(0), 25);
       gm.instrumentId(mandolin, 40);
-      gm.instrumentId({ ...mandolin, bank: 8 }, 25);
+      gm.instrumentId({ ...mandolin, bank: 8 << 7 }, 25);
       expect(resolve.mock.calls.some(([bankNumber]) => bankNumber === 16)).toBe(false);
     });
   });

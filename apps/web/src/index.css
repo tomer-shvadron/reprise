@@ -14,6 +14,7 @@
   --color-mute-foreground: var(--mute-foreground);
   --color-solo: var(--solo);
   --color-solo-foreground: var(--solo-foreground);
+  --color-arpeggio: var(--arpeggio);
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
@@ -112,6 +113,8 @@
   --mute-foreground: oklch(0.985 0 0);
   --solo: oklch(0.8 0.15 80);
   --solo-foreground: oklch(0.2 0.02 70);
+  /* The fretboard's chord tones: a teal clear of mute (red), solo (amber) and the paper accent (blue). */
+  --arpeggio: oklch(0.78 0.14 165);
   /* The selection pill: no shadow on the dark chrome, a hairline border instead. */
   --pill-shadow: none;
   --pill-border: var(--border);
@@ -160,6 +163,7 @@
   --mute-foreground: oklch(1 0 0);
   --solo: oklch(0.82 0.16 80);
   --solo-foreground: oklch(0.2 0.02 70);
+  --arpeggio: oklch(0.52 0.13 165);
   /* The selection pill floats over white paper: a soft shadow, no border. */
   --pill-shadow: 0 1px 3px oklch(0 0 0 / 18%), 0 4px 12px oklch(0 0 0 / 12%);
   --pill-border: transparent;

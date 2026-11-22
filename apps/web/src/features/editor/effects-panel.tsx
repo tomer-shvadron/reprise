@@ -64,6 +64,8 @@ const BEAT_ITEMS: readonly Item[] = [
   { toggle: 'fadeIn', label: 'Fade in' },
   { toggle: 'fadeOut', label: 'Fade out' },
   { toggle: 'volumeSwell', label: 'Volume swell' },
+  { toggle: 'wahClosed', label: 'Wah closed (+)' },
+  { toggle: 'wahOpen', label: 'Wah open (o)' },
   { toggle: 'whammyVibrato', label: 'Whammy-bar vibrato' },
   { toggle: 'wideWhammyVibrato', label: 'Wide whammy-bar vibrato' },
   { picker: 'whammy', label: 'Whammy bar…' },

@@ -2,6 +2,7 @@ import { canShowTab, type Track } from '@reprise/model';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
 
+import { HintTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,8 @@ import { CHORD_STRIP_SETTING } from '@/state/app-settings';
 import { chordNamesIn, commitEdit } from '@/features/editor';
 import { parseChord, voicings } from '@/lib/chords';
 
+import { arpeggioOf } from '../fretboard/arpeggio-dots';
+import { arpeggioOverlayFor } from '../fretboard/arpeggio-overlay';
 import { tuningNames } from '../fretboard/fretboard-model';
 
 import { boxOf, ChordCard, PAD } from './chord-card';
@@ -185,6 +188,20 @@ export function ChordsPanel() {
             setName(event.target.value);
           }}
         />
+        <HintTooltip label="Mark this chord's tones on the fretboard and keep them there">
+          <Button
+            variant="outline"
+            size="xs"
+            className="self-start"
+            disabled={arpeggioOf(query) === undefined}
+            onClick={() => {
+              ui.getState().showBottomPanelView('fretboard');
+              arpeggioOverlayFor(services).getState().hold(query);
+            }}
+          >
+            Show on fretboard
+          </Button>
+        </HintTooltip>
         {songNames.length > 0 && (
           <div role="group" aria-label="Chords in this song" className="flex flex-wrap gap-1">
             {songNames.map((songName) => (

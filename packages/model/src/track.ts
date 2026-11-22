@@ -115,6 +115,12 @@ export const TrackSchema = z.object({
   fretCount: z.int().min(0),
   /** GM program; on drum tracks the GM2 drum kit (0 standard), played on the percussion channel. */
   program: z.int().min(0).max(127),
+  /**
+   * MIDI bank in one unit, 14-bit: `(msb << 7) | lsb`, 0 to 16383. The gpif reader fills it from
+   * MSB and LSB; the gp3 to gp5 reader shifts the file's bank-select byte in as the MSB. The
+   * sampler looks up the MSB as the soundfont's bank (`soundfontBankOf` in `@reprise/audio`).
+   * Changed by #411.
+   */
   bank: z.int().min(0).max(16383),
   channel: ChannelSettingsSchema,
   display: DisplaySettingsSchema,

@@ -4,12 +4,22 @@ import {
   hitsInRange,
   notesInRange,
   planNote,
+  wahChangesInRange,
+  wahLane,
   type NotePlan,
   type PlanInput,
 } from '@reprise/audio';
 import { write } from '@reprise/formats';
 import { PAGE_SIZES, layout, type Primitive } from '@reprise/layout';
-import { PPQ, beatTicks, type Golpe, type Id, type Score, type SlideKind } from '@reprise/model';
+import {
+  PPQ,
+  beatTicks,
+  type Golpe,
+  type Id,
+  type Score,
+  type SlideKind,
+  type Wah,
+} from '@reprise/model';
 import { beatOf, note, noteOf, score } from '@reprise/model/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -157,7 +167,12 @@ interface Row {
   /** The marks layout draws for it, found among the primitives of the first two beats. */
   draws: readonly string[];
   /** `hit`: a golpe is no note, so the timeline's `hitsInRange` schedules it instead of `planNote`. */
-  sounds: Sound | { todo: string } | { hit: Golpe };
+  /**
+   * `wah`: a pedal mark is no note either; the track's wah lane engages it at the beat and ends it
+   * at the next played note without a mark (`wahChangesInRange`, which the scheduler reads), and
+   * taking the mark off leaves the track no lane at all.
+   */
+  sounds: Sound | { todo: string } | { hit: Golpe } | { wah: Wah };
 }
 
 /** The most the pitch curve moves away from zero over the note. */
@@ -429,6 +444,18 @@ const ROWS: readonly Row[] = [
     sounds: { hit: 'finger' },
   },
   {
+    name: 'wah closed',
+    draws: ['glyph:guitarClosePedal'],
+    how: { command: 'editor.effect.wahClosed' },
+    sounds: { wah: 'closed' },
+  },
+  {
+    name: 'wah open',
+    draws: ['glyph:guitarOpenPedal'],
+    how: { command: 'editor.effect.wahOpen' },
+    sounds: { wah: 'open' },
+  },
+  {
     name: 'pick scrape down',
     draws: ['text:P.S.', 'path'],
     how: { command: 'editor.effect.pickScrapeDown' },
@@ -575,6 +602,17 @@ describe('every effect applies, draws, sounds and comes off again', () => {
           limitTick: timeline.endTick,
         });
         expect(hits.map((hit) => [hit.beatIndex, hit.golpe])).toEqual([[0, row.sounds.hit]]);
+      } else if ('wah' in row.sounds) {
+        const timeline = createTimeline(applied);
+        const changes = wahChangesInRange(timeline, 0, timeline.endTick, {
+          runStartTick: 0,
+          limitTick: timeline.endTick,
+        });
+        // The mark holds until the next played beat without one, which is beat 1.
+        expect(changes.map((change) => [change.trackIndex, change.tick, change.state])).toEqual([
+          [0, 0, row.sounds.wah],
+          [0, PPQ, 'off'],
+        ]);
       } else if (!('todo' in row.sounds)) {
         const plans = plansOf(applied);
         const plan = plans.get(targetId);
@@ -587,6 +625,7 @@ describe('every effect applies, draws, sounds and comes off again', () => {
       apply();
       expect(current()).toEqual(original);
       expect(drawn(current())).toEqual(originalDrawing);
+      if ('wah' in row.sounds) expect(wahLane(createTimeline(current())).size).toBe(0);
       // One undo step each.
       services.document.getState().undo();
       expect(current()).toEqual(applied);
