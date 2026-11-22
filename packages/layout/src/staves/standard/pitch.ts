@@ -19,6 +19,7 @@ import {
 } from '@reprise/model';
 
 import { targetKey, targetsOf, type BendTarget } from './bend-targets';
+import { sameTick } from '../../ticks';
 
 /** An accidental printed before a note: the alteration it shows, and whether as a reminder. */
 export interface ShownAccidental {
@@ -196,6 +197,15 @@ interface TimedNote {
  */
 function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature, targets: boolean): TimedNote[] {
   const out: TimedNote[] = [];
+  // Voices reach one onset by different tuplet sums, a float apart; every note there takes the
+  // first tick seen, so the exact comparisons and chord ids below see one onset.
+  const seen: number[] = [];
+  const snap = (tick: number): number => {
+    const found = seen.find((other) => sameTick(other, tick));
+    if (found !== undefined) return found;
+    seen.push(tick);
+    return tick;
+  };
   const push = (tick: number, voice: number, order: number, chord: string, note: Note): void => {
     const spelling = spelled(track, note, key);
     out.push({
@@ -225,8 +235,9 @@ function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature, targets: boo
   };
   let graces = 0;
   for (const [voice, { beats }] of bar.voices.entries()) {
-    let tick = 0;
+    let raw = 0;
     for (const beat of beats) {
+      const tick = snap(raw);
       let order = 0;
       for (const grace of beat.grace ?? []) {
         graces += 1;
@@ -252,7 +263,7 @@ function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature, targets: boo
           }
         }
       }
-      tick += beatTicks(beat);
+      raw += beatTicks(beat);
     }
   }
   return out.sort(

@@ -15,8 +15,8 @@ import {
 } from './analysis';
 import { bendLabel } from './labels';
 import { SAWTOOTH, WAVES, horizontalWave, sawtooth } from './shapes';
+import { TICK_EPSILON } from '../../ticks';
 
-const TICK_EPSILON = 1e-6;
 /** A lane text's baseline above the lane's bottom, and a glyph's bottom edge, in staff spaces. */
 const TEXT_LIFT = 0.35;
 const GLYPH_LIFT = 0.25;

@@ -58,6 +58,7 @@ import {
   type ArcDirection,
   type StemDirection,
 } from './rhythm';
+import { TICK_EPSILON, sameTick } from '../../ticks';
 
 /**
  * Articulations, in staff spaces: the gap from the note or stem, between stacked marks and
@@ -740,10 +741,12 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
 
 /** The left edge of whatever any voice draws at the first onset after `tick`, or `end`. */
 function nextOnsetEdge(context: ConnectionContext, tick: number, end: number): number {
-  const later = context.plan.beats.filter((other) => other.tick > tick);
+  const later = context.plan.beats.filter((other) => other.tick > tick + TICK_EPSILON);
   if (later.length === 0) return end;
   const at = Math.min(...later.map((other) => other.tick));
-  const edge = Math.min(...later.filter((other) => other.tick === at).map((other) => other.left));
+  const edge = Math.min(
+    ...later.filter((other) => sameTick(other.tick, at)).map((other) => other.left),
+  );
   return context.placement.onsetX(at) + edge;
 }
 

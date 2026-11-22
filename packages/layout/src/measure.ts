@@ -14,9 +14,8 @@ import {
 import { headerWidth } from './header';
 import { staffBar, trackBar, type StaffSlot } from './slots';
 import { durationWidth, segmentWidth, type Spring } from './spacing';
+import { TICK_EPSILON } from './ticks';
 
-/** Onsets closer than this many ticks are one: tuplet ticks are fractional and never rounded. */
-const TICK_EPSILON = 1e-6;
 /** Room between neighbouring onsets' extents, and around a bar's content, in staff spaces. */
 const ONSET_GAP = 0.3;
 const LEAD = 1;

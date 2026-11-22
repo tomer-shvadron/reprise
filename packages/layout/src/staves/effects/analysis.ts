@@ -4,8 +4,7 @@ import { glyphMetrics, textExtent, textWidth, type GlyphName } from '../../metri
 import { LANE_HEIGHT, type LaneRequests } from '../lanes';
 import { HARMONIC_LABELS } from './labels';
 import { articulationMarks } from './marks';
-
-const TICK_EPSILON = 1e-6;
+import { TICK_EPSILON } from '../../ticks';
 
 /** Effect text in the lanes, and the whammy's smaller text, in staff spaces. */
 export const EFFECT_TEXT = 1;

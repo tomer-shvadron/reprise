@@ -1,7 +1,7 @@
 import { PPQ, type Duration, type TimeSignature, type Tuplet } from '@reprise/model';
+import { TICK_EPSILON } from '../../ticks';
 
 const WHOLE = PPQ * 4;
-const TICK_EPSILON = 1e-6;
 
 /** One beat of a voice as rhythm notation sees it. */
 export interface RhythmEvent {
