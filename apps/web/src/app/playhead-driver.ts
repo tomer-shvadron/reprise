@@ -18,7 +18,10 @@ export interface PlayheadView {
 
 export type Heard = HeardPosition;
 
-/** Written seconds per real second: the speed in percent, or the BPM over the written tempo. */
+/**
+ * Written seconds per real second: the speed in percent, or, in fixed tempo, the fixed BPM over
+ * the written tempo at the tick (every tick plays at that BPM, so the factor varies with the map).
+ */
 export function speedAt(timeline: Timeline, tempo: TempoSetting, playbackTick: number): number {
   return tempo.mode === 'percent'
     ? tempo.value / 100

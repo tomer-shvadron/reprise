@@ -33,6 +33,7 @@ describe('transport commands', () => {
       'transport.playFromSelection',
       'transport.loopSelection',
       'transport.loopSection',
+      'transport.toggleFixedTempo',
     ];
     expect(transport).toHaveLength(22 + menuOnly.length);
     for (const command of transport) {
@@ -78,6 +79,42 @@ describe('transport commands', () => {
     expect(percent()).toBe(100);
     await run('transport.toggleSpeed');
     expect(percent()).toBe(105);
+  });
+
+  it('fixed tempo: on at the current BPM, steps in BPM, F9 only announces, off returns', async () => {
+    const { services, run } = await setup(fourBars());
+    const tempo = () => services.playback.getState().settings.tempo;
+    await run('transport.speedUp');
+    await run('transport.speedUp');
+    expect(tempo()).toEqual({ mode: 'percent', value: 110 });
+
+    await run('transport.toggleFixedTempo');
+    expect(tempo()).toEqual({ mode: 'bpm', value: 132 });
+    expect(services.transport.getState().fixedReturn).toBe(110);
+
+    await run('transport.speedUp');
+    expect(tempo()).toEqual({ mode: 'bpm', value: 137 });
+    await run('transport.slowDown');
+    await run('transport.slowDown');
+    expect(tempo()).toEqual({ mode: 'bpm', value: 127 });
+
+    await run('transport.toggleSpeed');
+    expect(tempo()).toEqual({ mode: 'bpm', value: 127 });
+    expect(services.transport.getState().announcement?.text).toBe('Fixed tempo is on');
+
+    await run('transport.toggleFixedTempo');
+    expect(tempo()).toEqual({ mode: 'percent', value: 110 });
+    expect(services.transport.getState().fixedReturn).toBeUndefined();
+  });
+
+  it('keeps fixed tempo within 20 to 400 BPM', async () => {
+    const { services, run } = await setup(fourBars());
+    services.audio.setTempo('bpm', 22);
+    await run('transport.slowDown');
+    expect(services.playback.getState().settings.tempo.value).toBe(20);
+    services.audio.setTempo('bpm', 398);
+    await run('transport.speedUp');
+    expect(services.playback.getState().settings.tempo.value).toBe(400);
   });
 
   it('loop the selection, or the whole song with none', async () => {

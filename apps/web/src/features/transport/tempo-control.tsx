@@ -16,7 +16,16 @@ import { startPositionReader, type PositionReader } from '@/state/position-reade
 import { timelineOf, writtenBpmAt } from '@/state/timeline';
 
 import { TransportButton } from './controls';
-import { bpmFor, parseBpm, percentForBpm, percentOf, TEMPO_PERCENT } from './tempo';
+import {
+  bpmFor,
+  clampBpm,
+  clampPercent,
+  isFixed,
+  parseBpm,
+  percentForBpm,
+  percentOf,
+  TEMPO_PERCENT,
+} from './tempo';
 
 /** The slider's step keys in its tooltip, "Slower [, Faster ]", each only while it is bound. */
 function SpeedStepKeys({ slower, faster }: { slower: BoundCommand; faster: BoundCommand }) {
@@ -44,6 +53,7 @@ export function TempoControl() {
   const { playback, document, audio, transport } = services;
   const tempo = useStore(playback, (state) => state.settings.tempo);
   const hasScore = useStore(document, (state) => state.score !== undefined);
+  const fixed = isFixed(tempo);
   const remembered = useStore(transport, (state) => state.rememberedSpeed);
   const focus = useStore(transport, (state) => state.focus);
   const slowDown = useCommand('transport.slowDown');
@@ -115,7 +125,9 @@ export function TempoControl() {
     if (!score) return;
     // Fresh from the store: the state can trail the playhead by a frame.
     const base = writtenBpmAt(timelineOf(score), playback.getState().position);
-    audio.setTempo('percent', percentForBpm(value, base));
+    // Fixed tempo takes the typed BPM as it is; otherwise it becomes a percent of the written one.
+    if (fixed) audio.setTempo('bpm', clampBpm(value));
+    else audio.setTempo('percent', percentForBpm(value, base));
   };
 
   const commitDraft = () => {
@@ -154,6 +166,7 @@ export function TempoControl() {
   };
 
   const speedLabel = `${String(Math.round(percent))}%`;
+  const sliderPercent = clampPercent(percent);
 
   return (
     <div {...menu} role="group" aria-label="Tempo" className="flex items-center gap-2">
@@ -188,19 +201,35 @@ export function TempoControl() {
           <InputGroupText className="text-xs">BPM</InputGroupText>
         </InputGroupAddon>
       </InputGroup>
+      {fixed && (
+        <span
+          className="text-muted-foreground text-xs font-medium"
+          data-testid="fixed-tempo-marker"
+        >
+          Fixed
+        </span>
+      )}
       <HintTooltip
-        spoken={[
-          'Speed',
-          slowDown.spoken && `slower ${slowDown.spoken}`,
-          speedUp.spoken && `faster ${speedUp.spoken}`,
-        ]
-          .filter(Boolean)
-          .join(', ')}
+        spoken={
+          fixed
+            ? 'Fixed tempo is on'
+            : [
+                'Speed',
+                slowDown.spoken && `slower ${slowDown.spoken}`,
+                speedUp.spoken && `faster ${speedUp.spoken}`,
+              ]
+                .filter(Boolean)
+                .join(', ')
+        }
         label={
-          <>
-            Speed
-            <SpeedStepKeys slower={slowDown} faster={speedUp} />
-          </>
+          fixed ? (
+            'Fixed tempo is on'
+          ) : (
+            <>
+              Speed
+              <SpeedStepKeys slower={slowDown} faster={speedUp} />
+            </>
+          )
         }
       >
         <div
@@ -208,11 +237,11 @@ export function TempoControl() {
           data-commands="transport.slowDown transport.speedUp"
         >
           <Slider
-            value={[percent]}
+            value={[sliderPercent]}
             min={TEMPO_PERCENT.min}
             max={TEMPO_PERCENT.max}
             step={1}
-            disabled={!hasScore}
+            disabled={!hasScore || fixed}
             thumbLabel="Speed"
             thumbKeys={stepKeys}
             valueText={(value) => `${String(Math.round(value))}%`}
@@ -231,7 +260,9 @@ export function TempoControl() {
         aria-label={undefined}
         aria-pressed={Math.round(percent) !== TEMPO_PERCENT.default}
         disabled={
-          !hasScore || (Math.round(percent) === TEMPO_PERCENT.default && remembered === undefined)
+          !hasScore ||
+          fixed ||
+          (Math.round(percent) === TEMPO_PERCENT.default && remembered === undefined)
         }
       >
         <span className="sr-only">Relative speed </span>

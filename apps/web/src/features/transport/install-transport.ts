@@ -128,6 +128,7 @@ export function installTransport(deps: TransportDeps): () => void {
       const tempo = state.file ? entryOf(state.file.key).tempo : fresh();
       audio.setTempo(tempo.mode, tempo.value);
       transport.getState().setRememberedSpeed(undefined);
+      transport.getState().setFixedReturn(undefined);
       return;
     }
     if (state.file && state.file !== previous.file) {

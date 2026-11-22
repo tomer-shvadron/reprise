@@ -94,6 +94,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Slow down 5% | Transport | Global | [ | [ |
 | Speed up 5% | Transport | Global | ] | ] |
 | Toggle relative speed | Transport | Global | ⌘F9 | Ctrl+F9 |
+| Fixed tempo | Transport | Global | — | — |
 | Announce position | Transport | Global | ⌥P | Alt+P |
 | Previous beat | Transport | Global | ← | Left |
 | Next beat | Transport | Global | → | Right |

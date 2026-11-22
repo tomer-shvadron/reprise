@@ -68,6 +68,27 @@ describe('TempoControl', () => {
     expect(field()).toHaveValue('90');
   });
 
+  it('in fixed tempo the field takes the BPM as typed and the slider is disabled', async () => {
+    const { services, open } = renderBar();
+    const user = userEvent.setup();
+    await open(fourBars());
+    expect(screen.queryByTestId('fixed-tempo-marker')).toBeNull();
+    act(() => {
+      services.audio.setTempo('bpm', 90);
+    });
+    expect(field()).toHaveValue('90');
+    expect(screen.getByTestId('fixed-tempo-marker')).toHaveTextContent('Fixed');
+    expect(speed()).toHaveAttribute('data-disabled');
+    expect(percentButton()).toBeDisabled();
+
+    await user.click(field());
+    await user.keyboard('100{Enter}');
+    expect(services.fakeAudio.setTempo).toHaveBeenLastCalledWith('bpm', 100);
+    await user.click(field());
+    await user.keyboard('500{Enter}');
+    expect(services.fakeAudio.setTempo).toHaveBeenLastCalledWith('bpm', 400);
+  });
+
   it('turns a typed BPM into a percent, at the written tempo under the playhead', async () => {
     const { services, open } = renderBar();
     const user = userEvent.setup();

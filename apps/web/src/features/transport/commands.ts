@@ -8,7 +8,15 @@ import { sectionRange, targetBars, targetPlace } from './menu-target';
 import { describePosition } from './position-format';
 import { playheadBar } from './seek-commands';
 import { seekToBar } from './seek-target';
-import { percentOf, stepPercent, TEMPO_PERCENT } from './tempo';
+import {
+  clampBpm,
+  clampPercent,
+  FIXED_BPM,
+  isFixed,
+  percentOf,
+  stepPercent,
+  TEMPO_PERCENT,
+} from './tempo';
 
 export type TransportCommandId =
   | 'transport.playPause'
@@ -26,6 +34,7 @@ export type TransportCommandId =
   | 'transport.slowDown'
   | 'transport.speedUp'
   | 'transport.toggleSpeed'
+  | 'transport.toggleFixedTempo'
   | 'transport.announcePosition';
 
 type TransportCommand = Command & { id: TransportCommandId };
@@ -50,7 +59,11 @@ export function transportCommands(services: TransportServices): TransportCommand
     audio.setTempo('percent', percent);
   };
   const stepBy = (direction: -1 | 1) => {
-    if (hasScore()) setPercent(stepPercent(currentPercent(services), direction));
+    if (!hasScore()) return;
+    const { tempo } = playback.getState().settings;
+    // Fixed tempo steps the BPM itself; otherwise the speed steps on the 5% grid.
+    if (isFixed(tempo)) audio.setTempo('bpm', clampBpm(tempo.value + direction * FIXED_BPM.step));
+    else setPercent(stepPercent(currentPercent(services), direction));
   };
 
   /** The section of the right-clicked marker, else the one holding the first selected bar. */
@@ -232,14 +245,39 @@ export function transportCommands(services: TransportServices): TransportCommand
       repeat: false,
       run: () => {
         if (!hasScore()) return;
-        const percent = currentPercent(services);
         const ui = transport.getState();
+        if (isFixed(playback.getState().settings.tempo)) {
+          ui.announce('Fixed tempo is on');
+          return;
+        }
+        const percent = currentPercent(services);
         if (percent !== TEMPO_PERCENT.default) {
           ui.setRememberedSpeed(percent);
           setPercent(TEMPO_PERCENT.default);
         } else if (ui.rememberedSpeed !== undefined) {
           setPercent(ui.rememberedSpeed);
         }
+      },
+    },
+    {
+      id: 'transport.toggleFixedTempo',
+      title: 'Fixed tempo',
+      repeat: false,
+      run: () => {
+        const { score } = document.getState();
+        if (!score) return;
+        const ui = transport.getState();
+        const { tempo } = playback.getState().settings;
+        if (isFixed(tempo)) {
+          setPercent(clampPercent(ui.fixedReturn ?? TEMPO_PERCENT.default));
+          ui.setFixedReturn(undefined);
+          ui.announce('Fixed tempo off');
+          return;
+        }
+        const written = writtenBpmAt(timelineOf(score), playback.getState().position);
+        ui.setFixedReturn(currentPercent(services));
+        audio.setTempo('bpm', clampBpm(Math.round((written * currentPercent(services)) / 100)));
+        ui.announce('Fixed tempo on');
       },
     },
     {
