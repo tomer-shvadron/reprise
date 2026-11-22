@@ -7,6 +7,7 @@ import { CI_FACTOR, isCi, loadBudgets, parseBudgets, resolveBudgets } from './bu
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const ROADMAP = join(ROOT, 'docs/plans/roadmap.md');
+const AUDIO_BUDGET_SOURCE = join(ROOT, 'packages/audio/src/samples/managed-sample-source.ts');
 
 const table = (rows: string[]): string =>
   ['## Budgets', '', '| Metric | Budget | Asserted by |', '| --- | --- | --- |', ...rows, ''].join(
@@ -35,20 +36,42 @@ describe('the roadmap budgets table', () => {
     }
   });
 
-  // Read as text, not imported: the audio source pulls in DOM types the scripts tsconfig lacks (#293).
+  const row = (metric: string) => {
+    const found = budgets.find((budget) => budget.metric === metric);
+    expect(found, `docs/plans/roadmap.md has no budget row "${metric}"`).toBeDefined();
+    return found;
+  };
+
+  // The constants are read as text, not imported: the audio root export pulls in DOM types the
+  // scripts tsconfig lacks, a deep subpath import is banned by the boundary lint, and adding the
+  // DOM lib to the scripts project would widen it for one assertion (#293). The table's "MB" is
+  // MiB, because the constants multiply by MEGABYTE = 1024 * 1024.
   it.each([
     ['Decoded audio resident, GM tier, any song', 'GM_BUDGET_BYTES'],
     ['Decoded audio resident, HQ tier, default', 'HQ_BUDGET_BYTES'],
   ])('keeps the "%s" row equal to %s', (metric, constant) => {
-    const source = readFileSync(
-      join(ROOT, 'packages/audio/src/samples/managed-sample-source.ts'),
-      'utf8',
+    const source = readFileSync(AUDIO_BUDGET_SOURCE, 'utf8');
+    expect(source, 'MEGABYTE is no longer 1024 * 1024').toMatch(
+      /export const MEGABYTE = 1024 \* 1024;/,
     );
-    const megabytes = new RegExp(`export const ${constant} = (\\d+) \\* MEGABYTE;`).exec(source);
-    expect(megabytes, `${constant} is no longer "<n> * MEGABYTE"`).not.toBeNull();
-    const row = budgets.find((budget) => budget.metric === metric);
-    expect(row?.unit).toBe('MB');
-    expect(row?.value).toBe(Number(megabytes?.[1]));
+    const match = new RegExp(`export const ${constant} = (\\d+) \\* MEGABYTE;`).exec(source);
+    expect(match, `${constant} is no longer "<n> * MEGABYTE"`).not.toBeNull();
+    const found = row(metric);
+    expect(found?.unit).toBe('MB');
+    expect(
+      found?.value,
+      `the "${metric}" row and ${constant} disagree: fix the one that is wrong, and the other with it`,
+    ).toBe(Number(match?.[1]));
+  });
+
+  it('keeps the mounted-elements unit test on the roadmap figure', () => {
+    const source = readFileSync(join(ROOT, 'apps/web/src/features/score/budget.test.ts'), 'utf8');
+    const match = /const BUDGET = ([\d_]+);/.exec(source);
+    expect(match, 'budget.test.ts no longer declares "const BUDGET = <n>;"').not.toBeNull();
+    expect(
+      row('Mounted SVG elements at any zoom')?.value,
+      'the roadmap row and BUDGET in budget.test.ts disagree: fix the one that is wrong',
+    ).toBe(Number((match?.[1] ?? '').replaceAll('_', '')));
   });
 
   it('states the CI factor in its note', () => {
