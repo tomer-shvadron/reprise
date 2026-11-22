@@ -166,7 +166,9 @@ export function TempoControl() {
   };
 
   const speedLabel = `${String(Math.round(percent))}%`;
-  const sliderPercent = clampPercent(percent);
+  // In fixed tempo the percent is only a derived number that moves at every tempo mark, so the
+  // disabled slider rests at 100 and the button shows a dash and is not pressed.
+  const sliderPercent = fixed ? TEMPO_PERCENT.default : clampPercent(percent);
 
   return (
     <div {...menu} role="group" aria-label="Tempo" className="flex items-center gap-2">
@@ -204,9 +206,10 @@ export function TempoControl() {
       {fixed && (
         <span
           className="text-muted-foreground text-xs font-medium"
+          id="fixed-tempo-note"
           data-testid="fixed-tempo-marker"
         >
-          Fixed
+          Fixed <span className="sr-only">tempo is on, so the speed slider is off</span>
         </span>
       )}
       <HintTooltip
@@ -244,6 +247,7 @@ export function TempoControl() {
             disabled={!hasScore || fixed}
             thumbLabel="Speed"
             thumbKeys={stepKeys}
+            thumbDescribedBy={fixed ? 'fixed-tempo-note' : undefined}
             valueText={(value) => `${String(Math.round(value))}%`}
             onValueChange={([value]) => {
               if (value !== undefined) audio.setTempo('percent', value);
@@ -253,12 +257,12 @@ export function TempoControl() {
       </HintTooltip>
       <TransportButton
         command="transport.toggleSpeed"
-        label={speedLabel}
+        label={fixed ? '–' : speedLabel}
         tip="Toggle relative speed"
         size="sm"
         className="min-w-[6ch] tabular-nums"
         aria-label={undefined}
-        aria-pressed={Math.round(percent) !== TEMPO_PERCENT.default}
+        aria-pressed={!fixed && Math.round(percent) !== TEMPO_PERCENT.default}
         disabled={
           !hasScore ||
           fixed ||
@@ -266,7 +270,7 @@ export function TempoControl() {
         }
       >
         <span className="sr-only">Relative speed </span>
-        {speedLabel}
+        {fixed ? '–' : speedLabel}
       </TransportButton>
     </div>
   );

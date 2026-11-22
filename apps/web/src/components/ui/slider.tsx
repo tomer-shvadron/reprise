@@ -12,6 +12,7 @@ function Slider({
   max = 100,
   thumbLabel,
   thumbKeys,
+  thumbDescribedBy,
   valueText,
   ...props
 }: React.ComponentProps<typeof SliderPrimitive.Root> & {
@@ -19,6 +20,8 @@ function Slider({
   thumbLabel?: string;
   /** `aria-keyshortcuts` for each thumb, such as the step commands that move it. */
   thumbKeys?: string | undefined;
+  /** `aria-describedby` for each thumb, such as the reason it is disabled. */
+  thumbDescribedBy?: string | undefined;
   valueText?: (value: number) => string;
 }) {
   const _values = React.useMemo(
@@ -54,6 +57,7 @@ function Slider({
           key={index}
           aria-label={thumbLabel}
           aria-keyshortcuts={thumbKeys}
+          aria-describedby={thumbDescribedBy}
           aria-valuetext={
             valueText && _values[index] !== undefined ? valueText(_values[index]) : undefined
           }

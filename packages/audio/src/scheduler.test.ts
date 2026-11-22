@@ -250,6 +250,23 @@ describe('fixed pace', () => {
     expect(notes.map((n) => n.when)).toEqual([0, 1, 2, 3, 4, 4.5, 5, 5.5]);
   });
 
+  it('ignores a ramp as well as steps', () => {
+    const builder = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)], { mix: { tempo: { bpm: 60, duration: 8 } } })
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)]);
+    const timeline = createTimeline(builder.build());
+    const { notes } = walk(timeline, start(timeline, fixed(100)), 20);
+    for (const [index, scheduled] of notes.entries()) {
+      expect(scheduled.when).toBeCloseTo(index * 0.6, 9);
+    }
+    expect(notes).toHaveLength(4);
+  });
+
   it('keeps the pace across a loop wrap', () => {
     const timeline = twoTempos();
     const loop = { startTick: BAR, endTick: 2 * BAR };

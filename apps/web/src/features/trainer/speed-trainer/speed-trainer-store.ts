@@ -207,6 +207,8 @@ export function createSpeedTrainer(services: SpeedTrainerServices) {
         const referenceBpm = referenceBpmFor(services, range);
         const plan = percentPlan(config, referenceBpm);
         const first = plan.percents[0] ?? 100;
+        // The trainer runs in percent, so starting it leaves fixed tempo.
+        const wasFixed = playback.getState().settings.tempo.mode === 'bpm';
         handled = playback.getState().lastLoop;
         documentId = document.getState().id;
         set({ status: 'running', range, referenceBpm, plan, ...startRun() });
@@ -218,7 +220,10 @@ export function createSpeedTrainer(services: SpeedTrainerServices) {
           setTempo(first);
           audio.play();
         });
-        say(first);
+        if (wasFixed) {
+          transport.getState().setFixedReturn(undefined);
+          announce(`Fixed tempo off. Speed trainer: ${String(Math.round(first))} percent`);
+        } else say(first);
       },
 
       hold() {

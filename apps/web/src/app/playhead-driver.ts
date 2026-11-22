@@ -151,12 +151,18 @@ export function startPlayhead(options: {
   const reader = startPositionReader(
     playback,
     (event) => {
+      const before = last;
       last = event;
       const state = playback.getState();
       const { score } = document.getState();
       if (event && score && selectRunning(state) && !event.countingIn) {
         const timeline = timelineOf(score);
-        const speed = speedAt(timeline, state.settings.tempo, event.position.playbackTick);
+        // The faster of the two ends: in fixed tempo the factor changes at a tempo mark, and a
+        // frame that crossed one must not read as a jump for moving at the old, higher factor.
+        const speed = Math.max(
+          speedAt(timeline, state.settings.tempo, event.position.playbackTick),
+          speedAt(timeline, state.settings.tempo, before?.position.playbackTick ?? 0),
+        );
         run = nextRun(run, event, now(), speed);
       } else {
         run = undefined;

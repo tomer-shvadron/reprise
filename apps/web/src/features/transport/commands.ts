@@ -58,6 +58,8 @@ export function transportCommands(services: TransportServices): TransportCommand
   const setPercent = (percent: number) => {
     audio.setTempo('percent', percent);
   };
+  // Read when a menu or the palette draws, so the title names the step the key would take.
+  const fixedNow = () => isFixed(playback.getState().settings.tempo);
   const stepBy = (direction: -1 | 1) => {
     if (!hasScore()) return;
     const { tempo } = playback.getState().settings;
@@ -224,7 +226,10 @@ export function transportCommands(services: TransportServices): TransportCommand
     },
     {
       id: 'transport.slowDown',
-      title: 'Slow down 5%',
+      searchTitle: 'Slow down',
+      get title() {
+        return fixedNow() ? 'Slow down 5 BPM' : 'Slow down 5%';
+      },
       shortcut: { key: '[' },
       run: () => {
         stepBy(-1);
@@ -232,7 +237,10 @@ export function transportCommands(services: TransportServices): TransportCommand
     },
     {
       id: 'transport.speedUp',
-      title: 'Speed up 5%',
+      searchTitle: 'Speed up',
+      get title() {
+        return fixedNow() ? 'Speed up 5 BPM' : 'Speed up 5%';
+      },
       shortcut: { key: ']' },
       run: () => {
         stepBy(1);

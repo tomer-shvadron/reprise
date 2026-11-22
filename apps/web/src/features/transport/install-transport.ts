@@ -116,7 +116,7 @@ export function installTransport(deps: TransportDeps): () => void {
   // The speed is a song's own, found by the hash of its bytes: a different file starts at 100%
   // whatever its name, and the same song reopened, or saved and reopened, keeps it.
   const fresh = (): TempoSetting => ({ mode: 'percent', value: TEMPO_PERCENT.default });
-  const speeds = new Map<string, { tempo: TempoSetting }>();
+  const speeds = new Map<string, { tempo: TempoSetting; fixedReturn?: number | undefined }>();
   const entryOf = (key: string) => {
     const entry = speeds.get(key) ?? { tempo: fresh() };
     speeds.set(key, entry);
@@ -124,11 +124,18 @@ export function installTransport(deps: TransportDeps): () => void {
   };
   const unsubscribeDocument = document.subscribe((state, previous) => {
     if (state.id !== previous.id) {
-      if (previous.file) entryOf(previous.file.key).tempo = playback.getState().settings.tempo;
-      const tempo = state.file ? entryOf(state.file.key).tempo : fresh();
-      audio.setTempo(tempo.mode, tempo.value);
+      if (previous.file) {
+        const left = entryOf(previous.file.key);
+        left.tempo = playback.getState().settings.tempo;
+        // The percent fixed tempo returns to travels with the song's own tempo.
+        left.fixedReturn = transport.getState().fixedReturn;
+      }
+      const entry = state.file
+        ? entryOf(state.file.key)
+        : { tempo: fresh(), fixedReturn: undefined };
+      audio.setTempo(entry.tempo.mode, entry.tempo.value);
       transport.getState().setRememberedSpeed(undefined);
-      transport.getState().setFixedReturn(undefined);
+      transport.getState().setFixedReturn(entry.fixedReturn);
       return;
     }
     if (state.file && state.file !== previous.file) {
