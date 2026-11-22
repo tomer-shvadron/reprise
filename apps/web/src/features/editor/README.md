@@ -111,7 +111,7 @@ Effect keys are Guitar Pro 8's, bound in the `editing` context by `effect-comman
   at the start of every document. Read it to switch clicks from seeking to editing.
 - `selection` (`state/selection.ts`) for the current track, the edit cursor, the range and the picked notes, written only through `setEdit`.
 - `document.apply(command)` for every edit, so each is one undo step through the history.
-- `audio.previewTrack`, and `audio.previewNote(trackId, { string, fret } | { pitch }, { velocity?, seconds? })` (#204), which throws `RangeError` on bad input, so an entry calls it last, after the edit. An entry's preview takes its velocity from the note's dynamic (`DYNAMICS_VELOCITY`) and its seconds from the beat's written length at the tempo in force (`preview.ts`).
+- `audio.previewTrack`, and `audio.previewNote(trackId, { string, fret } | { pitch }, { velocity?, seconds? })` (#204), which throws `RangeError` on bad input, so an entry calls it last, after the edit. An entry's preview takes its velocity from the note's dynamic (`DYNAMICS_VELOCITY`) and its seconds from the beat's written length at the tempo in force (`preview.ts`). Applying an effect sounds the beat it wrote through `audio.previewBeat` (#510): `commitEffectPlan` calls `soundEffect` (`effect-sound.ts`) last, with the plan's `beatSound`, the earliest beat of the edit (`effectSound`; the cursor's track first). Both sounds, this and the entry's note, are gated by the `editing.sound` setting; the effect sound is also silent while the song plays or counts in, and undo and redo make none.
 
 Entry state that no other feature reads (duration, insert versus overwrite, the waiting digit) lives in `entry-store.ts`; the voice is the edit cursor's, which lives in the selection store.
 

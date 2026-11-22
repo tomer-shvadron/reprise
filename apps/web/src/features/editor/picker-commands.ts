@@ -3,7 +3,7 @@ import type { AppServices } from '@/app/services';
 import type { UiStore } from '@/state/ui';
 
 import type { EffectPicker } from './dialogs';
-import { runEffect } from './effect-commands';
+import { runEffect, type EffectServices } from './effect-commands';
 import { PICKER_PROBE, effectInput, openEffectPicker, openGraceDialog } from './effect-dialogs';
 import { resolveEffect } from './effects';
 import { entryController } from './entry-controller';
@@ -46,7 +46,7 @@ export function toggleHistoryPanel(ui: UiStore): void {
  * and whammy pickers take the free neighbours of the toggles.
  */
 export function pickerCommands(
-  services: Pick<AppServices, 'document' | 'selection' | 'entry' | 'ui'>,
+  services: EffectServices & Pick<AppServices, 'ui'>,
 ): PickerCommand[] {
   const picker = (
     id: PickerCommandId,

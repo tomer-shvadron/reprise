@@ -9,7 +9,13 @@ import {
 } from '@reprise/model';
 
 import { effectTarget, type EffectTarget, type NoteRef } from './effect-targets';
-import { effectCommand, type EffectEdits, type EffectInput, type EffectResult } from './effects';
+import {
+  effectCommand,
+  effectSound,
+  type EffectEdits,
+  type EffectInput,
+  type EffectResult,
+} from './effects';
 
 export const GRACE_DURATIONS = [16, 32, 64] as const;
 export type GraceDuration = (typeof GRACE_DURATIONS)[number];
@@ -156,9 +162,12 @@ export function planGrace(input: EffectInput, form: GraceForm | 'remove'): Effec
     const notes = withGrace.flatMap(({ beat }) =>
       hammerEdits(beat, new Map([...graceStrings(beat.grace)].map((string) => [string, false]))),
     );
-    return beats.length > 0
-      ? { command: effectCommand('Remove grace note', { beats, notes }) }
-      : { nothing: true };
+    if (beats.length === 0) return { nothing: true };
+    const beatSound = effectSound(input.score, { beats }, input.state.cursor?.track);
+    return {
+      command: effectCommand('Remove grace note', { beats, notes }),
+      ...(beatSound && { beatSound }),
+    };
   }
   // The form's fret is the one the tab shows; the drone string stores its frets from its own nut.
   for (const [index, beat] of target.beats.entries()) {
@@ -193,5 +202,9 @@ export function planGrace(input: EffectInput, form: GraceForm | 'remove'): Effec
     notes.push(...hammerEdits(beat.beat, wanted));
   });
   if (beats.length === 0) return { refused: FRETTED_ONLY };
-  return { command: effectCommand('Grace note', { beats, notes }) };
+  const beatSound = effectSound(input.score, { beats }, input.state.cursor?.track);
+  return {
+    command: effectCommand('Grace note', { beats, notes }),
+    ...(beatSound && { beatSound }),
+  };
 }

@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 import { bendPreset } from './bend-presets';
 import { effectReason, effectState } from './effect-state';
-import { planEffect, type EffectAction, type EffectMode } from './effects';
+import { effectSound, planEffect, type EffectAction, type EffectMode } from './effects';
+import { planGrace } from './grace-form';
 import { editScore } from './test/scores';
 
 /** Two bars: a full guitar bar with a chord, and a second bar to slide and hammer into. */
@@ -790,5 +791,78 @@ describe('planEffect: wah', () => {
     };
     expect(effectState(onDrums, wah('closed'))).toBe('unavailable');
     expect(effectReason(onDrums, wah('closed'))).toBe(FRETTED_ONLY);
+  });
+});
+
+describe('effectSound', () => {
+  const beatEdit = (built: Score, ...at: [number, number][]) => ({
+    beats: at.map(([bar, beat]) => ({ beatId: beatOf(built, 0, bar, beat).id, changes: {} })),
+  });
+
+  it('maps a note edit to its beat and keeps a beat edit as it is', () => {
+    const built = riff();
+    const track = built.tracks[0]?.id;
+    const effects = { palmMute: true };
+    expect(
+      effectSound(built, { notes: [{ noteId: noteOf(built, 0, 0, 2, 1).id, effects }] }),
+    ).toEqual({ track, beat: beatOf(built, 0, 0, 2).id });
+    expect(effectSound(built, beatEdit(built, [1, 1]))).toEqual({
+      track,
+      beat: beatOf(built, 0, 1, 1).id,
+    });
+  });
+
+  it('picks the earliest beat by bar then position, however the edits are ordered', () => {
+    const built = riff();
+    expect(effectSound(built, beatEdit(built, [1, 0], [0, 3], [0, 1]))?.beat).toBe(
+      beatOf(built, 0, 0, 1).id,
+    );
+  });
+
+  it('prefers the cursor track, else the lowest track', () => {
+    const built = (() => {
+      const b = score().track('guitar');
+      b.bar()
+        .beat('4', [note(1, 5)])
+        .beat('4', [note(1, 7)]);
+      const c = b.track('bass');
+      c.bar()
+        .beat('4', [note(1, 5)])
+        .beat('4', [note(1, 7)]);
+      return b.build({ ids: 'sequential' });
+    })();
+    const edits = {
+      beats: [
+        { beatId: beatOf(built, 1, 0, 0).id, changes: {} },
+        { beatId: beatOf(built, 0, 0, 1).id, changes: {} },
+      ],
+    };
+    expect(effectSound(built, edits, built.tracks[1]?.id)?.beat).toBe(beatOf(built, 1, 0, 0).id);
+    expect(effectSound(built, edits)?.beat).toBe(beatOf(built, 0, 0, 1).id);
+  });
+
+  it('has nothing to sound for no edits', () => {
+    expect(effectSound(riff(), {})).toBeUndefined();
+  });
+
+  it('is on a plan for a set and a remove, and on the destination beat for a hammer-on', () => {
+    const built = riff();
+    const noteIds = ids(built, [0, 1, 0]);
+    const beat = beatOf(built, 0, 0, 1).id;
+    const on = apply(built, { noteIds }, palmMute);
+    expect(on.plan).toMatchObject({ beatSound: { beat } });
+    const off = apply(on.after ?? built, { noteIds }, palmMute);
+    expect(off.plan).toMatchObject({ beatSound: { beat } });
+    const hammer = apply(built, { noteIds: ids(built, [0, 0, 0]) }, { kind: 'hammer' });
+    expect(hammer.plan).toMatchObject({ beatSound: { beat: beatOf(built, 0, 0, 3).id } });
+  });
+
+  it('is on a grace plan', () => {
+    const built = riff();
+    const plan = planGrace(
+      { score: built, state: state({ noteIds: ids(built, [0, 2, 0]) }) },
+      { fret: 3, duration: 32, before: true, transition: 'none', dead: false },
+    );
+    expect(plan).toMatchObject({ beatSound: { beat: beatOf(built, 0, 0, 2).id } });
   });
 });

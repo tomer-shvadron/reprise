@@ -36,6 +36,7 @@ describe('the effect pickers', () => {
     expect(beats()[0]?.notes[0]?.bend?.kind).toBe('bendRelease');
     expect(services.document.getState().revision).toBe(before + 1);
     expect(services.document.getState().undoLabel).toBe('Full bend and release');
+    expect(services.fakeAudio.previewBeat).toHaveBeenCalledTimes(1);
     act(() => {
       services.document.getState().undo();
     });

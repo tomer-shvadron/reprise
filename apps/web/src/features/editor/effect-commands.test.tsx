@@ -1,10 +1,11 @@
 import { write } from '@reprise/formats';
 import type { Score } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
 import { dispatchShortcut } from '@/app/shortcut-dispatcher';
+import { EDIT_SOUND_SETTING } from '@/state/app-settings';
 import { createTestServices } from '@/test/services';
 
 import { cursorAtPosition } from './cursor';
@@ -184,5 +185,88 @@ describe('the effect commands', () => {
     expect(titles).toContain('Toggle palm mute');
     expect(titles).toContain('Bend: Full prebend and release');
     expect(new Set(titles).size).toBe(titles.length);
+  });
+});
+
+describe('sounding an applied effect', () => {
+  async function editing() {
+    const ctx = await setup();
+    ctx.services.editing.getState().setEditing(true);
+    return { ...ctx, preview: ctx.services.fakeAudio.previewBeat };
+  }
+
+  it('sounds the beat once the edit is committed, on a set and again on a remove', async () => {
+    const { services, press, beats, preview } = await editing();
+    const track = services.document.getState().score?.tracks[0]?.id;
+    preview.mockImplementation(() => {
+      expect(beats()[0]?.notes[0]?.palmMute).toBe(true);
+    });
+    press('p');
+    expect(preview).toHaveBeenCalledTimes(1);
+    expect(preview).toHaveBeenLastCalledWith(track, beats()[0]?.id);
+    preview.mockImplementation(() => {
+      expect(beats()[0]?.notes[0]?.palmMute).toBe(false);
+    });
+    press('p');
+    expect(preview).toHaveBeenCalledTimes(2);
+  });
+
+  it('sounds the first beat of a range, drawn either way', async () => {
+    const { press, goTo, beats, preview } = await editing();
+    press('ArrowRight', { shiftKey: true });
+    press('ArrowRight', { shiftKey: true });
+    press('x');
+    expect(preview).toHaveBeenCalledTimes(1);
+    expect(preview).toHaveBeenLastCalledWith(expect.anything(), beats()[0]?.id);
+    press('Escape');
+    goTo(2);
+    press('ArrowLeft', { shiftKey: true });
+    press('ArrowLeft', { shiftKey: true });
+    press('o');
+    expect(preview).toHaveBeenCalledTimes(2);
+    expect(preview).toHaveBeenLastCalledWith(expect.anything(), beats()[0]?.id);
+  });
+
+  it('is silent when nothing was written', async () => {
+    const { services, press, preview } = await editing();
+    services.selection.getState().setEdit({ cursor: undefined, currentTrack: undefined });
+    press('p');
+    expect(preview).not.toHaveBeenCalled();
+  });
+
+  it.each(['playing', 'counting-in'] as const)('is silent while %s', async (transport) => {
+    const { services, press, preview } = await editing();
+    services.playback.setState({ transport });
+    press('p');
+    expect(preview).not.toHaveBeenCalled();
+  });
+
+  it('is silent with the setting off', async () => {
+    const { services, press, beats, preview } = await editing();
+    services.settings.set(EDIT_SOUND_SETTING, false);
+    press('p');
+    expect(beats()[0]?.notes[0]?.palmMute).toBe(true);
+    expect(preview).not.toHaveBeenCalled();
+  });
+
+  it('keeps the edit and logs when the preview throws', async () => {
+    const { press, beats, preview } = await editing();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    preview.mockImplementation(() => {
+      throw new RangeError('no such beat');
+    });
+    expect(() => press('p')).not.toThrow();
+    expect(beats()[0]?.notes[0]?.palmMute).toBe(true);
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  it('is silent on undo and redo', async () => {
+    const { services, press, preview } = await editing();
+    press('p');
+    preview.mockClear();
+    services.document.getState().undo();
+    services.document.getState().redo();
+    expect(preview).not.toHaveBeenCalled();
   });
 });
