@@ -1,7 +1,9 @@
 import { PPQ } from '@reprise/model';
 import { describe, expect, it } from 'vitest';
 
-import { durationWidth, segmentWidth, stretch } from './spacing';
+import { assert, array, double, property } from 'fast-check';
+
+import { durationWidth, rigidShares, segmentWidth, squeezedMin, stretch } from './spacing';
 
 describe('durationWidth', () => {
   it('adds the same width for every doubling of the duration up to a quarter', () => {
@@ -44,5 +46,48 @@ describe('stretch', () => {
         0.5,
       ),
     ).toEqual([5, 18]);
+  });
+});
+
+describe('rigidShares', () => {
+  it('puts the room after the onset that needs it, with no spring above its onset or below the suffix', () => {
+    expect(rigidShares([0, 10, 0, 4])).toEqual([0, 6, 0, 4]);
+    expect(rigidShares([8, 2, 3])).toEqual([5, 0, 3]);
+    assert(
+      property(array(double({ min: 0, max: 100, noNaN: true }), { maxLength: 12 }), (extents) => {
+        const shares = rigidShares(extents);
+        expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(Math.max(0, ...extents), 9);
+        for (const [i, share] of shares.entries()) {
+          expect(share).toBeGreaterThanOrEqual(0);
+          expect(share).toBeLessThanOrEqual((extents[i] ?? 0) + 1e-9);
+          // The springs from onset i on hold at least its extent.
+          expect(shares.slice(i).reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(
+            (extents[i] ?? 0) - 1e-9,
+          );
+        }
+      }),
+    );
+  });
+
+  it('keeps a barely squeezed spring close to its minimum, so no gap opens at the bar end', () => {
+    // A wide early onset: the last spring's rigid part is its own, not the widest.
+    const extents = [30, 0, 0, 6];
+    const shares = rigidShares(extents);
+    const springs = extents.map((extent, i) => ({
+      natural: 40,
+      min: 20 + extent,
+      rigid: shares[i] ?? 0,
+    }));
+    for (const spring of springs) {
+      expect(squeezedMin(spring, 0.99)).toBeLessThanOrEqual(spring.min);
+      expect(squeezedMin(spring, 1)).toBe(spring.min);
+    }
+    // The last spring grows by its own 6 px share at most, not by the widest extent's 30.
+    const last = springs[3] ?? { natural: 0, min: 0 };
+    expect(squeezedMin(last, 0.99)).toBeLessThan(last.min * 0.99 + 6 + 1e-9);
+  });
+
+  it('scales the rigid parts when they alone overflow', () => {
+    expect(squeezedMin({ natural: 50, min: 40, rigid: 30 }, 0, 0.5)).toBe(15);
   });
 });
