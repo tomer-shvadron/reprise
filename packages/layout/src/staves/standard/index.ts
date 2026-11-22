@@ -111,6 +111,9 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
         if (!onset) continue;
         onset.left = Math.max(onset.left, reserved.left);
         onset.right = Math.max(onset.right, reserved.right);
+        // Lane-effect labels (`let ring`, a bend's `full`) are drawn at their natural width, so
+        // squeezing must not shrink their room: it counts as rigid. Roomy lines never squeeze.
+        onset.rigid = Math.max(onset.rigid ?? 0, reserved.right);
       }
       return { onsets, above: plan.above, below: plan.below };
     },

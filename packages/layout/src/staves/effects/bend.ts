@@ -70,6 +70,8 @@ export interface BendFrame {
   releaseTop: number;
   /** A tied note continues its bend and gets no pre-bend arrow. */
   tied: boolean;
+  /** Where a label may reach at most, in px: the bar's end. A label centred on a tip near it shifts left. */
+  limit?: number;
 }
 
 /**
@@ -115,7 +117,9 @@ export function drawBend(
   const label = (content: string, px: number, y: number, anchor: 'start' | 'middle'): void => {
     let at = y;
     for (;;) {
-      const mark = text(content, px, at, size, { anchor, node });
+      let mark = text(content, px, at, size, { anchor, node });
+      const over = frame.limit === undefined ? 0 : mark.bbox.x + mark.bbox.width - frame.limit;
+      if (over > 0) mark = text(content, px - over, at, size, { anchor, node });
       const hits = drawn.labels.filter((other) => overlap(other.bbox, mark.bbox));
       if (hits.some((other) => other.text === content)) return;
       const blocks = [
