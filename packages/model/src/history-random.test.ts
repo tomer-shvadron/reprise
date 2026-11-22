@@ -2,6 +2,7 @@
  * A seeded walk over every command with undo and redo interleaved, checking that the history
  * lands exactly on each recorded state and that no accepted edit breaks an invariant.
  */
+import { applyPatches } from 'immer';
 import { describe, expect, it } from 'vitest';
 
 import { insertBar, removeBar, setMasterBar } from './commands/bar-commands';
@@ -229,6 +230,7 @@ describe('history under random edits', () => {
     'seed %i: undo and redo walk the exact states, and every edit keeps the invariants',
     (seed) => {
       const r = picker(random(seed));
+      const jumps = picker(random(seed + 1000));
       const history = createHistory();
       const original = buildScore();
       // states[i] is the score after i undoable steps; cursor is where the history stands.
@@ -245,6 +247,23 @@ describe('history under random edits', () => {
         cursor += 1;
       };
       for (let step = 0; step < STEPS; step++) {
+        // Jumps draw from their own stream, before the walk's roll, so the walk's own draws keep
+        // their order and only the history state they act on differs from before.
+        if (groupDepth === 0 && jumps.chance(0.1) && states.length > 1) {
+          const target = jumps.int(states.length);
+          if (target !== cursor) {
+            const before = current;
+            const replayed = history.step(target - cursor);
+            expect(replayed?.count).toBe(Math.abs(target - cursor));
+            cursor = target;
+            current = replayed?.score ?? current;
+            expect(current).toStrictEqual(states[cursor]);
+            // The merged change replays both ways, across track and bar splices alike.
+            expect(applyPatches(before, replayed?.change.patches ?? [])).toStrictEqual(current);
+            expect(applyPatches(current, replayed?.change.inverse ?? [])).toStrictEqual(before);
+          }
+          continue;
+        }
         const roll = r.int(10);
         if (groupDepth === 0 && roll === 0 && history.canUndo) {
           cursor -= 1;

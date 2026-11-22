@@ -73,6 +73,14 @@ export interface Applied {
   warnings: CommandWarning[];
 }
 
+/** What `History.step` returns: one `Applied` for every step it replayed. */
+export interface Replayed extends Applied {
+  /** How many steps were replayed, at least 1. */
+  count: number;
+  /** The last step replayed, as `undo` or `redo` alone would have returned its change. */
+  last: Change;
+}
+
 export function applyCommand(score: Score, command: Command): Applied {
   if (command.compose) {
     const changes: Change[] = [];
@@ -232,6 +240,13 @@ export interface History {
   /** Undoes the last step; the change carries the patches it applied. */
   undo(): Applied | undefined;
   redo(): Applied | undefined;
+  /**
+   * Replays |n| steps, undo for n < 0 and redo for n > 0, clamped to the stack, as one move: all
+   * of them or none. Undefined for 0 or an empty stack; RangeError for a non-integer. After
+   * several steps `change` is their merge (patches in the order applied, so their paths address
+   * the intermediate scores) and `last` is the final step alone.
+   */
+  step(n: number): Replayed | undefined;
   /** Opens a group: every apply until the matching `endGroup` is one undo step. Groups nest and flatten. */
   beginGroup(label: string): void;
   endGroup(): void;
@@ -269,15 +284,45 @@ export function createHistory(): History {
     redoStack = [];
   };
 
-  const replay = (change: Change, patches: Patch[], inverse: Patch[]): Applied => {
+  const step = (n: number): Replayed | undefined => {
+    if (!Number.isInteger(n)) throw new RangeError(`step expects an integer, got ${String(n)}`);
+    const from = n < 0 ? undoStack : redoStack;
+    const to = n < 0 ? redoStack : undoStack;
+    const count = Math.min(Math.abs(n), from.length);
+    if (count === 0) return undefined;
     if (group) throw new HistoryError('cannot undo or redo while a group is open');
     if (!currentScore) throw new HistoryError('the history has no score');
-    currentScore = applyPatches(currentScore, patches);
-    return {
-      score: currentScore,
-      change: { command: change.command, patches, inverse, touchedBars: change.touchedBars },
-      warnings: [],
-    };
+    const start = currentScore;
+    const replayed: Change[] = [];
+    try {
+      for (let i = 0; i < count; i += 1) {
+        const change = from.at(-1);
+        if (!change) break;
+        const [patches, inverse] =
+          n < 0 ? [change.inverse, change.patches] : [change.patches, change.inverse];
+        currentScore = applyPatches(currentScore, patches);
+        to.push(from.pop() ?? change);
+        replayed.push({
+          command: change.command,
+          patches,
+          inverse,
+          touchedBars: change.touchedBars,
+        });
+      }
+    } catch (error) {
+      // Scores are immutable: restoring the start score and moving the stepped changes back
+      // replays no patch, so the rollback cannot fail.
+      currentScore = start;
+      for (let i = 0; i < replayed.length; i += 1) {
+        const moved = to.pop();
+        if (moved) from.push(moved);
+      }
+      throw error;
+    }
+    const last = replayed[replayed.length - 1];
+    if (!last) return undefined;
+    const change = replayed.length === 1 ? last : mergeChanges(last.command, replayed);
+    return { score: currentScore, change, warnings: [], count: replayed.length, last };
   };
 
   return {
@@ -297,21 +342,9 @@ export function createHistory(): History {
       return applied;
     },
 
-    undo() {
-      const change = undoStack.at(-1);
-      if (!change) return undefined;
-      const applied = replay(change, change.inverse, change.patches);
-      redoStack.push(undoStack.pop() ?? change);
-      return applied;
-    },
-
-    redo() {
-      const change = redoStack.at(-1);
-      if (!change) return undefined;
-      const applied = replay(change, change.patches, change.inverse);
-      undoStack.push(redoStack.pop() ?? change);
-      return applied;
-    },
+    undo: () => step(-1),
+    redo: () => step(1),
+    step,
 
     beginGroup(label) {
       if (group) group.depth += 1;

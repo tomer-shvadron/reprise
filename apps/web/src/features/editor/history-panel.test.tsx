@@ -1,7 +1,7 @@
 import { write } from '@reprise/formats';
 import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithServices } from '@/test/render';
 import { createTestServices } from '@/test/services';
@@ -107,7 +107,30 @@ describe('the history panel', () => {
     expect(screen.getByRole('button', { name: 'Redo Edit note' })).toBeTruthy();
   });
 
-  it('steps back to a clicked row with repeated undo, and forward to a redo row with redo', async () => {
+  it('jumps several rows with one publish, one audio document update and no preview sound', async () => {
+    const { services, edit, doc, score, user } = await setup();
+    edit();
+    for (const fret of [4, 5]) {
+      const first = must(score().tracks[0]?.bars[2]?.voices[0]?.beats[0]).id;
+      act(() => {
+        doc.getState().apply(setNote({ beatId: first }, { string: 2, fret }));
+      });
+    }
+    expect(doc.getState().historyLabels.undo).toHaveLength(4);
+    const published = vi.fn();
+    doc.subscribe(published);
+    const loads = services.fakeAudio.setDocument.mock.calls.length;
+    await user.click(screen.getAllByRole('option')[1] as HTMLElement);
+    expect(doc.getState().historyLabels.undo).toHaveLength(1);
+    expect(published).toHaveBeenCalledTimes(1);
+    expect(services.fakeAudio.setDocument.mock.calls.length).toBe(loads + 1);
+    expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-current', 'step');
+    await user.click(screen.getAllByRole('option')[4] as HTMLElement);
+    expect(published).toHaveBeenCalledTimes(2);
+    expect(services.fakeAudio.previewBeat).not.toHaveBeenCalled();
+  });
+
+  it('steps back to a clicked row, and forward to a redo row', async () => {
     const { edit, doc, user } = await setup();
     edit();
     const before = doc.getState().historyLabels;
