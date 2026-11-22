@@ -6,7 +6,7 @@ import { useAppServices } from '@/app/services-context';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 
-const CHANNEL_NOTE = 'GM sounds only.';
+const CHANNEL_NOTE = 'Applies to GM sounds while automatic effects are off for them.';
 const BYPASS_NOTE = 'A track’s own effects preset still applies.';
 
 const percentText = (value: number) => `${String(Math.round(value))}%`;
@@ -72,6 +72,7 @@ export function MasterStrip() {
             id={channelId}
             size="sm"
             checked={channelEffects}
+            disabled={!gmTierBypass}
             aria-describedby={channelNoteId}
             onCheckedChange={(on) => {
               audio.setChannelEffects(on);
