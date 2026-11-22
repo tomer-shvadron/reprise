@@ -15,6 +15,7 @@ import type { UiStore } from '@/state/ui';
 
 import {
   exportImages,
+  pageOfBar,
   prepareImages,
   ExportCancelled,
   type ImageExportDeps,
@@ -22,6 +23,7 @@ import {
   type ImageFormat,
   type ImageScale,
 } from './image-export';
+import { afterPaint } from '../print-store';
 import type { ImageBackground } from './svg-page';
 import type { PaperSize } from '../view-options';
 
@@ -72,6 +74,8 @@ export interface ImageExporterDeps {
    * undefined when nothing is selected.
    */
   selectionScope: (useTarget: boolean) => ImageSelection | undefined;
+  /** The master bar (0-based) at the top of the score on screen; the page field starts there. */
+  barInView?: () => number | undefined;
   /** Whether chord diagrams are drawn, read when the image is made so it follows the screen. */
   chordDiagrams?: () => boolean;
   /** Whether the chord strip is on, read the same way; the whole score and a page draw it. */
@@ -79,6 +83,8 @@ export interface ImageExporterDeps {
   /** The current track, which the strip prefers. */
   currentTrack?: () => Id | undefined;
   notify: (message: string, kind?: 'error') => void;
+  /** Resolves after the next paint, so the page lookup never delays the dialog; for tests. */
+  nextPaint?: () => Promise<void>;
   /** Rendering overrides, for tests. */
   render?: Pick<ImageExportDeps, 'outlines' | 'rasterise' | 'yieldFrame'>;
 }
@@ -115,6 +121,15 @@ export function createImageExporter(deps: ImageExporterDeps): ImageExporter {
   // Remembered for the session, the way print remembers its settings.
   let remembered: Omit<ImageDialogSettings, 'scope' | 'pageText'> | undefined;
   let running: AbortController | undefined;
+  // The bar on screen when the dialog opened, and whether the page field still follows it (the
+  // user has not typed in it). The lookup lays the score out, so it runs only when the page scope
+  // is in use, after a paint (#421).
+  const follow: { bar: number | undefined; auto: boolean; job: number } = {
+    bar: undefined,
+    auto: true,
+    job: 0,
+  };
+  const nextPaint = deps.nextPaint ?? afterPaint;
 
   const patch = (change: Partial<ImageDialog>) => {
     store.setState((state) => (state.dialog ? { dialog: { ...state.dialog, ...change } } : state));
@@ -158,6 +173,23 @@ export function createImageExporter(deps: ImageExporterDeps): ImageExporter {
     };
   };
 
+  const syncPage = async () => {
+    const job = ++follow.job;
+    if (!follow.auto || !follow.bar || store.getState().dialog?.scope !== 'page') return;
+    await nextPaint();
+    const dialog = store.getState().dialog;
+    // Typing in the field bumps the job too, so a lookup in flight never overwrites it.
+    if (job !== follow.job || !dialog || dialog.scope !== 'page') return;
+    try {
+      // As a whole score, so a half-typed page number cannot stop the lookup.
+      const request = requestOf({ ...dialog, scope: 'score' }, undefined);
+      if (request) patch({ pageText: String(pageOfBar(request, follow.bar)) });
+    } catch (error) {
+      // The field is a convenience: it stays as it is and the dialog keeps working.
+      console.error(error);
+    }
+  };
+
   // Another file can open under the modal (a drop): the dialog is about the old score, so it goes.
   document.subscribe((next, previous) => {
     if (next.score !== previous.score && !running) store.setState({ dialog: undefined });
@@ -168,23 +200,30 @@ export function createImageExporter(deps: ImageExporterDeps): ImageExporter {
     open() {
       if (!document.getState().score || store.getState().dialog) return;
       const bars = selectionScope(false)?.bars;
-      store.setState({
-        dialog: {
-          scope: bars ? 'bars' : 'score',
-          pageText: '1',
-          selectedBars: bars && { first: bars.start + 1, last: bars.end },
-          format: remembered?.format ?? 'png',
-          scale: remembered?.scale ?? 2,
-          background: remembered?.background ?? 'white',
-          paper: remembered?.paper ?? ui.getState().view.paper,
-          progress: undefined,
-          error: undefined,
-        },
-      });
+      const dialog: ImageDialog = {
+        scope: bars ? 'bars' : 'score',
+        pageText: '1',
+        selectedBars: bars && { first: bars.start + 1, last: bars.end },
+        format: remembered?.format ?? 'png',
+        scale: remembered?.scale ?? 2,
+        background: remembered?.background ?? 'white',
+        paper: remembered?.paper ?? ui.getState().view.paper,
+        progress: undefined,
+        error: undefined,
+      };
+      follow.bar = deps.barInView?.();
+      follow.auto = true;
+      follow.job++;
+      store.setState({ dialog });
     },
     update(change) {
       if (running) return;
+      if (change.pageText !== undefined) {
+        follow.auto = false;
+        follow.job++;
+      }
       patch({ ...change, error: undefined });
+      if (change.scope === 'page' || change.paper !== undefined) void syncPage();
     },
     cancel() {
       if (running) running.abort();

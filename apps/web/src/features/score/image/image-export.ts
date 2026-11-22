@@ -278,6 +278,13 @@ export async function prepareImages(
   };
 }
 
+/** The 1-based page of the request's layout that holds master bar `bar` (0-based), or 1. */
+export function pageOfBar(request: ImageExportRequest, bar: number): number {
+  const { result } = planOf(request);
+  const system = result.systems.find(({ bars }) => bar >= bars.start && bar < bars.end);
+  return (system?.page ?? 0) + 1;
+}
+
 /** The images of a request, in page order, all in memory: for Copy as image and for tests. */
 export async function renderImages(
   request: ImageExportRequest,

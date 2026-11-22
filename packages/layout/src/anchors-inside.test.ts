@@ -21,7 +21,8 @@ function options(built: Score, width: number, mode: LayoutOptions['mode']): Layo
 describe('anchors stay inside their system', () => {
   it('in a squeezed bar whose last beat has a second voice moved right of it', () => {
     // Sixteen sixteenths a line cannot hold: the bar is squeezed, and the second voice, a second
-    // from the first at every onset, sits right of the last beat, wholly beyond the bar's end.
+    // from the first at every onset, is drawn at `rigidScale` inside the bar, so no anchor needs
+    // clipping to it.
     const first = score().track('guitar').bar();
     for (let i = 0; i < 16; i++) first.beat('16', [note(1, 0), note(2, 0), note(3, 0)]);
     first.voice(1);
