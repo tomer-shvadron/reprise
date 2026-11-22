@@ -490,6 +490,10 @@ test('Re-layout after a page-break-moving edit, paged', RELAYOUT_BENCH, async (c
   await recordMeasurement(context, metric, p50);
 });
 
+/** Passes of 1 000 points timed as one sample, so a sample is 30 ms or more and not 5. */
+const HIT_TEST_PASSES = 8;
+const HIT_TEST_RUN = { ...RUN, iterations: 31 };
+
 /**
  * The pointer's cost: one `hitTest` per move, 1 000 per run. Half the points are the centres of
  * 500 note anchors spread evenly over the score (a hit), half pseudo-random (mostly gaps and
@@ -522,13 +526,17 @@ async function hitTestBench(
   const bottom = last.bbox.y + last.bbox.height;
   while (points.length < 1000) points.push([random() * right, random() * bottom]);
   let hits = 0;
+  // One pass is 5 to 8 ms, close enough to a scheduler quantum and a minor GC that single passes
+  // flapped bench-compare (#418); a sample is a batch of passes, the row is the median pass.
   const result = await context
     .bench(name, () => {
-      for (const [x, y] of points) if (hitTest(laid, x, y)) hits++;
+      for (let pass = 0; pass < HIT_TEST_PASSES; pass++) {
+        for (const [x, y] of points) if (hitTest(laid, x, y)) hits++;
+      }
     })
-    .run(RUN);
+    .run(HIT_TEST_RUN);
   expect(hits).toBeGreaterThan(0);
-  return result.latency.p50;
+  return result.latency.p50 / HIT_TEST_PASSES;
 }
 
 // One row for the pointer, against the slower of the two modes: continuous, which shifts boxes.
