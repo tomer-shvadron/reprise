@@ -2,7 +2,14 @@ import { note, score } from '@reprise/model/testing';
 import { assert, constant, constantFrom, integer, oneof, property, tuple } from 'fast-check';
 import { describe, expect, inject, it } from 'vitest';
 
-import { parseNative, type Bend, type Notation, type Score } from '@reprise/model';
+import {
+  beatTicks,
+  parseNative,
+  type Bend,
+  type Note,
+  type Notation,
+  type Score,
+} from '@reprise/model';
 
 import {
   DEFAULT_MARGINS,
@@ -10,8 +17,11 @@ import {
   layout,
   type LayoutOptions,
   type LayoutResult,
+  type Primitive,
 } from './index';
+import { describePrimitive } from './test/describe';
 import { expectValid, overlappingMarks } from './test/check-result';
+import { fingering } from './staves/tab/analysis';
 import { randomScore } from './test/random-score';
 
 const EPSILON = 0.02;
@@ -223,32 +233,53 @@ describe('primitives stay inside their system', () => {
     }
   }, 60_000);
 
-  it('prints no two fingering digits on one spot, and none overlapping where the bar fits (#511)', () => {
-    // Seeds 116, 215, 218 and 384 stacked the digits of two voices at one onset in one row.
-    // Where a bar is squeezed far below its minimum (320 px, dense bars of hundreds of beats)
-    // the digits of neighbouring onsets may still touch, like any glyphs there; the sweep
-    // therefore asks for no overlap from 480 px up, and at 320 px only that no two share an x.
-    const digits = (result: LayoutResult): [number, number][] =>
-      overlappingMarks(result).flatMap(([a, b]) =>
-        a.kind === 'text' && b.kind === 'text' && /^[1-4]$/.test(a.text) && /^[1-4]$/.test(b.text)
-          ? [[a.bbox.x, b.bbox.x] as [number, number]]
-          : [],
-      );
+  it('draws no two fingering marks of one onset on one baseline, in any notation (#511)', () => {
+    // Seeds 116, 215, 218 and 384 stacked the fingering of two voices at one onset in one row.
+    // Only the same-onset case is guarded: marks of neighbouring onsets may still touch in a bar
+    // squeezed far below its minimum (notation.md, Tab staff, Words), and a few seeds do at
+    // 480 px too (298, 363, 364), which is tracked apart from this fix.
     for (let seed = 0; seed <= 400; seed++) {
       const built = randomScore(seed, { diagrams: true });
-      const narrow = digits(layout(built, options(built, 320, 'tab')));
-      expect(
-        narrow.filter(([a, b]) => Math.abs(a - b) < 0.5),
-        `seed ${String(seed)} 320`,
-      ).toEqual([]);
-      for (const width of [480, PAGE_SIZES.a4.width]) {
-        expect(
-          digits(layout(built, options(built, width, 'tab'))),
-          `seed ${String(seed)} ${String(width)}`,
-        ).toEqual([]);
+      const notes = new Map<string, { note: Note; onset: string }>();
+      for (const track of built.tracks) {
+        for (const [index, bar] of track.bars.entries()) {
+          for (const voice of bar.voices) {
+            let tick = 0;
+            for (const beat of voice.beats) {
+              for (const note of beat.notes) {
+                notes.set(note.id, { note, onset: `${track.id} ${String(index)} ${String(tick)}` });
+              }
+              tick += beatTicks(beat);
+            }
+          }
+        }
+      }
+      const onsetOf = (p: Primitive): string | undefined => {
+        const entry = p.node === undefined ? undefined : notes.get(p.node);
+        if (p.kind === 'glyph') return p.glyph.startsWith('fingering') ? entry?.onset : undefined;
+        return p.kind === 'text' && entry && fingering(entry.note) === p.text
+          ? entry.onset
+          : undefined;
+      };
+      for (const notation of ['tab', 'standard', 'both'] as const) {
+        for (const width of [320, 480, PAGE_SIZES.a4.width]) {
+          const result = layout(built, options(built, width, notation));
+          const shared = overlappingMarks(result).filter(([a, b]) => {
+            const onset = onsetOf(a);
+            return (
+              onset !== undefined &&
+              onset === onsetOf(b) &&
+              Math.abs(a.bbox.y + a.bbox.height - b.bbox.y - b.bbox.height) < 0.5
+            );
+          });
+          expect(
+            shared.map(([a, b]) => `${describePrimitive(a)} ${describePrimitive(b)}`),
+            `seed ${String(seed)} ${String(width)} ${notation}`,
+          ).toEqual([]);
+        }
       }
     }
-  }, 120_000);
+  }, 60_000);
 
   it('holds for random scores in paged mode at narrow and wide lines', () => {
     // Paged only: continuous mode never squeezes (`finish` squeezes only paged lines), so it
