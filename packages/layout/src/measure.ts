@@ -150,6 +150,7 @@ export function measureBar(
   const left = ticks.map(() => 0);
   const right = ticks.map(() => 0);
   const rigid = ticks.map(() => 0);
+  const ideal = ticks.map(() => 0);
 
   const extents = slots.map((slot) => {
     const bar = trackBar(slot, index);
@@ -160,6 +161,7 @@ export function measureBar(
       left[i] = Math.max(left[i] ?? 0, extent.left);
       right[i] = Math.max(right[i] ?? 0, extent.right);
       rigid[i] = Math.max(rigid[i] ?? 0, extent.rigid ?? 0);
+      ideal[i] = Math.max(ideal[i] ?? 0, extent.ideal ?? 0);
     }
     return { above: measured.above, below: measured.below };
   });
@@ -172,8 +174,10 @@ export function measureBar(
       (right[i] ?? 0) + (i + 1 < onsets.length ? (left[i + 1] ?? 0) : 0) + ONSET_GAP * space;
     // alphaTab fills an empty voice with one beat of its default duration, a quarter.
     const natural = empty ? durationWidth(PPQ, space) : segmentWidth(gap, governing, space);
+    const wish =
+      (ideal[i] ?? 0) + (i + 1 < onsets.length ? (left[i + 1] ?? 0) : 0) + ONSET_GAP * space;
     return {
-      natural: Math.max(min, natural),
+      natural: Math.max(min, natural, wish),
       min,
       rigid: rigidParts[i] ?? 0,
     };

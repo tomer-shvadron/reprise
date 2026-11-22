@@ -140,6 +140,40 @@ describe('one note keeps its distinct bend labels apart (#162, #323)', () => {
   });
 });
 
+describe('bend labels at the end of a bar and in dense bars (#323)', () => {
+  const last = (mode: Mode, duration: '8' | '16', bend: Bend) => {
+    const builder = guitar(mode).bar();
+    builder.rest('2');
+    builder.rest(duration === '8' ? '4.' : '4');
+    if (duration === '16') builder.rest('8').rest('16');
+    builder.beat(duration, [note(2, 12, { bend })]);
+    return builder.build({ ids: 'sequential' });
+  };
+  const cases = Object.entries(SHAPES).flatMap(([name, bend]) =>
+    (['8', '16'] as const).flatMap((d) => modes.map((m) => [name, d, m, bend] as const)),
+  );
+  it.each(cases)('%s, a 1/%s note last in its bar, %s', (_name, duration, mode, bend) => {
+    // At 320 px the bar squeezes and the room is not kept, as for any head.
+    for (const width of [paged.width, 480]) {
+      expect(
+        collisions(laid(last(mode, duration, bend), { width }), false),
+        `${String(width)} px`,
+      ).toEqual([]);
+    }
+  });
+
+  it.each(modes)('keeps a bar of 16 bent 16ths no more crowded than it was in %s', (mode) => {
+    const builder = guitar(mode).bar();
+    const bend = SHAPES['full then 1¼ at 20 and 40'] ?? ZIGZAG;
+    for (let i = 0; i < 16; i++) builder.beat('16', [note(2, 12, { bend })]);
+    const result = layout(builder.build({ ids: 'sequential' }), paged);
+    // The labels' room is wanted, not required: a bar that fits without it must not squeeze.
+    // `before` is what the layout drew before the room was added.
+    const before = { tab: 16, standard: 1, both: 16 }[mode];
+    expect(collisions(result, false).length).toBeLessThanOrEqual(before);
+  });
+});
+
 describe('bend labels over the fixtures (#323)', () => {
   const fixtures = inject('scoreFixtures');
   const read = (native: string): Score => parseNative(new TextEncoder().encode(native)).score;

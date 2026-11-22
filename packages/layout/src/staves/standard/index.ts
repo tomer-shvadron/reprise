@@ -99,6 +99,7 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
           onset.right = Math.max(onset.right, room);
         }
         onset.rigid = onset.right;
+        if (beat.labelRight) onset.ideal = beat.labelRight;
         if (drawsWords(input)) {
           const words = wordsExtent(beat.beat, wordStart(beat), input.space, input.chordDiagrams);
           onset.left = Math.max(onset.left, words.left - (beat.shift ?? 0));
