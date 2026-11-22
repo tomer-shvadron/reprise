@@ -57,4 +57,19 @@ describe('fitSprings', () => {
       fixedScale: 0.5,
     });
   });
+
+  it("keeps the voice shifts whole when the onsets' total extents fit, as before the split (#484)", () => {
+    // Onset 0 is all fixed (10), onset 1 has a floor of 2 and a total of 12 (a shift of 10). The
+    // total's shares are [0, 12], the floor's [8, 2], so the movable shares are [-8, 10]: the
+    // fixed and movable parts add to 12, the widest total, and never to 10 + 10.
+    const springs = [
+      [
+        { natural: 20, min: 12, rigid: 8, movable: -8 },
+        { natural: 30, min: 20, rigid: 2, movable: 10 },
+      ],
+    ];
+    const fit = fitSprings(springs, 50, 15);
+    expect(fit.rigidScale).toBeUndefined();
+    expect(fit.squeeze).toBeCloseTo(3 / 20, 9);
+  });
 });

@@ -172,10 +172,17 @@ export function measureBar(
     return { above: measured.above, below: measured.below };
   });
 
-  // Each onset's fixed floor and the room above it that voice shifts can give back; the maximum of
-  // the staves' floors and of their totals bounds every staff's extent at any scale.
+  // A spring's room at scales (fs, rs) is fixed*fs + movable*rs, with movable = R share - F share
+  // (so it can be negative for one spring), R and F being the suffix-maxima shares of the onsets'
+  // totals and floors. At fs = rs = 1 that is the R share, exactly main's rigid room, so a bar
+  // that fits never changes. At any scales the room is fs*F share + rs*(R share - F share); the
+  // suffix sums of both share sets hold each onset's own extent (floor F_i, total R_i), and the
+  // mix of two valid share sets holds the chord's
+  // extent F_i*fs + (R_i - F_i)*rs, since the sum over springs of F share is >= F_i and of R share
+  // is >= R_i. Taking each part's own suffix maximum instead would sum to max F + max M > max R.
   const fixedParts = rigidShares(fixed);
-  const movableParts = rigidShares(rigid.map((total, i) => Math.max(0, total - (fixed[i] ?? 0))));
+  const totalParts = rigidShares(rigid);
+  const movableParts = totalParts.map((total, i) => total - (fixedParts[i] ?? 0));
   const springs = onsets.map(({ tick, governing }, i): Spring => {
     const next = onsets[i + 1]?.tick ?? end;
     const gap = Math.max(next - tick, TICK_EPSILON);
