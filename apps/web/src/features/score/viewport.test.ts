@@ -2,6 +2,7 @@ import type { LayoutResult, Page, Rect, System } from '@reprise/layout';
 import { describe, expect, it } from 'vitest';
 
 import {
+  firstBarInView,
   canvasOffset,
   centreFromScroll,
   contentSize,
@@ -144,5 +145,29 @@ describe('revealScroll', () => {
 describe('toLayoutPoint', () => {
   it('undoes the canvas position and the zoom', () => {
     expect(toLayoutPoint({ x: 300, y: 500 }, { x: 100, y: 100 }, 2)).toEqual({ x: 100, y: 200 });
+  });
+});
+
+describe('firstBarInView', () => {
+  it('names the first bar of the first system that starts in the window', () => {
+    expect(firstBarInView(stacked, rect(0, 120, 300, 200))).toBe(2);
+  });
+
+  it('skips a system showing only its bottom edge while the next starts in view', () => {
+    // System 1 spans y 100..180; the window opens at 170.
+    expect(firstBarInView(stacked, rect(0, 170, 300, 200))).toBe(2);
+  });
+
+  it('falls back to a system that starts above the window but shows', () => {
+    expect(firstBarInView(stacked, rect(0, 110, 300, 40))).toBe(1);
+  });
+
+  it('follows a window scrolled sideways in a continuous layout', () => {
+    const row = Array.from({ length: 6 }, (_, i) => system(i, rect(i * 300, 0, 300, 80)));
+    expect(firstBarInView(row, rect(650, 0, 400, 200))).toBe(3);
+  });
+
+  it('is undefined with nothing on screen', () => {
+    expect(firstBarInView(stacked, rect(0, 5000, 300, 50))).toBeUndefined();
   });
 });

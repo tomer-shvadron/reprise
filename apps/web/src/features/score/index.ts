@@ -45,6 +45,7 @@ export type {
 export { layoutForPrint, printHeading, printLayoutOptions, PRINT_HEADING } from './print-layout';
 export type { PrintContent, PrintHeading, PrintSettings } from './print-layout';
 export { ImageExportDialog } from './image/image-export-dialog';
+export { firstBarInView } from './viewport';
 export { createImageExporter, parsePage, COPY_SCALE } from './image/image-exporter';
 export type {
   ImageDialog,

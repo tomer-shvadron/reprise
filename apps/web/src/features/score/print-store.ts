@@ -49,7 +49,7 @@ export interface PrintState {
   rendered(id: number): void;
 }
 
-function afterPaint(): Promise<void> {
+export function afterPaint(): Promise<void> {
   return new Promise((resolve) => {
     const later = () => setTimeout(resolve, 0);
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(later);
