@@ -282,20 +282,6 @@ export const EFFECT_KEY_TABLE: readonly EffectKey[] = [
     title: 'Toggle pick scrape up',
     action: { kind: 'pickScrape', direction: 'up' },
   },
-  // Wah: one field holds the pedal, so closed and open exclude each other. Alt+Shift+W types
-  // "„" on a Mac; the key handler falls back to the physical key, as for the other Alt chords.
-  {
-    id: 'wahClosed',
-    title: 'Toggle wah closed (+)',
-    action: { kind: 'wah', wah: 'closed' },
-    key: { key: 'w', shift: true },
-  },
-  {
-    id: 'wahOpen',
-    title: 'Toggle wah open (o)',
-    action: { kind: 'wah', wah: 'open' },
-    key: { key: 'w', shift: true, alt: true },
-  },
   {
     id: 'fadeIn',
     title: 'Toggle fade in',
@@ -314,6 +300,20 @@ export const EFFECT_KEY_TABLE: readonly EffectKey[] = [
     id: 'volumeSwell',
     title: 'Toggle volume swell',
     action: { kind: 'beatFlag', flag: 'volumeSwell' },
+  },
+  // Wah: one field holds the pedal, so closed and open exclude each other. Alt+Shift+W types
+  // "„" on a Mac; the key handler falls back to the physical key, as for the other Alt chords.
+  {
+    id: 'wahClosed',
+    title: 'Toggle wah closed (+)',
+    action: { kind: 'wah', wah: 'closed' },
+    key: { key: 'w', shift: true },
+  },
+  {
+    id: 'wahOpen',
+    title: 'Toggle wah open (o)',
+    action: { kind: 'wah', wah: 'open' },
+    key: { key: 'w', shift: true, alt: true },
   },
   {
     id: 'whammyVibrato',
