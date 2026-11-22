@@ -3,6 +3,7 @@ import { largeScore } from '@reprise/model/testing';
 import { expect, inject, test, type TestContext } from 'vitest';
 
 import { analyse } from './analyse';
+import { chordTimeline, chordTimelineIndex } from './chord-timeline';
 import { extraction, noteTableOf } from './note-table';
 import { songOutline } from './outline';
 
@@ -160,4 +161,42 @@ test('Song insights score clone, long score', BENCH, async (context) => {
     })
     .run(RUN);
   await report(context, 'Song insights score clone, long score', result.latency.p50, false);
+});
+
+const chordEvents = (bars: number) =>
+  Array.from({ length: bars }, (_, bar) => ({ bar, onset: 0, name: `C${String(bar % 24)}` }));
+
+// What the fretboard's arpeggio overlay pays once per analysis result. Reported, not budgeted.
+test('Chord timeline build, long score', BENCH, async (context) => {
+  const score = longScore();
+  const outline = songOutline(score, mapOf(score));
+  const events = chordEvents(outline.bars.length);
+  const result = await context
+    .bench('Chord timeline build, long score', () => {
+      chordTimelineIndex(chordTimeline(events, outline, 8));
+    })
+    .run(RUN);
+  await report(context, 'Chord timeline build, long score', result.latency.p50, false);
+});
+
+// The per-frame work: one lookup per playhead position, mostly inside the span of the one before.
+test('Chord lookup, 10 000 playhead ticks, long score', BENCH, async (context) => {
+  const score = longScore();
+  const outline = songOutline(score, mapOf(score));
+  const lookup = chordTimelineIndex(chordTimeline(chordEvents(outline.bars.length), outline, 8));
+  const bars = outline.bars.length;
+  const result = await context
+    .bench('Chord lookup, 10 000 playhead ticks, long score', () => {
+      for (let i = 0; i < 10_000; i++) {
+        const tick = i * 97;
+        lookup.at(Math.floor(tick / 3840) % bars, tick % 3840);
+      }
+    })
+    .run(RUN);
+  await report(
+    context,
+    'Chord lookup, 10 000 playhead ticks, long score',
+    result.latency.p50,
+    false,
+  );
 });
