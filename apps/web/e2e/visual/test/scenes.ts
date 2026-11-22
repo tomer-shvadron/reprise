@@ -138,7 +138,7 @@ function voices(): Score {
     .build({ ids: 'sequential' });
 }
 
-/** Hammer-ons and pull-offs between grace notes, and from one across another string (#160). */
+/** Hammer-ons and pull-offs between grace notes, and from the last grace note into the main note (#160). */
 function graceSlurs(): Score {
   const grace = (fret: number, hammerPull = false) => ({
     duration: 32 as const,
@@ -151,7 +151,7 @@ function graceSlurs(): Score {
     .beat('4', [note(2, 7)], { grace: [grace(5), grace(7, true)] })
     .beat('4', [note(2, 5)], { grace: [grace(7), grace(5, true)] })
     .beat('4', [note(2, 9, { hammerPull: true })], {
-      grace: [grace(7), { duration: 32 as const, before: true, notes: [note(4, 5)] }],
+      grace: [{ duration: 32 as const, before: true, notes: [note(4, 5)] }, grace(7)],
     })
     .beat('4', [note(2, 7)])
     .build({ ids: 'sequential' });
@@ -742,7 +742,7 @@ export const SCENES: readonly Scene[] = [
   {
     id: 'grace-slurs',
     covers:
-      'A hammer-on and a pull-off between two grace notes, and a hammer-on from a grace note across a later one on another string (#160)',
+      'A hammer-on and a pull-off between two grace notes, and a hammer-on from the last grace note into the main note, after a grace note on another string (#160)',
     source: { build: graceSlurs },
     notations: ['standard', 'both'],
     guard: (result) => {
