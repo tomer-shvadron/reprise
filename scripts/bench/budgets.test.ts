@@ -35,6 +35,22 @@ describe('the roadmap budgets table', () => {
     }
   });
 
+  // Read as text, not imported: the audio source pulls in DOM types the scripts tsconfig lacks (#293).
+  it.each([
+    ['Decoded audio resident, GM tier, any song', 'GM_BUDGET_BYTES'],
+    ['Decoded audio resident, HQ tier, default', 'HQ_BUDGET_BYTES'],
+  ])('keeps the "%s" row equal to %s', (metric, constant) => {
+    const source = readFileSync(
+      join(ROOT, 'packages/audio/src/samples/managed-sample-source.ts'),
+      'utf8',
+    );
+    const megabytes = new RegExp(`export const ${constant} = (\\d+) \\* MEGABYTE;`).exec(source);
+    expect(megabytes, `${constant} is no longer "<n> * MEGABYTE"`).not.toBeNull();
+    const row = budgets.find((budget) => budget.metric === metric);
+    expect(row?.unit).toBe('MB');
+    expect(row?.value).toBe(Number(megabytes?.[1]));
+  });
+
   it('states the CI factor in its note', () => {
     expect(readFileSync(ROADMAP, 'utf8')).toContain(`multiplied by ${String(CI_FACTOR)} on CI`);
   });
