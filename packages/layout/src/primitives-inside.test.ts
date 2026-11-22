@@ -132,6 +132,7 @@ describe('primitives stay inside their system', () => {
       // Seed 16 keeps its bend label `full`, 0.3 px out: lane-effect text, #477's.
       const rest = seed === 16 ? found.filter((entry) => !entry.startsWith('text ')) : found;
       expect(rest, `seed ${String(seed)}`).toEqual([]);
+      if (seed === 16) expect(found.filter((entry) => entry.startsWith('text '))).toHaveLength(1);
     }
   });
 
@@ -179,6 +180,18 @@ describe('primitives stay inside their system', () => {
       expectValid(layout(built, options(built, 320, 'standard')));
     }
   });
+
+  it('keeps every standard seed inside its system at 320 px', () => {
+    // The sampled property below covers about a seventh of the seeds per run, so the sweep is
+    // exhaustive: a seed a later change breaks fails here, not on an unrelated PR.
+    for (let seed = 0; seed <= 400; seed++) {
+      if (UNTIL_477.has(seed)) continue;
+      const built = randomScore(seed, { diagrams: true });
+      const result = layout(built, options(built, 320, 'standard'));
+      expect(outside(result), `seed ${String(seed)}`).toEqual([]);
+      expectValid(result);
+    }
+  }, 60_000);
 
   it('holds for random scores in paged mode at narrow and wide lines', () => {
     // Paged only: continuous mode never squeezes (`finish` squeezes only paged lines), so it
