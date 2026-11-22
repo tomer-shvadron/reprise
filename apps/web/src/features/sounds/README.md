@@ -32,7 +32,7 @@ folder holds the UI:
 - `TrackEffectsPicker` is a compact select: "Automatic (<family>)", the family presets, Fuzz and
   Off. Automatic shows what it resolves to, from the track's program and `settings.gmTierBypass`
   through the audio package's `resolveEffects`: the family's preset, or "Automatic (off on GM
-  sounds)" while the GM tier bypass is on. A choice is one undoable `setTrackProperties` with
+  sounds)" while the GM tier bypass is on, or "Automatic (the file’s reverb and chorus)" there when `settings.channelEffects` is on and the track carries reverb or chorus (it says both even if only one is set). A choice is one undoable `setTrackProperties` with
   `sound: { ...sound, preset }`; Automatic drops `preset`, and `sound` itself once nothing is
   left (`null` removes it), so the gp writer reports no `sound-override` loss for the track. The engine applies a preset-only change at once,
   with no rebuild, and an id it does not know plays, and shows, as Automatic. The mixer strip
