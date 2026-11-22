@@ -188,9 +188,13 @@ export function createTracker(options: TrackerOptions = {}) {
     clarityAvg = clarity;
     const target = cutoffFor(hz);
     // Only a cutoff that closes in leaves sharp frames behind; one that opens does not.
-    dirty = target < 0.85 * cutoffHz;
+    const closes = target < 0.85 * cutoffHz;
+    // A lock that moves while a re-pluck's settle is pending keeps it: its frames still hold the
+    // cutoff change.
+    const pendingUntil = dirty || refill !== 'none' ? settleUntilMs : 0;
+    dirty = closes || pendingUntil > timeMs;
     refill = 'none';
-    settleUntilMs = dirty ? timeMs + settleFrames * TRACKER.hopMs : 0;
+    settleUntilMs = closes ? timeMs + settleFrames * TRACKER.hopMs : dirty ? pendingUntil : 0;
     cutoffHz = target;
   };
 
