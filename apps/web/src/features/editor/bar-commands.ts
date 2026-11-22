@@ -22,6 +22,8 @@ export type BarCommandId =
   | 'editor.deleteBarsMac'
   | 'editor.deleteBarsWindows'
   | 'editor.toggleRepeatStart'
+  | 'editor.toggleRepeatStartAlt'
+  | 'editor.toggleRepeatEndAlt'
   | 'editor.toggleRepeatEnd'
   | 'editor.barProperties'
   | 'editor.keySignature'
@@ -97,6 +99,25 @@ export function barCommands(services: BarServices): BarCommand[] {
         toggleRepeatStart(services);
       },
       { shortcut: { key: '[' } },
+    ),
+    // The bracket keys by position under Cmd or Ctrl and Shift, for the layouts where the bare
+    // brackets are a Option or AltGr layer that another binding owns (German and Nordic Mac,
+    // German, Spanish and Italian Windows).
+    command(
+      'editor.toggleRepeatStartAlt',
+      'Toggle repeat start',
+      () => {
+        toggleRepeatStart(services);
+      },
+      { shortcut: { key: '[', mod: true, shift: true }, ...hidden },
+    ),
+    command(
+      'editor.toggleRepeatEndAlt',
+      'Toggle repeat end',
+      () => {
+        toggleRepeatEnd(services);
+      },
+      { shortcut: { key: ']', mod: true, shift: true }, ...hidden },
     ),
     command(
       'editor.toggleRepeatEnd',

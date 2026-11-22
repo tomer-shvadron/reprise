@@ -131,6 +131,52 @@ describe('keyboard', () => {
         event: e('Dead', 'Quote', { shiftKey: true }),
         runs: 'editor.effect.tremoloPicking',
       },
+      {
+        layout: 'Spanish shift+dead ´',
+        event: e('Dead', 'Quote', { shiftKey: true }),
+        runs: 'editor.effect.tremoloPicking',
+      },
+      {
+        layout: 'Brazilian shift+dead ~',
+        event: e('Dead', 'Quote', { shiftKey: true }),
+        runs: 'editor.effect.tremoloPicking',
+      },
+      {
+        layout: 'German / (Shift+7)',
+        event: e('/', 'Digit7', { shiftKey: true }),
+        runs: 'editor.toggleTriplet',
+      },
+      { layout: 'Dvorak / key', event: e('/', 'BracketLeft'), runs: 'editor.toggleTriplet' },
+      { layout: 'Dvorak = key', event: e('=', 'BracketRight'), runs: 'editor.durationShorter' },
+      {
+        layout: 'Mac German Cmd+Shift+ü key',
+        event: e('Ü', 'BracketLeft', { metaKey: true, shiftKey: true }),
+        mac: true,
+        runs: 'editor.toggleRepeatStartAlt',
+      },
+      {
+        layout: 'Mac German Cmd+Shift++ key',
+        event: e('*', 'BracketRight', { metaKey: true, shiftKey: true }),
+        mac: true,
+        runs: 'editor.toggleRepeatEndAlt',
+      },
+      {
+        layout: 'Mac Nordic Cmd+Shift+å key',
+        event: e('Å', 'BracketLeft', { metaKey: true, shiftKey: true }),
+        mac: true,
+        runs: 'editor.toggleRepeatStartAlt',
+      },
+      {
+        layout: 'German Windows Ctrl+Shift++ key',
+        event: e('*', 'BracketRight', { ctrlKey: true, shiftKey: true }),
+        runs: 'editor.toggleRepeatEndAlt',
+      },
+      {
+        layout: 'Mac German Cmd+Option+Up',
+        event: e('ArrowUp', 'ArrowUp', { metaKey: true, altKey: true }),
+        mac: true,
+        runs: 'view.zoomInAlt',
+      },
       { layout: 'Dvorak [', event: e('[', 'Minus'), runs: 'editor.toggleRepeatStart' },
       { layout: 'Dvorak ]', event: e(']', 'Equal'), runs: 'editor.toggleRepeatEnd' },
       {
@@ -204,6 +250,31 @@ describe('keyboard', () => {
       expect(runs(event, mac ? 'mac' : 'other')).toBe(expected);
     });
 
+    it('keeps the relaxed pass off a binding that names the other modifier', () => {
+      expect(
+        matchesShortcut(
+          e('=', 'Digit0', { shiftKey: true }),
+          { key: '=', alt: true },
+          'other',
+          'relaxed',
+        ),
+      ).toBe(false);
+      expect(
+        matchesShortcut(e('=', 'Digit0', { shiftKey: true }), { key: '=' }, 'other', 'relaxed'),
+      ).toBe(true);
+      expect(
+        matchesShortcut(
+          e(']', 'BracketRight', { altKey: true }),
+          { key: ']', shift: true },
+          'mac',
+          'relaxed',
+        ),
+      ).toBe(false);
+      expect(
+        matchesShortcut(e(']', 'BracketRight', { altKey: true }), { key: ']' }, 'mac', 'relaxed'),
+      ).toBe(true);
+    });
+
     it('does not run a shifted spelling from the key that prints a letter in its place', () => {
       expect(matchesShortcut(e('ת', 'Comma'), { key: '<' }, 'other')).toBe(false);
       expect(matchesShortcut(e('ף', 'Semicolon'), { key: ':' }, 'other')).toBe(false);
@@ -225,6 +296,8 @@ describe('keyboard', () => {
         'QWERTZ dead acute',
         'US-International dead quote',
         'US-International shift+dead quote',
+        'Spanish shift+dead ´',
+        'Brazilian shift+dead ~',
       ];
       for (const { layout, event, mac } of SAMPLES) {
         const platform: KeyboardPlatform = mac ? 'mac' : 'other';

@@ -24,6 +24,7 @@ export type AppCommandId =
   | 'file.close'
   | 'file.showImportDetails'
   | 'view.followPlayback'
+  | 'view.zoomInAlt'
   | 'view.toggleChordDiagrams'
   | 'view.toggleChordStrip'
   | 'view.toggleRightPanel'
@@ -218,6 +219,17 @@ export function appCommands(services: AppServices): AppCommand[] {
       id: 'view.zoomIn',
       title: 'Zoom in',
       shortcut: { key: '=', mod: true },
+      run: () => {
+        zoomBy(ZOOM_STEP);
+      },
+    },
+    {
+      // ⌘= is ⇧⌘0 on German, Swiss, Swedish, Spanish and Italian Macs, which is insert bar
+      // before there, and ⌘+ is that command's own key. A named key prints the same everywhere.
+      id: 'view.zoomInAlt',
+      title: 'Zoom in',
+      shortcut: { key: 'ArrowUp', mod: true, alt: true },
+      inPalette: false,
       run: () => {
         zoomBy(ZOOM_STEP);
       },

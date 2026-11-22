@@ -5,7 +5,8 @@ export interface Shortcut {
    * A key matches the character the layout prints. A digit and a bracket always match their
    * physical key (AZERTY prints `&` where a 1 is, Hebrew swaps the brackets), and on macOS with
    * Option held a letter does too, since Option rewrites the character. When nothing matches by
-   * character (see `KeyMatch`), a letter or a punctuation mark falls back to the physical key if
+   * character (see `KeyMatch`; a punctuation character the layout types with Shift counts), a
+   * letter or a punctuation mark falls back to the physical key if
    * the layout printed something else (a Hebrew letter). `' '` is Space; named keys (`Enter`,
    * `F9`) are spelled as `KeyboardEvent.key` spells them.
    */
@@ -56,19 +57,22 @@ const SHIFTED_PUNCTUATION: Readonly<Record<string, string>> = {
 };
 
 // A layout without bracket keys of its own (Dvorak types `[` and `]` on the minus and equal
-// keys) still prints the character, with no modifier a bracket shortcut would not take. A digit
-// key printing one is a Mac's Option layer (German ⌥5 prints `[`), which stays the digit's.
+// keys) still prints the character. A digit key printing one is an AltGr layer that a digit
+// shortcut owns (Linux German AltGr+8 reports no modifier and stays fret 8).
 function onOtherKey(event: KeyEventLike, key: string): boolean {
-  return event.key === key && !/^(Bracket|Digit|Numpad)/.test(event.code);
+  return event.key === key && !/^(Bracket|Digit)/.test(event.code);
 }
 
-// The dead Quote key of US-International: `'` bare and `"` with Shift (true).
+// A dead key on the key that is the quote key on a US layout (US-International, but Spanish ´
+// and Brazilian ~ sit there as well, and the event cannot tell them apart): `'` bare and `"` with
+// Shift (true), so the press runs the command the US key would.
 const DEAD_QUOTE: Readonly<Record<string, boolean>> = { "'": false, '"': true };
 
 /**
- * `character` is the pass that decides first: what the key prints. `physical` runs only when no
- * command matched by character, so a printed `/` stays the triplet while a Hebrew W key, which
- * prints `'` that nothing uses, still reaches W.
+ * `character` is the pass that decides first: what the key prints. `relaxed` runs when nothing
+ * matched by character, and takes the printed character with a Shift or Option the layout needs
+ * to type it. `physical` runs last, when nothing matched either, so a printed `/` stays the
+ * triplet while a Hebrew W key, which prints `'` that nothing uses, still reaches W.
  */
 export type KeyMatch = 'character' | 'relaxed' | 'physical';
 
@@ -84,10 +88,10 @@ function relaxedModifiers(
   platform: KeyboardPlatform,
 ): boolean {
   const { key } = shortcut;
-  if (!shortcut.shift && event.shiftKey && !event.altKey) {
+  if (!shortcut.shift && !shortcut.alt && event.shiftKey && !event.altKey) {
     return BASE_PUNCTUATION[key] !== undefined && event.key === key;
   }
-  if (!shortcut.alt && event.altKey && !event.shiftKey && platform === 'mac') {
+  if (!shortcut.alt && !shortcut.shift && event.altKey && !event.shiftKey && platform === 'mac') {
     const bracket = BRACKETS[key];
     return bracket !== undefined && event.code === bracket && event.key === key;
   }

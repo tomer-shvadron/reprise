@@ -11,7 +11,7 @@ The table below lists the Guitar Pro defaults. The cheat sheet, the command pale
 - A key another command holds in the same context is offered as a swap: the other command takes this command's old key (or none). A key held by a command in the other context (an editing key over a global one) is allowed; the editing key wins while editing.
 - Not changeable: copy, cut and paste (the browser's), Escape (it always backs out and cancels recording), and the fret digits (typed values, not shortcuts). Each alias (a second key for one command) is its own key in the command's row.
 - Refused when recording, because the system keeps them: on every platform Cmd or Ctrl with Q, W, H or M, and Cmd or Ctrl+Alt+H (the desktop menu keeps these for its own roles); on macOS also any Control combination, ⌘Space and ⌘`; on Windows also any Windows-key combination, Alt+F4, Ctrl+F4, Alt+Space and F10; everywhere select all (⌘A, Ctrl+A) and the copy, cut and paste keys. Keys the browser or the operating system never pass to the page (⌘N, Ctrl+T) cannot be recorded; the recorder keeps waiting.
-- A recorded key matches the way the defaults do. What the key prints decides first (a Hebrew `.` or `/` is the key that prints it, wherever it sits). Digits and brackets always match their physical key (AZERTY's `&` is the 1 key), and on macOS with Option held a letter does too, since Option rewrites the character (German ⌥L prints `@`). Only when no command matches what the key prints does the physical key stand in: a letter on a layout that prints something else (Hebrew W prints `'`), or punctuation on a key that prints a letter of another script (Hebrew `ץ` is the period key; a symbol such as `§` or `£` does not count), with Shift deciding between `.` and `>`. Between those two passes comes a third: a punctuation character that a layout types with Shift (German, Swiss and Swedish `=` is Shift+0 and `;` is Shift+comma) still runs the binding that names no Shift, and on a Mac a bracket typed with Option on its own bracket key (Spanish ⌥+ prints `]`) runs the bracket binding. A bracket printed on any other key (Dvorak's `[` and `]` on the minus and equal keys) matches by its character, and the recorder records it as printed. A dead key prints no character, so it never matches punctuation by position, with one exception: US-International's Shift+quote key, which runs the `"` binding (tremolo picking). An IME's first key never matches. On AZERTY, `$` and `"` stay on the `]` and `3` keys under them.
+- A recorded key matches the way the defaults do. What the key prints decides first (a Hebrew `.` or `/` is the key that prints it, wherever it sits). Digits and brackets always match their physical key (AZERTY's `&` is the 1 key), and on macOS with Option held a letter does too, since Option rewrites the character (German ⌥L prints `@`). Only when no command matches what the key prints does the physical key stand in: a letter on a layout that prints something else (Hebrew W prints `'`), or punctuation on a key that prints a letter of another script (Hebrew `ץ` is the period key; a symbol such as `§` or `£` does not count), with Shift deciding between `.` and `>`. Between those two passes comes a third: a punctuation character that a layout types with Shift (German, Swiss and Swedish `=` is Shift+0 and `;` is Shift+comma) still runs the binding that names no Shift, and on a Mac a bracket typed with Option on its own bracket key (Spanish ⌥+ prints `]`) runs the bracket binding. A bracket printed on any other key (Dvorak's `[` and `]` on the minus and equal keys) matches by its character, and the recorder records it as printed. A dead key prints no character, so it never matches punctuation by position, with one exception: a dead key on the key that is the quote key on a US keyboard runs `"` with Shift, as US-International's does (the event cannot tell it from Spanish `´` or Brazilian `~`, which sit on the same key, so those run tremolo picking too; both layouts also type `"` on a key of their own). An IME's first key never matches. On AZERTY, `$` and `"` stay on the `]` and `3` keys under them.
 - A change of the Settings data later: an entry for a command that no longer exists stays stored and is ignored; a PR that renames a command id carries the old id's entry across in `apps/web/src/app/keymap.ts`. A new default that collides with a user's key loses to it.
 - Not configurable, because they are not commands: the palette's Enter and ⌘Enter, the chord field's Tab, the library list's keys, the track list's own keys and the dialogs' keys.
 
@@ -63,7 +63,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Redo | Edit | Global | ⇧⌘Z | Ctrl+Shift+Z or Ctrl+Y |
 | Copy as ASCII tab | Edit | Global | — | — |
 | Copy as image | Edit | Global | — | — |
-| Zoom in | View | Global | ⌘= | Ctrl+= |
+| Zoom in | View | Global | ⌘= or ⌥⌘↑ | Ctrl+= or Ctrl+Alt+Up |
 | Zoom out | View | Global | ⌘- | Ctrl+- |
 | Actual size | View | Global | ⌘0 | Ctrl+0 |
 | Toggle light and dark theme | View | Global | ⇧⌘L | Ctrl+Shift+L |
@@ -195,8 +195,8 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Insert bar before | Editor | Editing | ⌘+ or ⌘= | Insert |
 | Insert bar after | Editor | Editing | — | — |
 | Delete bars | Editor | Editing | ⌘Backspace | Ctrl+Delete |
-| Toggle repeat start | Editor | Editing | [ | [ |
-| Toggle repeat end | Editor | Editing | ] | ] |
+| Toggle repeat start | Editor | Editing | [ or ⌘[ | [ or Ctrl+[ |
+| Toggle repeat end | Editor | Editing | ⌘] or ] | Ctrl+] or ] |
 | Bar properties… | Editor | Editing | ⌘T | Ctrl+T |
 | Key signature… | Editor | Editing | — | — |
 | Tempo change… | Editor | Editing | — | — |
@@ -293,7 +293,9 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Download sound pack | Sounds | Global | — | — |
 <!-- shortcuts:end -->
 
-### Known gaps by layout
+### Layout notes
 
-- German Mac: `[` and `]` are ⌥5 and ⌥6, the same presses as the track-5 and track-6 chords, so repeat start and end have no key there. Rebind them from the settings.
-- German, Swiss and Swedish Mac: ⌘= (zoom in) is ⇧⌘0, which is Insert bar before on a Mac (the `=` spelling of ⇧⌘=); rebind one of the two. Off macOS, Ctrl+= works.
+- Repeat start and end have a second key, ⌘⇧[ and ⌘⇧] (Ctrl+Shift+[ and ]), matched by the position of the bracket keys, so every layout reaches them even where the bare brackets are an Option or AltGr layer (German and Swiss Mac ⌥5 and ⌥6, Nordic Mac ⌥8 and ⌥9, German, Spanish and Italian Windows and Linux) that another command owns.
+- Zoom in has a second key, ⌥⌘↑ (Ctrl+Alt+Up), because ⌘= is ⇧⌘0 on German, Swiss, Swedish, Spanish and Italian Macs, which is Insert bar before there, and ⌘+ is that command's own key. A named key prints the same on every layout. Off macOS, Ctrl+= also works on those layouts.
+- Still without a bare key: `[` and `]` (slow down and speed up outside edit mode, repeat start and end in it) on German, Swiss, Nordic, Spanish and Italian layouts where the bracket is an Option or AltGr layer that a digit or another binding owns; use the second keys above. A Windows AltGr bracket (Ctrl+Alt) is not matched as a bare bracket.
+- Dvorak's `/` and `=` sit on the bracket keys' positions and still match the bracket bindings physically; triplet and shorter duration win in edit mode by registration order.
