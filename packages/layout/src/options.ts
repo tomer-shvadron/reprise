@@ -71,8 +71,10 @@ function positive(value: number, name: string): number {
 }
 
 /**
- * Segments an edit that changes the continuous vertical layout redraws at once (`verticalReach`):
- * the mounted window and its neighbours at any zoom of 0.5 or more.
+ * `verticalReach` of an edit that changes the continuous vertical layout: the segments nearest the
+ * edit, redrawn besides the ones `verticalWindow` names (what the view has mounted). Without a
+ * window (no view) it is the whole guarantee: about the mounted range around the edit at zoom 1
+ * on a pane up to about 1 900 px; a wider pane or a zoom below 1 needs the window.
  */
 export const VERTICAL_EDIT_REACH = 8;
 

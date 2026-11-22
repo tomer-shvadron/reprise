@@ -54,7 +54,9 @@ describe('ScorePane', () => {
     const bytes = await bytesOf('Riff');
     await act(() => services.document.getState().openBytes('riff.reprise', bytes));
     expect(services.viewProbe.barInView()).toBe(0);
+    expect(services.viewProbe.mountedSystems()).toMatchObject({ start: 0 });
     unmount();
     expect(services.viewProbe.barInView()).toBeUndefined();
+    expect(services.viewProbe.mountedSystems()).toBeUndefined();
   });
 });

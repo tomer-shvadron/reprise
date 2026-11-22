@@ -417,6 +417,8 @@ export function layoutWith(
       // Nearest by index, ties to the right.
       stale.sort((a, b) => Math.abs(a - focusAt) - Math.abs(b - focusAt) || b - a);
       for (const i of stale.slice(0, resolved.verticalReach)) eager.add(i);
+      const shown = options.verticalWindow;
+      if (shown) for (const i of stale) if (i >= shown.start && i < shown.end) eager.add(i);
     }
     for (const i of stale) {
       if (!Number.isFinite(resolved.verticalReach) || eager.has(i))
