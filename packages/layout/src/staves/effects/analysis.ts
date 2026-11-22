@@ -52,7 +52,7 @@ export interface Run {
 
 /** Lanes that hold one item per onset. */
 export type ItemLane =
-  'articulation' | 'pickStroke' | 'golpeFinger' | 'golpeThumb' | 'fade' | 'tap';
+  'articulation' | 'pickStroke' | 'golpeFinger' | 'golpeThumb' | 'fade' | 'wah' | 'tap';
 
 export interface LaneItem {
   lane: ItemLane;
@@ -124,7 +124,7 @@ function hasRunEffect(beat: Beat): boolean {
 /** Whether anything at a beat goes into an item lane or the bend lane. */
 function hasItemEffect(beat: Beat): boolean {
   // A golpe is the beat's own, so it draws on a rest too.
-  if (beat.effects.golpe) return true;
+  if (beat.effects.golpe || beat.effects.wah) return true;
   if (beat.rest || beat.notes.length === 0) return false;
   const { effects } = beat;
   if (effects.pickStroke || effects.tapping || effects.slapping || effects.popping) return true;
@@ -395,6 +395,14 @@ export function analyseEffects(bar: Bar, space: number, options: EffectOptions):
       items.push({ lane: 'fade', tick, beat: faded.beat, glyphs: [fadeGlyph] });
       raise('fade', LANE_HEIGHT.fade);
       centred(tick, glyphSpan(fadeGlyph));
+    }
+    // A pedal mark is the beat's own, so it draws on a rest too, from the whole onset group.
+    const wah = group.find(({ beat }) => beat.effects.wah);
+    if (wah) {
+      const name = wah.beat.effects.wah === 'open' ? 'guitarOpenPedal' : 'guitarClosePedal';
+      items.push({ lane: 'wah', tick, beat: wah.beat, glyphs: [name] });
+      raise('wah', glyphHeight(name) + STROKE_MARGIN);
+      centred(tick, glyphSpan(name));
     }
     const tapped = played.find(({ beat }) => tap(beat));
     const letter = tapped && tap(tapped.beat);

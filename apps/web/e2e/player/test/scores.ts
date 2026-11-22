@@ -93,6 +93,71 @@ function sectionsScore(): Score {
   return builder.build();
 }
 
+/**
+ * A rhythm and a lead guitar over three sections of four bars (Intro, Verse, Chorus), the chords
+ * Am F C G written above each bar, so the insights have a key, chord names and sections to show.
+ */
+export const INSIGHTS = {
+  file: 'insights.reprise',
+  sections: ['Intro', 'Verse', 'Chorus'],
+  progression: 'Am–F–C–G',
+} as const;
+
+function insightsScore(): Score {
+  // Open-position shapes as [string, fret] pairs, string 1 being the high E.
+  const shapes: Record<string, [number, number][]> = {
+    Am: [
+      [5, 0],
+      [4, 2],
+      [3, 2],
+      [2, 1],
+      [1, 0],
+    ],
+    F: [
+      [4, 3],
+      [3, 2],
+      [2, 1],
+      [1, 1],
+    ],
+    C: [
+      [5, 3],
+      [4, 2],
+      [3, 0],
+      [2, 1],
+      [1, 0],
+    ],
+    G: [
+      [6, 3],
+      [5, 2],
+      [4, 0],
+      [3, 0],
+      [2, 0],
+      [1, 3],
+    ],
+  };
+  const names = Object.keys(shapes);
+  const bars = INSIGHTS.sections.length * 4;
+  const builder = score().tempo(100).track('guitar', { name: 'Rhythm' });
+  for (let bar = 0; bar < bars; bar += 1) {
+    builder.bar();
+    if (bar % 4 === 0) builder.section(INSIGHTS.sections[bar / 4] ?? '');
+    const name = names[bar % 4] ?? 'Am';
+    for (let beat = 0; beat < 4; beat += 1) {
+      builder.beat(
+        '4',
+        (shapes[name] ?? []).map(([string, fret]) => note(string, fret)),
+        beat === 0 ? { chord: { name } } : {},
+      );
+    }
+  }
+  builder.track('guitar', { name: 'Lead' });
+  for (let bar = 0; bar < bars; bar += 1) {
+    builder.bar();
+    for (const fret of [5, 8, 10, 8, 5, 3, 5, 8]) builder.beat('8', [note(1, fret)]);
+  }
+  return builder.build();
+}
+
 /** The A2 the tuner flow hears: a harmonic tone 12 cents above 110 Hz. */
 export const TUNER_TONE = { sampleRate: 48_000, periods: 332, harmonics: 12, cents: 12 } as const;
 
@@ -161,6 +226,7 @@ export async function generateScores(): Promise<Record<string, Uint8Array>> {
     // Every kind of thing the model holds: the Guitar Pro writer drops some of them (WP-061).
     'export-full.reprise': (await write(fullScore(), 'reprise')).bytes,
     [SECTIONS.file]: (await write(sectionsScore(), 'reprise')).bytes,
+    [INSIGHTS.file]: (await write(insightsScore(), 'reprise')).bytes,
     'long-score.reprise': (await write(longScore(), 'reprise')).bytes,
     'tuner-a2.wav': tunerToneWav(),
   };

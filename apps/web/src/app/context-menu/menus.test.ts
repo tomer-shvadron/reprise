@@ -206,4 +206,14 @@ describe('the context menus', () => {
       expect(all, mode).toContain('trainer.chordShapesFor');
     }
   });
+
+  it('list "Section insights" on a section in both modes', () => {
+    const [target] = TARGETS['score.section'] ?? [];
+    if (!target) throw new Error('no section target');
+    for (const mode of ['play', 'edit'] as const) {
+      const entries = resolveFor('score.section', target, mode);
+      const all = entries.flatMap((entry) => (entry.kind === 'item' ? [entry.command.id] : []));
+      expect(all, mode).toContain('trainer.sectionInsights');
+    }
+  });
 });

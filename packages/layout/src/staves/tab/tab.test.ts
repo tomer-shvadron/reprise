@@ -784,3 +784,22 @@ describe('tab staff: golpe and pick scrape room (#354)', () => {
     expect(scraped?.right).toBeGreaterThan(plain?.right ?? Infinity);
   });
 });
+
+describe('tab staff: wah room (#355)', () => {
+  it('reserves half a pedal glyph and 0.2 either side of its onset', () => {
+    const { bbox } = glyphMetrics('guitarClosePedal');
+    const half = ((bbox.right - bbox.left) / 2 + 0.2) * STAFF_SPACE;
+    const input = firstBar(
+      guitar()
+        .bar()
+        .beat('8', [note(1, 5)], { effects: { wah: 'closed' } })
+        .beat('8', [note(1, 5)])
+        .build({ ids: 'sequential' }),
+    );
+    const { reserved } = analyseEffects(input.bar, STAFF_SPACE, { articulations: false });
+    expect(reserved).toHaveLength(1);
+    expect(reserved[0]?.left).toBeCloseTo(half, 5);
+    expect(reserved[0]?.right).toBeCloseTo(half, 5);
+    expect(tabModule().measure(input).onsets[0]?.left).toBeGreaterThanOrEqual(half - 1e-6);
+  });
+});
