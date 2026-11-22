@@ -29,6 +29,7 @@ export interface TransportSettings {
   tempo: TempoSetting;
   loop: BarRange | undefined;
   countIn: boolean;
+  countInVolume: number;
   metronome: { on: boolean; volume: number };
   /** The output level, 0 to 1, over notes and clicks alike; the mixer (WP-052) binds it too. */
   masterVolume: number;
@@ -122,6 +123,7 @@ export function initialPlaybackState(): PlaybackStoreState {
       tempo: { mode: 'percent', value: 100 },
       loop: undefined,
       countIn: false,
+      countInVolume: 0.7,
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
       gmTierBypass: true,

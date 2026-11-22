@@ -35,6 +35,7 @@ vi.mock('@reprise/audio', async (importOriginal) => {
       setTempo: vi.fn(),
       setCountIn: vi.fn(),
       setMetronome: vi.fn(),
+      setCountInVolume: vi.fn(),
       setMasterVolume: vi.fn(),
       setGmTierBypass: engine.setGmTierBypass,
       setStageBypass: engine.setStageBypass,

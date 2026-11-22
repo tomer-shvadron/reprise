@@ -21,6 +21,9 @@ export function mirrorAudio(services: AppServices & { fakeAudio: FakeAudioServic
   fakeAudio.setCountIn.mockImplementation((countIn) => {
     settings({ countIn });
   });
+  fakeAudio.setCountInVolume.mockImplementation((countInVolume) => {
+    settings({ countInVolume });
+  });
   fakeAudio.setMetronome.mockImplementation((on, volume) => {
     settings({ metronome: { on, volume } });
   });
