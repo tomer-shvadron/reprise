@@ -745,16 +745,25 @@ export const SCENES: readonly Scene[] = [
   },
   {
     id: 'wah',
-    covers: 'Wah-wah marks above the staff, + closed and o open, from a real file (#355)',
+    covers:
+      "Wah-wah marks above the staff, o open and + closed, from a real file (#355); the small x above beat 4 is the file's own beat text",
     source: { fixture: 'gp5/wah-wah.gp5' },
     notations: ['tab', 'standard'],
     pages: [0],
     guard: (result) => {
-      const marks = result.primitives.filter(
-        (p) =>
-          p.kind === 'glyph' && (p.glyph === 'guitarClosePedal' || p.glyph === 'guitarOpenPedal'),
-      );
-      expect(marks.length).toBeGreaterThanOrEqual(2);
+      const marks = result.primitives
+        .filter(
+          (p) =>
+            p.kind === 'glyph' && (p.glyph === 'guitarClosePedal' || p.glyph === 'guitarOpenPedal'),
+        )
+        .sort((a, b) => a.bbox.x - b.bbox.x)
+        .map((p) => (p.kind === 'glyph' ? p.glyph : ''));
+      expect(marks).toEqual([
+        'guitarOpenPedal',
+        'guitarClosePedal',
+        'guitarOpenPedal',
+        'guitarClosePedal',
+      ]);
     },
   },
   {

@@ -212,10 +212,11 @@ Everything above or below a staff that is not attached to a note head goes in a 
 | 13 | `beatVibrato` | slight 1.2, wide 1.7 |
 | 14 | `trill` | 2.0 |
 | 15 | `whammy` | 5.0 |
-| 16 | `chord` | 2.2 |
-| 17 | `fingering` (tab mode) | 1.1 per row |
-| 18 | `text` | 2.0 |
-| 19 | `repeatCount`, the system's first staff | 1.6 |
+| 16 | `chordDiagram` | the tallest diagram of the bar + 0.3, only with chord diagrams on |
+| 17 | `chord` | 2.2 |
+| 18 | `fingering` (tab mode) | 1.1 per row |
+| 19 | `text` | 2.0 |
+| 20 | `repeatCount`, the system's first staff | 1.6 |
 
 | Below the staff, from the staff out | Lane | Height |
 | --- | --- | --- |
