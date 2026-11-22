@@ -86,6 +86,7 @@ shows what it claims; when one fails, change the scene, not the guard.
 | `furniture`         | builder                   | default             |
 | `continuous`        | `rhythm-values`           | both                |
 | `effects`           | `gp5/effects.gp5`         | tab, standard, both |
+| `grace-slurs`       | builder                   | standard, both      |
 | `multivoice`        | `gp/multivoice-rhythm.gp` | tab, standard, both |
 | `drums`             | `gp/drum-tabs.gp`         | default             |
 | `note-marks`        | builder                   | standard, both      |
