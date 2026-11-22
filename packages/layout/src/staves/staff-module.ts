@@ -59,7 +59,8 @@ export interface OnsetExtent {
   /**
    * Room right of the onset a staff would like but can do without: the bar's natural width grows
    * to hold it, its minimum does not, so a bar that fits keeps its room and a dense one squeezes
-   * no further than without it.
+   * no further than without it. It is a width for text, not for duration: justification still
+   * stretches it with its spring, so it is kept small (a bend's labels ask for at most 6 spaces).
    */
   ideal?: number;
 }

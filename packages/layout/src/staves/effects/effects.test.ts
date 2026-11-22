@@ -13,7 +13,7 @@ import {
 import { overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import { BENDS, content, everyEffectScore, guitar, laid, paged, texts } from '../../test/effects';
-import { analyseEffects, bendRow, glyphHeight } from './analysis';
+import { analyseEffects, glyphHeight } from './analysis';
 import { bendLabel } from './labels';
 
 const isText = (value: string) => (p: Primitive) => p.kind === 'text' && p.text === value;
@@ -1117,26 +1117,23 @@ describe('bend labels never overlap', () => {
     expect(two).toBeCloseTo(2 * one, 1);
   });
 
-  it.each(modes)(
-    'grows the lane by at most two rows for far-apart amounts of one note in %s',
-    (mode) => {
-      // effects.gp5's many-peak bend: its labels are spread over the frame, so they hardly stack.
-      const wide = custom([
-        [0, 0],
-        [10, 12],
-        [14, 1],
-        [20, 10],
-        [24, 3],
-        [30, 9],
-        [34, 4],
-        [40, 7],
-        [44, 5],
-        [50, 6],
-      ]);
-      const grown = staffTop(mode, [wide]) - staffTop(mode, [rise(12)]);
-      expect(grown).toBeLessThanOrEqual(2 * bendRow() * STAFF_SPACE + 1e-6);
-    },
-  );
+  it.each(modes)('does not grow the lane for far-apart amounts of one note in %s', (mode) => {
+    // effects.gp5's many-peak bend: its labels are spread over the frame, so they hardly stack.
+    const wide = custom([
+      [0, 0],
+      [10, 12],
+      [14, 1],
+      [20, 10],
+      [24, 3],
+      [30, 9],
+      [34, 4],
+      [40, 7],
+      [44, 5],
+      [50, 6],
+    ]);
+    const grown = staffTop(mode, [wide]) - staffTop(mode, [rise(12)]);
+    expect(grown).toBeCloseTo(0, 5);
+  });
 
   it.each(modes)('does not grow the lane for tips a quarter frame apart in %s', (mode) => {
     const apart = custom([

@@ -288,6 +288,8 @@ export function bendRow(): number {
  * out from positions and levels (`BEND_STEP` per quarter tone), which are known before spacing.
  */
 export const BEND_LABEL_SPREAD = 6;
+/** The same for amounts a quarter tone apart: a quarter of the frame. */
+const BEND_LABEL_PAIR = 15;
 /** The least gap between two labels standing side by side, in staff spaces. */
 const BEND_LABEL_SEP = 0.3;
 /** The gap between a raised tip and its label, in staff spaces. */
@@ -308,8 +310,19 @@ interface BendTip {
   lift: number;
 }
 
+/**
+ * How far apart in position two tips can be and still conflict: a quarter of the frame when a
+ * quarter tone or less separates them, whose labels sit at one level and would otherwise need a
+ * long frame; a tenth when the levels differ more, where only a short frame makes them meet.
+ */
+const reach = (a: BendTip, b: BendTip): number =>
+  Math.abs(a.value - b.value) <= 1 ? BEND_LABEL_PAIR : BEND_LABEL_SPREAD;
+
+/** The longest side-by-side frame the labels ask for, in staff spaces. */
+const BEND_LABEL_CAP = 6;
+
 /** A label's height, without the gap under the next one. */
-const labelHeight = (): number => bendRow() - BEND_STACK_GAP;
+const labelHeight = (): number => BEND_LABEL_ROOM - BEND_LABEL_GAP;
 
 /** What a tip's arrowhead covers above the lane's bottom: [low, high]. */
 function arrowBox(tip: BendTip): [number, number] {
@@ -353,7 +366,7 @@ function bendTips(bends: readonly (Bend | undefined)[]): BendTip[] {
   const near = (a: BendTip, b: BendTip): boolean => {
     if (a === b || a.value === b.value) return false;
     const gap = b.position - a.position;
-    if (Math.abs(gap) >= BEND_LABEL_SPREAD) return false;
+    if (Math.abs(gap) >= reach(a, b)) return false;
     return a.raised || gap >= 0 || a.position > 60 - BEND_LABEL_SPREAD;
   };
   const height = labelHeight();
@@ -413,7 +426,7 @@ export function bendLabelNeed(bends: readonly (Bend | undefined)[], stop: number
   for (const [i, a] of tips.entries()) {
     for (const b of tips.slice(i + 1)) {
       const apart = Math.abs(a.position - b.position);
-      if (a.value === b.value || apart < BEND_LABEL_SPREAD) continue;
+      if (a.value === b.value || apart < reach(a, b)) continue;
       // Labels a row apart or a quarter tone apart (an arrowhead level with the other's label)
       // are the ones that overlap in practice; further levels apart clear at any length the
       // frame is given.
@@ -426,14 +439,18 @@ export function bendLabelNeed(bends: readonly (Bend | undefined)[], stop: number
       need = Math.max(need, (textWidth(bendLabel(a.value), EFFECT_TEXT) / 2 - stop) / share);
     }
   }
-  return need;
+  return Math.min(need, BEND_LABEL_CAP);
 }
 
 function bendLane(notes: readonly Note[]): number | undefined {
   const top = Math.max(0, ...notes.map(bendTop));
   if (top <= 0) return undefined;
-  const lift = Math.max(0, ...bendTips(notes.map((note) => note.bend)).map((tip) => tip.lift));
-  return BEND_STEP * top + BEND_LABEL_ROOM + lift;
+  // The highest label's top, which a lifted label may exceed only when it rises above the lane's.
+  const height = labelHeight();
+  const highest = Math.max(
+    ...bendTips(notes.map((note) => note.bend)).map((tip) => tip.base + tip.lift + height),
+  );
+  return Math.max(BEND_STEP * top + BEND_LABEL_ROOM, highest);
 }
 
 export function glyphHeight(name: GlyphName): number {
