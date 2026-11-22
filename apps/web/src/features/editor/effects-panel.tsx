@@ -32,6 +32,8 @@ type Item = ToggleItem | PickerItem;
 const NOTE_ITEMS: readonly Item[] = [
   { picker: 'bend', label: 'Bend…' },
   { picker: 'slide', label: 'Slide…' },
+  { toggle: 'pickScrapeDown', label: 'Pick scrape down' },
+  { toggle: 'pickScrapeUp', label: 'Pick scrape up' },
   { toggle: 'hammerOn', label: 'Hammer-on or pull-off' },
   { toggle: 'vibrato', label: 'Vibrato' },
   { toggle: 'wideVibrato', label: 'Wide vibrato' },
@@ -57,6 +59,8 @@ const BEAT_ITEMS: readonly Item[] = [
   { toggle: 'pop', label: 'Pop' },
   { toggle: 'pickStrokeDown', label: 'Pick stroke down' },
   { toggle: 'pickStrokeUp', label: 'Pick stroke up' },
+  { toggle: 'golpeThumb', label: 'Golpe (thumb)' },
+  { toggle: 'golpeFinger', label: 'Golpe (finger)' },
   { toggle: 'fadeIn', label: 'Fade in' },
   { toggle: 'fadeOut', label: 'Fade out' },
   { toggle: 'volumeSwell', label: 'Volume swell' },

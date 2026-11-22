@@ -1,6 +1,7 @@
 import {
   ARTICULATION,
   createTimeline,
+  hitsInRange,
   notesInRange,
   planNote,
   type NotePlan,
@@ -8,7 +9,7 @@ import {
 } from '@reprise/audio';
 import { write } from '@reprise/formats';
 import { PAGE_SIZES, layout, type Primitive } from '@reprise/layout';
-import { PPQ, beatTicks, type Id, type Score, type SlideKind } from '@reprise/model';
+import { PPQ, beatTicks, type Golpe, type Id, type Score, type SlideKind } from '@reprise/model';
 import { beatOf, note, noteOf, score } from '@reprise/model/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -155,7 +156,8 @@ interface Row {
   on?: 'next';
   /** The marks layout draws for it, found among the primitives of the first two beats. */
   draws: readonly string[];
-  sounds: Sound | { todo: string };
+  /** `hit`: a golpe is no note, so the timeline's `hitsInRange` schedules it instead of `planNote`. */
+  sounds: Sound | { todo: string } | { hit: Golpe };
 }
 
 /** The most the pitch curve moves away from zero over the note. */
@@ -415,6 +417,34 @@ const ROWS: readonly Row[] = [
     sounds: { todo: SILENT_UNTIL },
   },
   {
+    name: 'golpe (thumb)',
+    draws: ['glyph:guitarGolpe'],
+    how: { command: 'editor.effect.golpeThumb' },
+    sounds: { hit: 'thumb' },
+  },
+  {
+    name: 'golpe (finger)',
+    draws: ['glyph:guitarGolpe'],
+    how: { command: 'editor.effect.golpeFinger' },
+    sounds: { hit: 'finger' },
+  },
+  {
+    name: 'pick scrape down',
+    draws: ['text:P.S.', 'path'],
+    how: { command: 'editor.effect.pickScrapeDown' },
+    sounds: (plan) => {
+      expect(plan.scrape).toBe('down');
+    },
+  },
+  {
+    name: 'pick scrape up',
+    draws: ['text:P.S.', 'path'],
+    how: { command: 'editor.effect.pickScrapeUp' },
+    sounds: (plan) => {
+      expect(plan.scrape).toBe('up');
+    },
+  },
+  {
     name: 'pick stroke down',
     draws: ['glyph:stringsDownBow'],
     how: { command: 'editor.effect.pickStrokeDown' },
@@ -538,7 +568,14 @@ describe('every effect applies, draws, sounds and comes off again', () => {
       expectMarks(originalDrawing, appliedDrawing, nodes, row.draws);
 
       // Sounds.
-      if (!('todo' in row.sounds)) {
+      if ('hit' in row.sounds) {
+        const timeline = createTimeline(applied);
+        const hits = hitsInRange(timeline, 0, timeline.endTick, {
+          runStartTick: 0,
+          limitTick: timeline.endTick,
+        });
+        expect(hits.map((hit) => [hit.beatIndex, hit.golpe])).toEqual([[0, row.sounds.hit]]);
+      } else if (!('todo' in row.sounds)) {
         const plans = plansOf(applied);
         const plan = plans.get(targetId);
         const plain = originalPlans.get(targetId);
