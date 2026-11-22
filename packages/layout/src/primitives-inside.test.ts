@@ -234,7 +234,7 @@ describe('primitives stay inside their system', () => {
     }
   }, 60_000);
 
-  it('draws no two fingering marks of one onset on one baseline, in any notation (#511)', () => {
+  it('keeps fingering apart: one onset on one baseline (#511), neighbouring onsets (#523)', () => {
     // Seeds 116, 215, 218 and 384 stacked the fingering of two voices at one onset in one row.
     // Every width and notation guards the same-onset case, on the seeds that have one. At 480 px
     // and A4 no two fingering marks overlap at all, neighbouring onsets included, in any notation
@@ -271,13 +271,13 @@ describe('primitives stay inside their system', () => {
           ? entry.onset
           : undefined;
       };
-      const pairs = (result: LayoutResult, sameOnset: boolean): string[] =>
+      const pairs = (result: LayoutResult, sameOnset: boolean, notation: Notation): string[] =>
         overlappingMarks(result)
           .filter(([a, b]) => {
             const onset = onsetOf(a);
             if (onset === undefined || onsetOf(b) === undefined) return false;
             // Marks stacked at one onset are #526's: neighbours are the marks of two onsets.
-            if (!sameOnset) return onset !== onsetOf(b);
+            if (!sameOnset) return notation === 'tab' || onset !== onsetOf(b);
             return (
               onset === onsetOf(b) &&
               (a.kind === 'glyph' || a.kind === 'text') &&
@@ -292,8 +292,8 @@ describe('primitives stay inside their system', () => {
           const neighbours = width !== 320;
           if (!shared && !neighbours) continue;
           const result = layout(built, options(built, width, notation));
-          if (shared) expect(pairs(result, true), label).toEqual([]);
-          if (neighbours) expect(pairs(result, false), label).toEqual([]);
+          if (shared) expect(pairs(result, true, notation), label).toEqual([]);
+          if (neighbours) expect(pairs(result, false, notation), label).toEqual([]);
         }
       }
     }
