@@ -81,7 +81,7 @@ export type { HitEvent, MixEvent, WahEvent } from './sink';
 export type { RecordedHit, RecordedMix, RecordedWah } from './recording-sink';
 export type { ScheduledContinuation, ScheduledHit, ScheduledMix, ScheduledWah } from './scheduler';
 export { hitsInRange, mixesInRange } from './timeline';
-export { wahChangesInRange, wahLane, wahStateAt } from './wah-lane';
+export { wahChangesInRange, wahLane } from './wah-lane';
 export type { WahOnset, WahPoint, WahState } from './wah-lane';
 export type { HitOnset, MixOnset, TiedContinuation } from './timeline';
 

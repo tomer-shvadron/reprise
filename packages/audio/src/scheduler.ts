@@ -19,7 +19,7 @@ import {
   notesInRange,
   passIndexAt,
 } from './timeline';
-import { wahRestores } from './wah-lane';
+import { wahChangesInRange, wahRestores } from './wah-lane';
 import type { WahOnset } from './wah-lane';
 import type {
   HitOnset,
@@ -324,7 +324,7 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
       const when = Math.max(timeAtTick(timeline, anchor, mix.tick), now);
       mixes.push({ ...mix, when, secondsPerTick: secondsPerTickAt(mix.tick) });
     }
-    for (const wah of beatEvents.wahs) {
+    for (const wah of wahChangesInRange(timeline, next.cursorTick, target, range)) {
       const when = Math.max(timeAtTick(timeline, anchor, wah.tick), now);
       wahs.push({ ...wah, when, restore: false });
     }

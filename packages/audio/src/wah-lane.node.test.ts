@@ -4,14 +4,14 @@ import { PPQ } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 
 import { createTimeline } from './timeline';
-import { wahChangesInRange, wahLane, wahStateAt } from './wah-lane';
+import { wahChangesInRange, wahLane, wahRestores, wahStateBefore } from './wah-lane';
 
 const BAR = PPQ * 4;
 const closed = { effects: { wah: 'closed' as const } };
 const open = { effects: { wah: 'open' as const } };
 
 /** `[tick, state]` of the one track's lane. */
-function points(song: ReturnType<ReturnType<typeof score>['build']>): [number, string][] {
+function points_(song: ReturnType<ReturnType<typeof score>['build']>): [number, string][] {
   const lane = wahLane(createTimeline(song)).get(0) ?? [];
   return lane.map((p) => [p.tick, p.state]);
 }
@@ -28,7 +28,7 @@ describe('wahLane', () => {
       .bar()
       .beat('1', [note(1, 0)])
       .build();
-    expect(points(song)).toEqual([
+    expect(points_(song)).toEqual([
       [0, 'closed'],
       [PPQ, 'open'],
       [2 * PPQ, 'closed'],
@@ -48,7 +48,7 @@ describe('wahLane', () => {
       .beat('2', [note(1, 0)])
       .rest('2')
       .build();
-    expect(points(song)).toEqual([
+    expect(points_(song)).toEqual([
       [0, 'open'],
       [BAR, 'off'],
     ]);
@@ -61,7 +61,7 @@ describe('wahLane', () => {
       .rest('2', closed)
       .beat('2', [note(1, 0)])
       .build();
-    expect(points(song)).toEqual([
+    expect(points_(song)).toEqual([
       [0, 'closed'],
       [2 * PPQ, 'off'],
     ]);
@@ -77,7 +77,7 @@ describe('wahLane', () => {
       .voice(2)
       .beat('1', [note(3, 0)], closed)
       .build();
-    expect(points(marked)).toEqual([[0, 'open']]);
+    expect(points_(marked)).toEqual([[0, 'open']]);
     const unmarked = score()
       .track('guitar')
       .bar()
@@ -101,9 +101,94 @@ describe('wahLane', () => {
       .beat('1', [note(1, 0)])
       .build();
     // Pass two meets the same mark with the pedal still closed: nothing to change.
-    expect(points(song)).toEqual([
+    expect(points_(song)).toEqual([
       [0, 'closed'],
       [4 * BAR, 'off'],
+    ]);
+  });
+
+  it('plays alternate endings and the repeat in playback order', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .repeatStart()
+      .beat('1', [note(1, 0)], closed)
+      .bar()
+      .volta([1])
+      .repeatEnd(2)
+      .beat('1', [note(1, 0)])
+      .bar()
+      .volta([2])
+      .beat('1', [note(1, 0)])
+      .build();
+    const lane = wahLane(createTimeline(song)).get(0) ?? [];
+    expect(lane.map((p) => [p.tick, p.state, p.passIndex, p.sequenceIndex])).toEqual([
+      [0, 'closed', 0, 0],
+      [BAR, 'off', 0, 1],
+      [2 * BAR, 'closed', 1, 2],
+      [3 * BAR, 'off', 0, 3],
+    ]);
+  });
+
+  it('carries the state over a D.S. jump and ends it where the jump lands unmarked', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('1', [note(1, 0)], open)
+      .bar()
+      .target('segno')
+      .beat('1', [note(1, 0)])
+      .bar()
+      .jump('dalSegno')
+      .beat('1', [note(1, 0)], open)
+      .bar()
+      .beat('1', [note(1, 0)])
+      .build();
+    const points = points_(song);
+    // The ticks rise across the jump, one point per change, each in its own pass.
+    expect(points.map(([, state]) => state)).toEqual(['open', 'off', 'open', 'off', 'open', 'off']);
+    expect(points.map(([tick]) => tick)).toEqual(
+      [...points.map(([tick]) => tick)].sort((a, b) => a - b),
+    );
+  });
+
+  it("gives the grace notes before a beat the beat's state", () => {
+    const grace = () => ({
+      grace: [{ duration: 16 as const, before: true, notes: [note(1, 1)] }],
+    });
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)], { ...closed, ...grace() })
+      .beat('4', [note(1, 0)], grace())
+      .beat('4', [note(1, 0)])
+      .build();
+    const sixteenth = PPQ / 4;
+    // Engaged and ended a sixteenth early, where the graces sound.
+    expect(points_(song)).toEqual([
+      [PPQ - sixteenth, 'closed'],
+      [2 * PPQ - sixteenth, 'off'],
+    ]);
+  });
+
+  it('counts a tied note struck afresh after a repeat jump as a played note', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('1', [note(1, 0)], closed)
+      .bar()
+      .repeatStart()
+      .beat('1', [note(1, 0, { tie: true })])
+      .bar()
+      .repeatEnd(2)
+      .rest('1')
+      .build();
+    // Pass one holds the tie from the bar before; after the jump back the tie has no origin
+    // just before it, sounds as an onset, and ends the wah.
+    expect(points_(song)).toEqual([
+      [0, 'closed'],
+      [3 * BAR, 'off'],
     ]);
   });
 
@@ -120,7 +205,7 @@ describe('wahLane', () => {
   });
 });
 
-describe('wahStateAt', () => {
+describe('wahRestores', () => {
   const song = score()
     .track('guitar')
     .bar()
@@ -128,20 +213,25 @@ describe('wahStateAt', () => {
     .beat('4', [note(1, 0)], open)
     .beat('4', [note(1, 0)])
     .beat('4', [note(1, 0)])
+    .track('guitar')
+    .bar()
+    .beat('1', [note(1, 0)])
     .build();
   const timeline = createTimeline(song);
+  const states = (tick: number) =>
+    wahRestores(timeline, tick).map((r) => [r.trackIndex, r.state] as const);
 
-  it('is off outside a passage and the mark inside it', () => {
-    expect(wahStateAt(timeline, 0, 0)).toBe('off');
-    expect(wahStateAt(timeline, 0, PPQ - 1)).toBe('off');
-    expect(wahStateAt(timeline, 0, PPQ)).toBe('open');
-    expect(wahStateAt(timeline, 0, 2 * PPQ - 1)).toBe('open');
-    expect(wahStateAt(timeline, 0, 2 * PPQ)).toBe('off');
-    expect(wahStateAt(timeline, 0, BAR)).toBe('off');
+  it('gives the state before the tick, the change on the tick coming through the window', () => {
+    expect(states(0)).toEqual([[0, 'off']]);
+    expect(states(PPQ)).toEqual([[0, 'off']]);
+    expect(states(PPQ + 1)).toEqual([[0, 'open']]);
+    expect(states(2 * PPQ)).toEqual([[0, 'open']]);
+    expect(states(2 * PPQ + 1)).toEqual([[0, 'off']]);
   });
 
-  it('is off for a track with no lane', () => {
-    expect(wahStateAt(timeline, 5, PPQ)).toBe('off');
+  it('names only the tracks that have a lane', () => {
+    expect(wahRestores(timeline, 0).map((r) => r.trackIndex)).toEqual([0]);
+    expect(wahStateBefore(timeline, 1, PPQ + 1)).toBe('off');
   });
 });
 
