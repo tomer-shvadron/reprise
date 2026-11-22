@@ -84,7 +84,7 @@ export function PracticeToggles({ speedTrainer, tuner }: PracticeTogglesProps) {
           command="transport.metronomeVolume"
           label="Metronome volume"
           value={metronome.volume}
-          note="Also the count-in’s volume."
+          note="The count-in has its own volume in Settings > Playback."
           onChange={(volume) => {
             audio.setMetronome(playback.getState().settings.metronome.on, volume);
           }}

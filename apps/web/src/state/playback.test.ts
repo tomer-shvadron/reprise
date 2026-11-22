@@ -20,6 +20,7 @@ describe('the playback store', () => {
       tempo: { mode: 'percent', value: 100 },
       loop: undefined,
       countIn: false,
+      countInVolume: 0.7,
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
       gmTierBypass: true,
