@@ -101,6 +101,26 @@ test('at the narrowest window the groups never overlap and nothing leaves the ba
   }
 });
 
+test('the running metronome never truncates the sound segment at 1024 px with the refusal showing', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await page.keyboard.press('Alt+b');
+  await expect(page.getByRole('button', { name: 'Metronome on' })).toBeVisible();
+  await page.getByRole('radiogroup', { name: 'Mode' }).getByRole('radio', { name: 'Edit' }).click();
+  const edit = page.getByTestId('edit-status');
+  await edit.getByRole('button', { name: 'Overwrite' }).click();
+  await page.keyboard.press('.');
+  await page.keyboard.press('/');
+  await page.keyboard.press('5');
+  await expect(edit.getByRole('status')).not.toHaveText('');
+  // The text span is the one that truncates with an ellipsis: it must fit whole.
+  const clipped = await page
+    .locator('[data-sound-status] > span')
+    .evaluate((node) => node.scrollWidth > node.clientWidth);
+  expect(clipped).toBe(false);
+});
+
 for (const theme of ['dark', 'light'] as const) {
   test(`every segment is at least 4.5:1 on the bar in the ${theme} theme`, async ({
     app,

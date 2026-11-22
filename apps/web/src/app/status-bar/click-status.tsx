@@ -41,7 +41,7 @@ export function MetronomeSegment() {
         aria-hidden="true"
         className="bg-primary size-1.5 shrink-0 rounded-full motion-safe:animate-pulse"
       />
-      <span className="@max-[60rem]:hidden">Metronome on</span>
+      <span className="@max-[80rem]:hidden">Metronome on</span>
     </StatusSegment>
   );
 }
