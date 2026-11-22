@@ -12,7 +12,10 @@ import {
   diagonalWave,
   SCRAPE,
   WAVES,
+  graceLinks,
+  graceOrigin,
   hammerLetter,
+  lettersOfLinks,
   nextOnString,
   shifts,
   targetIsHigher,
@@ -43,10 +46,13 @@ const STROKE = { reach: 0.4 };
 export function graceCentres(beat: TabBeat, x: number, space: number): number[] {
   const centres: number[] = [];
   let cursor = x - beat.half - beat.stroke - TAB.graceGap * space;
-  for (const column of [...beat.graces].reverse()) {
+  for (let g = beat.graces.length - 1; g >= 0; g--) {
+    const column = beat.graces[g];
+    if (!column) continue;
     cursor -= column.room;
     centres.unshift(cursor - column.width / 2);
-    cursor -= column.width + TAB.graceGap * space;
+    // What lies between this column and the one before it.
+    cursor -= column.width + (beat.graces[g - 1]?.gap ?? TAB.graceGap * space);
   }
   return centres;
 }
@@ -339,13 +345,36 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
     const at: TiePosition = { bar: barIndex, voice: voice.index, beat: beat.index };
     const letters = lettered(context, beat);
     const centres = graceCentres(beat, x, space);
-    const lastGrace = beat.graces.at(-1);
-    const lastCentre = centres.at(-1);
+    const links = graceLinks(beat.beat.grace);
+    const linkLetters = lettersOfLinks(
+      links,
+      ({ target }) => arcDirection(context, target),
+      ({ target }) => (arcDirection(context, target) === 'down' ? target.string : -target.string),
+    );
+    for (const { from, to, origin, target } of links) {
+      const originLabel = beat.graces[from]?.labels.find((label) => label.note === origin);
+      const targetLabel = beat.graces[to]?.labels.find((label) => label.note === target);
+      const left = centres[from];
+      const right = centres[to];
+      if (!originLabel || !targetLabel || left === undefined || right === undefined) continue;
+      // A legato slide already draws its arc, labelled `sl.`.
+      if (origin.slide?.includes('legato')) continue;
+      const letter = linkLetters.has(target) ? hammerLetter(origin, target) : undefined;
+      drawArc(
+        context,
+        target,
+        left + rightEdge(originLabel, graceSize),
+        right - leftEdge(targetLabel, graceSize),
+        letter,
+      );
+    }
     for (const label of beat.labels) {
       const { note } = label;
       drawLooseSlides(context, label, x);
       drawScrape(context, label, x, next);
-      const grace = lastGrace?.labels.find((candidate) => candidate.note.string === note.string);
+      const found = graceOrigin(beat.beat.grace ?? [], beat.graces.length, note.string);
+      const grace = found && beat.graces[found.column]?.labels.find((l) => l.note === found.note);
+      const lastCentre = found ? centres[found.column] : undefined;
       if (grace && lastCentre !== undefined) {
         const origin = { note: grace.note, x: lastCentre, edge: rightEdge(grace, graceSize) };
         if (shifts(grace.note)) drawSlide(context, origin, note, x, label);

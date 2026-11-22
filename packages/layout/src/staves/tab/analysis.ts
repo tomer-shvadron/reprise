@@ -28,6 +28,7 @@ import { reservedDynamics } from '../dynamics';
 import { WORDS, wordRows } from '../words';
 import {
   BEND_ROOM,
+  graceLinks,
   KNOCKOUT,
   LETTER,
   naturalHarmonicText,
@@ -47,6 +48,8 @@ export const TAB = {
   knockoutY: KNOCKOUT.y,
   graceScale: 0.7,
   graceGap: 0.25,
+  /** Extra gap between two grace columns joined by a hammer-on, in staff spaces. */
+  graceLink: 0.5,
   /** From the outer string to where stems start, and a stem's length to its beam or flag. */
   stemGap: 0.75,
   stem: 3.25,
@@ -106,6 +109,8 @@ export interface GraceColumn {
   width: number;
   /** Room kept right of the column for a bend, in px. */
   room: number;
+  /** Space between this column and the next, or the beat: wider when a hammer-on links them. */
+  gap: number;
 }
 
 export interface TabBeat {
@@ -311,8 +316,17 @@ function analyseBeat(
       labels: graceLabels,
       width: Math.max(0, ...graceLabels.map((label) => labelHalf(label, graceSize) * 2)),
       room: grace.notes.some((note) => note.bend) ? TAB.graceBendRoom * space : 0,
+      gap: TAB.graceGap * space,
     };
   });
+  const links = graceLinks(beat.grace);
+  // The gap before a linked column is wide enough for its arc.
+  for (const { from, to } of links) {
+    for (let g = from; g < to; g++) {
+      const column = graces[g];
+      if (column) column.gap = (TAB.graceGap + TAB.graceLink) * space;
+    }
+  }
   const rhythm = event(beat, tick);
   let half: number;
   let right: number;
@@ -345,7 +359,7 @@ function analyseBeat(
     if (note.bend || note.slide || note.hammerPull) drawn = true;
   }
   for (const grace of beat.grace ?? []) {
-    for (const note of grace.notes) if (note.bend || note.slide) drawn = true;
+    for (const note of grace.notes) if (note.bend || note.slide || note.hammerPull) drawn = true;
   }
   // What hangs right of a number starts past its suffix (a harmonic's brackets), as the drawing
   // in effects.ts places it, so the room counts from there.
@@ -363,7 +377,7 @@ function analyseBeat(
     played && (beat.effects.arpeggio || beat.effects.brush) ? TAB.strokeRoom * space : 0;
   let left = half + stroke;
   if (slideIn) left += TAB.slideRoom * space;
-  for (const column of graces) left += TAB.graceGap * space + column.width + column.room;
+  for (const column of graces) left += column.gap + column.width + column.room;
   return {
     voice,
     index,

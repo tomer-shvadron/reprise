@@ -15,6 +15,9 @@ import {
   BEND_FRAME,
   articulationMarks,
   connections,
+  graceLinks,
+  graceOrigin,
+  lettersOfLinks,
   type BendDrawn,
   bendColumns,
   drawBend,
@@ -578,12 +581,42 @@ export function drawConnections(
     const nextX = following ? context.beatX(following) : contentEnd;
     const at: TiePosition = { bar: barIndex, voice, beat: beat.index };
     const letters = lettered(chord, plan.multiVoice);
-    const lastGrace = beat.graces.at(-1);
+    const graces = beat.beat.grace;
+    // A grace column's heads, skipping the sounding diamonds of a harmonic.
+    const headOf = (column: number, note: Note): HeadSpot | undefined => {
+      const grace = beat.graces[column];
+      const found = grace?.chord.heads.find((other) => !other.sounding && other.note === note);
+      return grace && found ? spotOf(context, grace.chord, found, x + grace.offset, 0) : undefined;
+    };
+    if (fretted) {
+      const links = graceLinks(graces);
+      const linkLetters = lettersOfLinks(
+        links,
+        () => 'down',
+        ({ origin, from }) => {
+          const grace = beat.graces[from];
+          return grace?.chord.heads.find((head) => head.note === origin)?.y ?? 0;
+        },
+      );
+      for (const { from, to, origin, target } of links) {
+        const start = headOf(from, origin);
+        const end = headOf(to, target);
+        // A legato slide already draws its slur, labelled `sl.`.
+        if (!start || !end || origin.slide?.includes('legato')) continue;
+        const letter = linkLetters.has(target) ? hammerLetter(origin, target) : undefined;
+        // A grace note's stem points up, so its slur bends down, away from it.
+        slur(context, start.right + tie, start.y, end.left - tie, end.y, 'down', target.id, letter);
+      }
+    }
     for (const head of mainHeads(chord)) {
       const { note } = head;
-      const grace = lastGrace?.chord.heads.find(
-        (other) => !other.sounding && other.note.string === note.string,
-      );
+      const found = graceOrigin(graces ?? [], beat.graces.length, note.string);
+      const grace = found
+        ? beat.graces[found.column]?.chord.heads.find(
+            (other) => !other.sounding && other.note === found.note,
+          )
+        : undefined;
+      const lastGrace = found ? beat.graces[found.column] : undefined;
       const connects = grace !== undefined || note.hammerPull || slidesIn || leavesLine;
       if (!note.slide && !note.pickScrape && !connects) continue;
       const spot = spotOf(context, chord, head, x, beat.beat.dots);
