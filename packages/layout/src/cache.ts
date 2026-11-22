@@ -58,6 +58,11 @@ export interface CacheState {
   bars: Map<Id, CachedBar>;
   barCount: number;
   systems: CachedSystem[];
+  /**
+   * The master bar convergence spreads out from: the first one re-measured by the last call that
+   * re-measured any, which a later call with no dirty bars still draws stale segments around.
+   */
+  focus?: Id;
 }
 
 const states = new WeakMap<LayoutCache, CacheState>();

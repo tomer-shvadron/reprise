@@ -332,6 +332,158 @@ test('Re-layout after a segment-break-moving edit, continuous', RELAYOUT_BENCH, 
 });
 
 /**
+ * The app's `EDIT_REACH` (`apps/web/src/state/layout.ts`), which layout cannot import: segments
+ * redrawn at once when an edit changes the continuous vertical layout (#229).
+ */
+const EDIT_REACH = 8;
+/** The app's follow-up reach, used untimed to converge between edits. */
+const FOLLOW_UP_REACH = 24;
+
+/**
+ * Letting a note ring adds a lane to its track's staff in every segment, so it changes the shared
+ * vertical layout: edit k adds one at bar `100 + k` of track `k % 8` and the odd edit after it
+ * takes it away again, so timed edits alternate growing and shrinking.
+ */
+const heightEdit: Edit = (score, edit) => {
+  const added = edit - (edit % 2);
+  const track = score.tracks[added % 8];
+  // The first note from bar `100 + added` on: the same one for the edit and the undo after it.
+  for (let bar = 100 + added; bar < score.masterBars.length; bar++) {
+    const note = track?.bars[bar]?.voices[0]?.beats.flatMap((beat) => beat.notes)[0];
+    if (note) {
+      return applyCommand(score, setNoteEffect({ noteId: note.id }, { letRing: edit % 2 === 0 }));
+    }
+  }
+  throw new Error(`no note from bar ${String(100 + added)} of track ${String(added % 8)}`);
+};
+
+interface HeightRun {
+  p50: number;
+  max: number;
+  rendered: number;
+  followUps: number;
+  converge: number;
+  stale: number;
+}
+
+async function heightBench(
+  context: TestContext,
+  name: string,
+  build: (score: Score) => LayoutOptions,
+  verticalReach: number | undefined,
+): Promise<HeightRun> {
+  const cache = new LayoutCache();
+  let score = longScore();
+  const caseOptions = build(score);
+  layout(score, caseOptions, cache);
+  let count = 0;
+  let dirtyBars: string[] = [];
+  const edits: { ms: number; rendered: number; stale: number; followUps: number; ms2: number }[] =
+    [];
+  let followUps = 0;
+  let convergeMs = 0;
+  await context
+    .bench(
+      name,
+      {
+        beforeEach() {
+          // Untimed: the follow-up calls the app makes after an edit, until nothing is stale.
+          followUps = 0;
+          convergeMs = 0;
+          if (verticalReach !== undefined && count > 0) {
+            for (;;) {
+              const began = now();
+              const { metrics } = layout(
+                score,
+                { ...caseOptions, verticalReach: FOLLOW_UP_REACH },
+                cache,
+              );
+              convergeMs += now() - began;
+              if (metrics.staleSystems === 0) break;
+              followUps += 1;
+            }
+          }
+          const next = heightEdit(score, count);
+          count += 1;
+          score = next.score;
+          dirtyBars = next.change.touchedBars;
+        },
+      },
+      () => {
+        const began = now();
+        const { systems, metrics } = layout(
+          score,
+          { ...caseOptions, dirtyBars, verticalReach },
+          cache,
+        );
+        const ms = now() - began;
+        edits.push({
+          ms,
+          rendered: systems.length - metrics.reusedSystems,
+          stale: metrics.staleSystems,
+          followUps,
+          ms2: convergeMs,
+        });
+      },
+    )
+    .run(RUN);
+  // tinybench calls the function once before any beforeEach, to see whether it is async.
+  const timed = edits.slice(-RUN.iterations);
+  const times = timed.map(({ ms }) => ms);
+  const rendered = timed.map((edit) => edit.rendered);
+  // The row must measure height-changing edits: with the reach, some segments were left stale and
+  // at most the reach plus the edited three were redrawn; without it, nearly all were.
+  for (const edit of timed) {
+    if (verticalReach === undefined) expect(edit.rendered).toBeGreaterThan(EDIT_REACH + 3);
+    else {
+      expect(edit.stale, `${name}: an edit left nothing stale`).toBeGreaterThan(0);
+      expect(edit.rendered).toBeLessThanOrEqual(verticalReach + 3);
+    }
+  }
+  const p50 = median(times);
+  const max = Math.max(...times);
+  const stale = median(timed.map((edit) => edit.stale));
+  const follow = median(timed.map((edit) => edit.followUps));
+  const converge = median(timed.map((edit) => edit.ms2));
+  await context.annotate(
+    `${name}: p50 ${String(round(p50))} ms, max ${String(round(max))} ms, median ${String(median(rendered))} segments rendered, ${String(stale)} left stale, ${String(follow)} follow-up calls and ${String(round(converge))} ms to converge per edit (reported, no budget)`,
+  );
+  return { p50, max, rendered: median(rendered), followUps: follow, converge, stale };
+}
+
+const HEIGHT_CASES: readonly [string, (score: Score) => LayoutOptions][] = [
+  ['tab', (score) => allNotation(score, 'tab', continuous)],
+  ['mixed', (score) => mixedNotation(score, continuous)],
+];
+
+test('Re-layout after a height-changing edit, continuous', RELAYOUT_BENCH, async (context) => {
+  const metric = 'Re-layout after a height-changing edit, continuous';
+  const runs: HeightRun[] = [];
+  for (const [name, build] of HEIGHT_CASES) {
+    runs.push(await heightBench(context, `${metric}, ${name}`, build, EDIT_REACH));
+  }
+  const slowest = Math.max(...runs.map(({ p50 }) => p50));
+  await checkBudget(context, metric, slowest, {
+    enforced: true,
+    note: `reach ${String(EDIT_REACH)}; converges in ${String(Math.max(...runs.map(({ followUps }) => followUps)))} follow-up calls`,
+  });
+});
+
+test(
+  'Re-layout after a height-changing edit, continuous, undeferred',
+  RELAYOUT_BENCH,
+  async (context) => {
+    const metric = 'Re-layout after a height-changing edit, continuous, undeferred';
+    const runs: HeightRun[] = [];
+    for (const [name, build] of HEIGHT_CASES) {
+      runs.push(await heightBench(context, `${metric}, ${name}`, build, undefined));
+    }
+    // What the edit cost before `verticalReach`: kept so the trade stays visible.
+    await recordMeasurement(context, metric, Math.max(...runs.map(({ p50 }) => p50)));
+  },
+);
+
+/**
  * One note-entry keystroke as the editor sends it (`entry.ts`): a composed `enterNote` holding one
  * `insertBeat` that carries the beat's own id and its note, through `applyCommand`, then the
  * cached continuous re-layout of the bar it touched. Each edit first takes the last beat out of a

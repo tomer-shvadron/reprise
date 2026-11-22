@@ -39,6 +39,8 @@ export interface ResolvedOptions {
   tracks: VisibleTrack[];
   tiedNotes: TiedNotes;
   chordDiagrams: boolean;
+  /** `LayoutOptions.verticalReach`; `Infinity` when unset. Not part of any key, as `dirtyBars` is not. */
+  verticalReach: number;
   /** Everything a cached bar measurement depends on besides the bars themselves. */
   measureKey: string;
   /** Everything else a cached system depends on. */
@@ -64,6 +66,15 @@ export function stavesFor(track: Track, notation: Notation): StaffType[] {
 function positive(value: number, name: string): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new RangeError(`layout option ${name} must be a positive number`);
+  }
+  return value;
+}
+
+function reach(value: number): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new RangeError(
+      `layout option verticalReach (${String(value)}) must be a non-negative integer`,
+    );
   }
   return value;
 }
@@ -135,6 +146,7 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
     tracks,
     tiedNotes,
     chordDiagrams,
+    verticalReach: options.verticalReach === undefined ? Infinity : reach(options.verticalReach),
     measureKey,
     systemKey: JSON.stringify([
       measureKey,

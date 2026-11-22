@@ -14,4 +14,8 @@ describe('LayoutCache: random edits', () => {
     // 16.2 s worst on CI (#384): own timeout, 4x the worst rounded up to 120 s.
     120_000,
   );
+
+  it('keeps cached equal to cold in both notation, continuous, with verticalReach (#229)', () => {
+    checkCachedEqualsCold('both', 'continuous', undefined, true);
+  }, 120_000);
 });

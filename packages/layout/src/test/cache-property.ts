@@ -502,11 +502,19 @@ export const CACHE_PROPERTY_MODES = [
   ),
 ] as const;
 
-/** Asserts, over random edit sequences, that the warm cache equals a cold layout after every step. */
+/**
+ * Asserts, over random edit sequences, that the warm cache equals a cold layout after every step.
+ *
+ * With `withReach` (continuous mode), every edit's layout passes a random `verticalReach` (1 to 6;
+ * 0 never converges, as nothing is redrawn without dirty bars), then calls again with no dirty
+ * bars until nothing is stale, each call strictly lowering `staleSystems`; the converged layout
+ * is the one compared with cold.
+ */
 export function checkCachedEqualsCold(
   notation: Notation,
   mode: LayoutOptions['mode'],
   height: number | undefined,
+  withReach = false,
 ): void {
   const split = height !== undefined;
   assert(
@@ -515,7 +523,9 @@ export function checkCachedEqualsCold(
       integer({ min: 0, max: 2 }),
       integer({ min: 0, max: 4 }),
       array(edit, { minLength: 1, maxLength: 8 }),
-      (which, subsetDie, widthDie, edits) => {
+      integer({ min: 1, max: 6 }),
+      (which, subsetDie, widthDie, edits, reachDie) => {
+        const verticalReach = withReach ? reachDie : undefined;
         let score = SCORES[which]();
         const width = widthAt(mode, widthDie);
         let options = optionsFor(score, notation, mode, subsetDie === 0, width, height);
@@ -557,7 +567,14 @@ export function checkCachedEqualsCold(
               throw error;
             }
           }
-          const cached = layout(score, { ...options, dirtyBars: touched }, cache);
+          let cached = layout(score, { ...options, dirtyBars: touched, verticalReach }, cache);
+          let stale = cached.metrics.staleSystems;
+          if (verticalReach === undefined) expect(stale).toBe(0);
+          while (stale > 0) {
+            cached = layout(score, { ...options, verticalReach }, cache);
+            expect(cached.metrics.staleSystems, JSON.stringify(step)).toBeLessThan(stale);
+            stale = cached.metrics.staleSystems;
+          }
           const cold = layoutWith(score, options, undefined, afresh ? undefined : breaks);
           expect(stable(cached), JSON.stringify(step)).toBe(stable(cold));
           breaks = breakIds(score, cached);
