@@ -799,6 +799,7 @@ function bendFrame(
         numberTop,
         releaseTop,
         tied: head.note.tie,
+        limit: placement.x + placement.width,
       },
       space,
       head.note.id,
