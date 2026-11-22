@@ -87,7 +87,13 @@ function columns(input: SystemInput, from: number): (Column | undefined)[] {
     const contentX = barX + signatures;
     const positions: number[] = [];
     let onset = contentX + measure.leading;
-    for (const segment of stretch(measure.springs, plan.factor, plan.squeeze, plan.rigidScale)) {
+    for (const segment of stretch(
+      measure.springs,
+      plan.factor,
+      plan.squeeze,
+      plan.rigidScale,
+      plan.fixedScale,
+    )) {
       positions.push(onset);
       onset += segment;
     }

@@ -34,34 +34,49 @@ export interface Spring {
   natural: number;
   min: number;
   /**
-   * The part of `min` that `squeeze` leaves alone, so what the onsets draw right of themselves
-   * (a second voice shifted off a first one included) stays inside the bar. The bar's springs
-   * share the widest such extent as suffix maxima: the springs from an onset to the bar's end
-   * always hold at least that onset's extent.
+   * The fixed part of `min`, which `squeeze` leaves alone and `rigidScale` never shrinks: what
+   * the onsets draw right of themselves at a width of their own (heads, tab fret numbers,
+   * slide paths, lane labels). The bar's springs share the widest such extent as suffix
+   * maxima: the springs from an onset to the bar's end always hold at least that onset's extent.
    */
   rigid?: number;
+  /**
+   * The movable part, shared the same way: the voice-separation shifts, which a bar too dense
+   * for its line draws scaled by `rigidScale`. It shrinks before the fixed part does.
+   */
+  movable?: number;
 }
 
 /**
- * A spring's minimum width in a bar squeezed by `squeeze`: only the part above `rigid` shrinks.
- * `rigidScale` is below 1 only when the rigid parts alone overflow the line.
+ * A spring's minimum width in a bar squeezed by `squeeze`: only the part above `rigid` and
+ * `movable` shrinks. `rigidScale` scales the movable part and is below 1 only when the rigid and
+ * movable parts alone overflow the line; `fixedScale` scales the rigid part and is below 1 only
+ * when the rigid parts alone overflow it.
  */
-export function squeezedMin({ min, rigid = 0 }: Spring, squeeze: number, rigidScale = 1): number {
-  return squeeze >= 1 ? min : rigid * rigidScale + Math.max(0, min - rigid) * squeeze;
+export function squeezedMin(
+  { min, rigid = 0, movable = 0 }: Spring,
+  squeeze: number,
+  rigidScale = 1,
+  fixedScale = 1,
+): number {
+  return squeeze >= 1
+    ? min
+    : rigid * fixedScale + movable * rigidScale + Math.max(0, min - rigid - movable) * squeeze;
 }
 
 /**
- * Each spring at `factor` times its natural width, never below its minimum, which `squeeze` and
- * `rigidScale` shrink only in a bar whose minimums alone overflow its line.
+ * Each spring at `factor` times its natural width, never below its minimum, which `squeeze`,
+ * `rigidScale` and `fixedScale` shrink only in a bar whose minimums alone overflow its line.
  */
 export function stretch(
   springs: readonly Spring[],
   factor: number,
   squeeze = 1,
   rigidScale = 1,
+  fixedScale = 1,
 ): number[] {
   return springs.map((spring) =>
-    Math.max(squeezedMin(spring, squeeze, rigidScale), spring.natural * factor),
+    Math.max(squeezedMin(spring, squeeze, rigidScale, fixedScale), spring.natural * factor),
   );
 }
 
