@@ -27,6 +27,41 @@ function eighthsScore(bars: number) {
   return builder.build({ ids: 'sequential' });
 }
 
+describe('a three-string track', () => {
+  it('draws three tab lines with a digit on each, as a shamisen needs', () => {
+    const built = score()
+      .track('shamisen', {
+        id: 'shamisen0001',
+        display: { notation: 'tab', clef: 'treble', octaveShift: 1 },
+      })
+      .bar()
+      .beat('4', [note(1, 3)])
+      .beat('4', [note(2, 5)])
+      .beat('4', [note(3, 7)])
+      .beat('4', [note(2, 0)])
+      .build({ ids: 'sequential' });
+    const result = layout(built, paged);
+    const staff = result.systems[0]?.staves.find(({ type }) => type === 'tab');
+    expect(staff).toBeDefined();
+    const range = result.systems[0]?.primitives;
+    const primitives = result.primitives.slice(range?.start ?? 0, range?.end ?? 0);
+    const inside = (y: number) => y >= (staff?.top ?? 0) - 0.01 && y <= (staff?.bottom ?? 0) + 0.01;
+    const lineYs = new Set(
+      primitives.flatMap((p) => (p.kind === 'line' && p.y === p.y2 && inside(p.y) ? [p.y] : [])),
+    );
+    expect(lineYs.size).toBe(3);
+    const digits = primitives.flatMap((p) =>
+      p.kind === 'text' &&
+      /^\d+$/.test(p.text) &&
+      p.y > (staff?.top ?? 0) - p.size &&
+      p.y < (staff?.bottom ?? 0) + p.size
+        ? [p.text]
+        : [],
+    );
+    expect(digits.sort()).toEqual(['0', '3', '5', '7']);
+  });
+});
+
 describe('layout', () => {
   it.each([
     ['paged', paged],

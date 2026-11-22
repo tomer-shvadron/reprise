@@ -233,7 +233,18 @@ describe('the track dialog, adding', () => {
       [...within(dialog()).getByLabelText('Tuning').querySelectorAll('optgroup')].map(
         (group) => group.label,
       ),
-    ).toEqual(['Bass', 'Ukulele', 'Mandolin', 'Banjo']);
+    ).toEqual([
+      'Bass',
+      'Ukulele',
+      'Mandolin',
+      'Mandola',
+      'Octave mandolin',
+      'Banjo',
+      'Violin',
+      'Viola',
+      'Cello',
+      'Double bass',
+    ]);
     await user.selectOptions(field('Tuning'), 'Mandolin GDAE');
     await user.click(screen.getByRole('button', { name: 'Add track' }));
     expect(tracksOf(services).at(-1)).toMatchObject({
@@ -242,6 +253,46 @@ describe('the track dialog, adding', () => {
       courses: [0, 0, 0, 0],
       program: 25,
     });
+  });
+
+  it('adds a viola in the alto clef at pitch, on program 41, shown as Viola CGDA', async () => {
+    const { services, run, user } = setup();
+    run('track.add');
+    await user.selectOptions(field('Strings'), '4');
+    await user.selectOptions(field('Tuning'), 'Viola CGDA');
+    expect(field('Name')).toHaveValue('Viola');
+    expect(field('Tuning')).toHaveValue('Viola CGDA');
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    const added = tracksOf(services).at(-1);
+    expect(added).toMatchObject({ name: 'Viola', program: 41, tuning: [48, 55, 62, 69] });
+    expect(added?.display).toMatchObject({ clef: 'alto', octaveShift: 0 });
+  });
+
+  it('adds a shamisen on three strings, the only preset offered there', async () => {
+    const { services, run, user } = setup();
+    run('track.add');
+    await user.selectOptions(field('Strings'), '3');
+    expect(
+      [...within(dialog()).getByLabelText('Tuning').querySelectorAll('optgroup')].map(
+        (group) => group.label,
+      ),
+    ).toEqual(['Shamisen']);
+    await user.selectOptions(field('Tuning'), 'Shamisen niagari');
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    expect(tracksOf(services).at(-1)).toMatchObject({
+      name: 'Shamisen',
+      program: 106,
+      tuning: [48, 55, 60],
+    });
+  });
+
+  it('offers no drone checkbox on a 5-string track on a bowed program', async () => {
+    const { run, user } = setup();
+    run('track.add');
+    await user.selectOptions(field('Strings'), '5');
+    expect(within(dialog()).getByLabelText(/Short 5th string/)).toBeInTheDocument();
+    await user.selectOptions(field('Instrument'), 'Violin');
+    expect(within(dialog()).queryByLabelText(/Short 5th string/)).toBeNull();
   });
 
   it('adds a 5-string banjo with its short string, which a checkbox turns off', async () => {

@@ -17,6 +17,7 @@ import {
   setProgram,
   setShortName,
   setString,
+  stringCountOptions,
   setStringCount,
   shortNameOf,
   trackChanges,
@@ -130,6 +131,66 @@ describe('add mode', () => {
     const eight = applyPreset(newTrackForm('fretted'), '8-string standard', true);
     expect(eight).toMatchObject({ name: 'Guitar', program: 25 });
     expect(eight.strings).toHaveLength(8);
+  });
+
+  it.each([
+    ['Violin GDAE', 'Violin', 'Vln.', 40, 'treble', 0],
+    ['Viola CGDA', 'Viola', 'Vla.', 41, 'alto', 0],
+    ['Cello CGDA', 'Cello', 'Vc.', 42, 'bass', 0],
+    ['Double bass EADG', 'Double Bass', 'Cb.', 43, 'bass', 1],
+    ['Shamisen honchoshi', 'Shamisen', 'Sham.', 106, 'treble', 1],
+    ['Mandola CGDA', 'Mandola', 'Mdla.', 25, 'alto', 0],
+    ['Octave mandolin GDAE', 'Octave Mandolin', 'O.Mand.', 25, 'treble', 1],
+    ['Ukulele standard', 'Ukulele', 'Uke.', 24, 'treble', 0],
+    ['Ukulele low G', 'Ukulele', 'Uke.', 24, 'treble', 0],
+    ['Mandolin GDAE', 'Mandolin', 'Mand.', 25, 'treble', 0],
+    ['Bass standard', 'Bass', 'Bs.', 33, 'bass', 1],
+    ['E standard', 'Guitar', 'Gtr.', 25, 'treble', 1],
+    ['Banjo Open G', 'Banjo', 'Bjo.', 105, 'treble', 1],
+  ])(
+    'adds %s as %s with its clef and written octave',
+    (preset, name, shortName, program, clef, octaveShift) => {
+      const form = applyPreset(newTrackForm('fretted'), preset, true);
+      expect(form).toMatchObject({ name, shortName, program });
+      expect(presetNameOf(form)).toBe(preset);
+      expect(newTrackProperties(form, DEFAULTS).display).toMatchObject({ clef, octaveShift });
+    },
+  );
+
+  it('follows the string-instruments setting for the notation of a bowed track', () => {
+    const form = applyPreset(newTrackForm('fretted'), 'Viola CGDA', true);
+    expect(newTrackProperties(form, { strings: 'standard', vocals: 'tab' }).display?.notation).toBe(
+      'standard',
+    );
+    expect(newTrackProperties(form, DEFAULTS).display?.notation).toBe('tab');
+  });
+
+  it('keeps a typed name or program over the preset, and still sets the clef', () => {
+    const typed = setProgram(setName(newTrackForm('fretted'), 'Fiddle'), 110);
+    const form = applyPreset(typed, 'Violin GDAE', true);
+    expect(form).toMatchObject({ name: 'Fiddle', program: 110 });
+    expect(newTrackProperties(form, DEFAULTS).display?.clef).toBe('treble');
+  });
+
+  it('never changes the clef or octave when editing, whatever preset is picked', () => {
+    const track = guitar();
+    const form = applyPreset(formFromTrack(track), 'Cello CGDA', false);
+    expect(form.instrument).toBeUndefined();
+    expect(trackChanges(track, form)).not.toHaveProperty('display');
+  });
+
+  it('names a viola on 41 and a tenor banjo on 105 from the same strings', () => {
+    const cgda = { ...formFromTrack(guitar()), strings: [69, 62, 55, 48] };
+    expect(presetNameOf({ ...cgda, program: 41 })).toBe('Viola CGDA');
+    expect(presetNameOf({ ...cgda, program: 105 })).toBe('Tenor banjo CGDA');
+    expect(presetNameOf({ ...cgda, program: 25 })).toBe('Tenor banjo CGDA');
+  });
+
+  it('allows three strings, as the shamisen has', () => {
+    expect(stringCountOptions(6)[0]).toBe(3);
+    const three = setStringCount(setStringCount(formFromTrack(guitar()), 4), 3);
+    expect(three.strings).toHaveLength(3);
+    expect(three.drone).toBeUndefined();
   });
 
   it('does not touch the name when editing an existing track', () => {

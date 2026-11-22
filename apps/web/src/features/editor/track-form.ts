@@ -4,6 +4,7 @@ import {
   createTrack,
   findTuningName,
   isVocalTrack,
+  type Clef,
   type Drone,
   type Score,
   type Track,
@@ -15,31 +16,49 @@ import {
 
 import type { NotationDefaults } from '@/state/notation-defaults';
 
-export const MIN_STRINGS = 4;
+// Guitar Pro 8 allows 3 to 10 strings; the shamisen has 3.
+export const MIN_STRINGS = 3;
 export const MIN_TUNING_NOTE = 12;
 export const MAX_TUNING_NOTE = 96;
 
 const NEW_STRING_INTERVAL = 5;
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
+interface InstrumentDefaults {
+  name: string;
+  shortName: string;
+  program: number;
+  /** The clef and written octave of a track added from this preset; editing never applies them. */
+  display: { clef: Clef; octaveShift: number };
+}
+
+const at = (clef: Clef, octaveShift: number) => ({ clef, octaveShift });
+
 /** What a new fretted track of each instrument starts with before the user types. */
-const INSTRUMENT_DEFAULTS: Record<
-  TuningInstrument,
-  { name: string; shortName: string; program: number }
-> = {
-  guitar: { name: 'Guitar', shortName: 'Gtr.', program: 25 },
-  bass: { name: 'Bass', shortName: 'Bs.', program: 33 },
-  ukulele: { name: 'Ukulele', shortName: 'Uke.', program: 24 },
-  twelveString: { name: '12-string Guitar', shortName: '12-str.', program: 25 },
-  banjo: { name: 'Banjo', shortName: 'Bjo.', program: 105 },
-  mandolin: { name: 'Mandolin', shortName: 'Mand.', program: 25 },
-  violin: { name: 'Violin', shortName: 'Vln.', program: 40 },
-  viola: { name: 'Viola', shortName: 'Vla.', program: 41 },
-  cello: { name: 'Cello', shortName: 'Vc.', program: 42 },
-  doubleBass: { name: 'Double Bass', shortName: 'Cb.', program: 43 },
-  shamisen: { name: 'Shamisen', shortName: 'Sham.', program: 106 },
-  mandola: { name: 'Mandola', shortName: 'Mdla.', program: 25 },
-  octaveMandolin: { name: 'Octave Mandolin', shortName: 'O.Mand.', program: 25 },
+const INSTRUMENT_DEFAULTS: Record<TuningInstrument, InstrumentDefaults> = {
+  guitar: { name: 'Guitar', shortName: 'Gtr.', program: 25, display: at('treble', 1) },
+  bass: { name: 'Bass', shortName: 'Bs.', program: 33, display: at('bass', 1) },
+  ukulele: { name: 'Ukulele', shortName: 'Uke.', program: 24, display: at('treble', 0) },
+  twelveString: {
+    name: '12-string Guitar',
+    shortName: '12-str.',
+    program: 25,
+    display: at('treble', 1),
+  },
+  banjo: { name: 'Banjo', shortName: 'Bjo.', program: 105, display: at('treble', 1) },
+  mandolin: { name: 'Mandolin', shortName: 'Mand.', program: 25, display: at('treble', 0) },
+  violin: { name: 'Violin', shortName: 'Vln.', program: 40, display: at('treble', 0) },
+  viola: { name: 'Viola', shortName: 'Vla.', program: 41, display: at('alto', 0) },
+  cello: { name: 'Cello', shortName: 'Vc.', program: 42, display: at('bass', 0) },
+  doubleBass: { name: 'Double Bass', shortName: 'Cb.', program: 43, display: at('bass', 1) },
+  shamisen: { name: 'Shamisen', shortName: 'Sham.', program: 106, display: at('treble', 1) },
+  mandola: { name: 'Mandola', shortName: 'Mdla.', program: 25, display: at('alto', 0) },
+  octaveMandolin: {
+    name: 'Octave Mandolin',
+    shortName: 'O.Mand.',
+    program: 25,
+    display: at('treble', 1),
+  },
 };
 
 /**
@@ -68,6 +87,11 @@ export interface TrackForm {
   /** While false the short name follows the name. */
   shortNameEdited: boolean;
   programEdited: boolean;
+  /**
+   * The instrument of the preset picked while adding, which decides the new track's clef and
+   * written octave; `undefined` means the guitar default, and editing never reads it.
+   */
+  instrument: TuningInstrument | undefined;
   /**
    * The add dialog's "Percussion" choice: a drums track named for what it is. Guitar Pro has no
    * separate percussion type, so the model sees an ordinary drum track.
@@ -104,6 +128,7 @@ export function formFromTrack(track: Track): TrackForm {
     nameEdited: true,
     shortNameEdited: track.shortName !== shortNameOf(track.name),
     programEdited: true,
+    instrument: undefined,
     percussion: false,
   };
 }
@@ -185,6 +210,8 @@ export function presetNameOf(form: TrackForm): string | undefined {
   return findTuningName(modelOrder(form.strings), {
     courses: form.courses && modelOrder(form.courses),
     drone: form.drone,
+    // Program-bound rows (viola, cello...) match only on their own program.
+    program: form.program,
   });
 }
 
@@ -203,6 +230,7 @@ export function applyPreset(form: TrackForm, name: string | undefined, adding: b
     drone: preset.drone,
   };
   if (adding && form.kind === 'fretted') {
+    next = { ...next, instrument: preset.instrument };
     const defaults = INSTRUMENT_DEFAULTS[preset.instrument];
     if (!form.nameEdited) next = { ...next, name: defaults.name };
     if (!form.shortNameEdited) {
@@ -414,6 +442,7 @@ export function newTrackProperties(form: TrackForm, defaults: NotationDefaults):
     properties.capo = Number(form.capo);
     properties.display = {
       ...createTrack('fretted').display,
+      ...INSTRUMENT_DEFAULTS[form.instrument ?? 'guitar'].display,
       notation: isVocalTrack({ kind: 'fretted', program: form.program, name: form.name })
         ? defaults.vocals
         : defaults.strings,
