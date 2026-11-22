@@ -15,6 +15,8 @@ import {
   BEND_FRAME,
   articulationMarks,
   connections,
+  firstGraceHammers,
+  graceHammerFrom,
   graceLinks,
   graceOrigin,
   lettersOfLinks,
@@ -553,6 +555,47 @@ function lettered(chord: ChordPlan, multiVoice: boolean): Set<Note> {
 }
 
 /**
+ * The slurs of first-column grace notes hammered from the note before the beat, drawn from its
+ * head in this bar or the previous one, or as a half from the bar's left edge.
+ */
+function drawFirstGraceHammers(
+  context: ConnectionContext,
+  voice: number,
+  beats: readonly BeatPlan[],
+  beat: BeatPlan,
+  at: TiePosition,
+  x: number,
+): void {
+  const { track, barIndex } = context.input;
+  const grace = beat.graces[0];
+  if (!grace) return;
+  const tie = TIE_GAP * context.space;
+  const found: { head: HeadPlan; link: TieLink }[] = [];
+  for (const target of firstGraceHammers(beat.beat.grace)) {
+    const head = grace.chord.heads.find((other) => !other.sounding && other.note === target);
+    const link = tieOriginOf(track, at, target);
+    if (!head || !link || link.bar < barIndex - TIE_REACH_BARS) continue;
+    // A legato slide draws its own slur.
+    if (link.note.slide?.includes('legato')) continue;
+    found.push({ head, link });
+  }
+  const letters = lettersOfLinks(
+    found.map(({ head, link }) => ({ from: -1, to: 0, origin: link.note, target: head.note })),
+    () => 'down',
+    ({ target }) => grace.chord.heads.find((head) => head.note === target)?.y ?? 0,
+  );
+  for (const { head, link } of found) {
+    const end = spotOf(context, grace.chord, head, x + grace.offset, 0);
+    const origin = locate(context, beats, voice, link);
+    const letter = letters.has(head.note) ? hammerLetter(link.note, head.note) : undefined;
+    const x1 = origin ? origin.right + tie : lineStart(context);
+    const y1 = origin ? origin.y : end.y;
+    // A grace note's stem points up, so its slur bends down, away from it.
+    slur(context, x1, y1, end.left - tie, end.y, 'down', head.note.id, letter);
+  }
+}
+
+/**
  * Slides, hammer-ons and pull-offs of one voice, drawn by the bar holding the target: in one
  * piece when the origin is in this bar, or in the previous bar of the system when this bar sets
  * no clef, and as a half from the bar's left edge otherwise; a bar ending a system draws the
@@ -607,6 +650,7 @@ export function drawConnections(
         slur(context, start.right + tie, start.y, end.left - tie, end.y, 'down', target.id, letter);
       }
     }
+    if (fretted) drawFirstGraceHammers(context, voice, beats, beat, at, x);
     for (const head of mainHeads(chord)) {
       const { note } = head;
       const found = graceOrigin(graces ?? [], beat.graces.length, note.string);
@@ -656,10 +700,14 @@ export function drawConnections(
       }
       if (!leavesLine) continue;
       const target = nextOnString(track, at, note);
-      if (!target || target.bar === barIndex) continue;
-      const hammer = target.note.hammerPull;
-      if (shifts(note)) {
-        const drop = (targetIsHigher(note, target.note) ? -1 : 1) * SLIDE.drop * space;
+      const crossing = target && target.bar !== barIndex ? target : undefined;
+      // The first grace note of a later beat hammered from this one.
+      const graced = graceHammerFrom(track, at, note);
+      const hammer =
+        (crossing?.note.hammerPull ?? false) || (graced !== undefined && graced.bar !== barIndex);
+      if (!crossing && !hammer) continue;
+      if (crossing && shifts(note)) {
+        const drop = (targetIsHigher(note, crossing.note) ? -1 : 1) * SLIDE.drop * space;
         slideLine(
           context,
           spot.right + SLIDE.gap * space,
@@ -669,7 +717,7 @@ export function drawConnections(
           note.id,
         );
       }
-      if (hammer || note.slide?.includes('legato')) {
+      if (hammer || (crossing && note.slide?.includes('legato'))) {
         slur(
           context,
           spot.right + tie,

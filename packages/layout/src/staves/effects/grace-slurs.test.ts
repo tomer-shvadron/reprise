@@ -249,4 +249,106 @@ describe('hammer-ons and pull-offs between grace notes (#160)', () => {
       expect(stable(layout(built, paged, cache))).toBe(stable(layout(built, paged)));
     },
   );
+
+  // A grace note in the first column is hammered from the note before the beat (#500).
+  describe('from the main note before the beat', () => {
+    const graceNote = (built: Score, bar: number, beat: number): string => {
+      const found = built.tracks[0]?.bars[bar]?.voices[0]?.beats[beat]?.grace?.[0]?.notes[0];
+      if (!found) throw new Error('no grace note');
+      return found.id;
+    };
+    const across = (notation: Notation, crossBar: boolean, fret = 9): Score => {
+      const builder = guitar(notation)
+        .bar()
+        .beat('2', [note(2, 5)]);
+      if (crossBar) builder.bar();
+      return builder
+        .beat('4', [note(2, 7)], {
+          grace: [{ duration: 32, before: true, notes: [note(2, fret, { hammerPull: true })] }],
+        })
+        .beat('4', [note(2, 7)])
+        .build({ ids: 'sequential' });
+    };
+
+    it.each<[Notation, boolean]>([
+      ['tab', false],
+      ['standard', false],
+      ['both', false],
+      ['tab', true],
+      ['standard', true],
+      ['both', true],
+    ])('draws the arc and its letter, in %s, across a barline: %s', (notation, crossBar) => {
+      const built = across(notation, crossBar);
+      const result = laid(built);
+      expect(strayPrimitives(result, built).map(describePrimitive)).toEqual([]);
+      expect(arcsOf(result, graceNote(built, crossBar ? 1 : 0, crossBar ? 0 : 1))).toHaveLength(
+        notation === 'both' ? 2 : 1,
+      );
+      expect(letters(result)).toEqual(['H']);
+    });
+
+    it('letters a pull-off P on the tab alone in both mode', () => {
+      const built = across('both', true, 3);
+      expect(letters(laid(built))).toEqual(['P']);
+    });
+
+    it.each<Notation>(['tab', 'standard', 'both'])(
+      'keeps its primitives inside the system at 320 px, in %s',
+      (notation) => {
+        for (const crossBar of [false, true]) {
+          const built = across(notation, crossBar);
+          const result = laid(built, { width: 320 });
+          expect(strayPrimitives(result, built).map(describePrimitive)).toEqual([]);
+          expect(letters(result)).toEqual(['H']);
+        }
+      },
+    );
+
+    it.each<Notation>(['tab', 'standard', 'both'])(
+      'lays a cached score out as a cold one, in %s',
+      (notation) => {
+        const built = across(notation, true);
+        const cache = new LayoutCache();
+        layout(built, paged, cache);
+        expect(stable(layout(built, paged, cache))).toBe(stable(layout(built, paged)));
+      },
+    );
+
+    it.each<Notation>(['tab', 'standard'])(
+      'draws the origin half at the end of a system, in %s',
+      (notation) => {
+        const builder = guitar(notation);
+        for (let bar = 0; bar < 12; bar++) {
+          builder
+            .bar()
+            .beat('2', [note(2, 5)])
+            .beat('2', [note(2, 5)]);
+        }
+        builder.bar().beat('4', [note(2, 7)], {
+          grace: [{ duration: 32, before: true, notes: [note(2, 9, { hammerPull: true })] }],
+        });
+        const built = builder.build({ ids: 'sequential' });
+        const result = laid(built, { width: 320 });
+        expect(strayPrimitives(result, built).map(describePrimitive)).toEqual([]);
+        expect(letters(result)).toEqual(['H']);
+      },
+    );
+  });
+
+  it('gives the arc from the last grace column into a hammered main note room on the tab', () => {
+    const length = (hammered: boolean): number => {
+      const built = guitar('tab')
+        .bar()
+        .beat('4', [note(2, 7, hammered ? { hammerPull: true } : {})], {
+          grace: [{ duration: 32, before: true, notes: [note(2, 5)] }],
+        })
+        .beat('2.', [note(2, 7)])
+        .build({ ids: 'sequential' });
+      const result = laid(built);
+      const arc = arcsOf(result, noteOf(built, 0, 0, 0).id)[0];
+      if (hammered && !arc) throw new Error('no arc');
+      return arc?.bbox.width ?? 0;
+    };
+    expect(length(true)).toBeGreaterThan(5);
+  });
 });
