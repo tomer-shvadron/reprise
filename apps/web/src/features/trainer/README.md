@@ -180,8 +180,11 @@ together: starting one stops the other.
   `{ beatsPerBar: 2, subdivision: 3 }`. The meter lives in `metronome-store.ts`, outside React, so
   it survives a panel switch.
 - The click keeps running when the panel closes or another screen opens; Alt+B and the palette stop
-  it from anywhere. Nothing outside the panel shows it running yet (a shell follow-up).
-- Alt+B starts or stops it and shows the panel. `metronome.browser.test.ts` renders the click
+  it from anywhere. While it runs, a "Metronome on" segment in the status bar
+  (`app/status-bar/click-status.tsx`, #220) shows it and stops it when pressed; it shrinks to its
+  dot in a narrow window. The practice mode hides the status bar, so nothing shows it there yet.
+- Alt+B starts or stops it; only starting shows the panel (stopping, from the status bar too, opens
+  nothing). `metronome.browser.test.ts` renders the click
   offline at 60, 120 and 200 BPM and measures the onsets.
 
 ## Practice log (WP-073)
