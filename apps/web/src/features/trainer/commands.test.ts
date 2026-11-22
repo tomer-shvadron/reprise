@@ -4,6 +4,7 @@ import { score } from '@reprise/model/testing';
 import { act } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { insightsFor } from './insights/insights-for';
 import { createAppRegistry } from '@/app/app-registry';
 import { runCommand } from '@/app/command-registry';
 import { installShortcutDispatcher } from '@/app/shortcut-dispatcher';
@@ -310,5 +311,16 @@ describe('trainer commands', () => {
       .set({ kind: 'chord', beat: beat.id, track: track.id, masterBar: bar.id });
     await registry.get('trainer.chordShapesFor')?.run();
     expect(services.ui.getState().chordsName).toBe('Dm');
+  });
+
+  it('the section insights command opens the view and asks for the right-clicked section', async () => {
+    const { services, registry } = await setup();
+    const bar = services.document.getState().score?.masterBars[1];
+    if (!bar) throw new Error('no bar');
+    services.menuTarget.getState().set({ kind: 'section', masterBar: bar.id });
+    await registry.get('trainer.sectionInsights')?.run();
+    expect(services.ui.getState().rightPanelView).toBe('insights');
+    expect(insightsFor(services).getState().focus).toMatchObject({ bar: 1 });
+    expect(registry.get('trainer.sectionInsights')?.shortcut).toBeUndefined();
   });
 });

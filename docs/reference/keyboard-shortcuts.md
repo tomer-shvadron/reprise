@@ -147,6 +147,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Show song insights | Trainer | Global | — | — |
 | Show chord shapes | Trainer | Global | — | — |
 | Chord shapes… | Trainer | Global | — | — |
+| Section insights | Trainer | Global | — | — |
 | Toggle fretboard | Trainer | Global | — | — |
 | Speed trainer on selection | Trainer | Global | — | — |
 | Left-handed fretboard | Trainer | Global | — | — |

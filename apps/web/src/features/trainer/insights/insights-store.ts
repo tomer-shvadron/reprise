@@ -22,6 +22,16 @@ export interface InsightsState {
   error: string | undefined;
   /** The analysis has been running longer than `SLOW_AFTER_MS`. */
   slow: boolean;
+  /**
+   * A request to show one section of the Sections card (`trainer.sectionInsights`): the master bar
+   * index, with a counter so asking for the same section twice scrolls twice.
+   */
+  focus: { bar: number; request: number } | undefined;
+  focusSection: (bar: number) => void;
+  /** The Sections card has acted on the request: the bar stays tinted (`marked`) until `unmark`. */
+  clearFocus: () => void;
+  marked: number | undefined;
+  unmark: () => void;
   /** Something shows the insights (the panel, a song-following overlay): analyse and keep fresh. */
   retain: () => void;
   release: () => void;
@@ -70,6 +80,18 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
     forScore: undefined,
     error: undefined,
     slow: false,
+    focus: undefined,
+    focusSection: (bar) => {
+      store.setState((state) => ({ focus: { bar, request: (state.focus?.request ?? 0) + 1 } }));
+    },
+    marked: undefined,
+    clearFocus: () => {
+      const { focus } = store.getState();
+      if (focus) store.setState({ focus: undefined, marked: focus.bar });
+    },
+    unmark: () => {
+      if (store.getState().marked !== undefined) store.setState({ marked: undefined });
+    },
     retain: () => {
       retained++;
       if (retained === 1) schedule('now');
@@ -196,6 +218,8 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
         forScore: undefined,
         error: undefined,
         slow: false,
+        focus: undefined,
+        marked: undefined,
       });
       for (const waiter of waiters.splice(0)) waiter.resolve(undefined);
       dirty = false;
