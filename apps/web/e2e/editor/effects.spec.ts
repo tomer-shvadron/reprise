@@ -84,3 +84,13 @@ test('The Effects panel toggles, reads mixed, opens the bend picker and goes qui
   await expect(palmMute).toBeDisabled();
   await expect(button('Bend…')).toBeDisabled();
 });
+
+// #510: an effect is heard when it is applied, through the beat preview.
+test('Applying an effect sounds the beat', async ({ app, page }) => {
+  await typeSong(app, quarters([6, [0, 3, 5, 3]]));
+  // The entry previews have to die away first, so what follows is the effect's own sound.
+  await app.expectSilence();
+  await toBar(app, 1);
+  await page.keyboard.press('p');
+  await app.expectSound();
+});

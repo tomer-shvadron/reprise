@@ -124,8 +124,11 @@ export interface BeatPlan {
   graceBeam?: BeamLine;
   group?: number;
   tuplet?: number;
-  /** Fingering, top to bottom. */
-  fingering: { glyph: GlyphName; note: Note }[];
+  /**
+   * Fingering, top to bottom within the beat. `y` is the head's, which orders an onset's
+   * entries across voices, and `row` counts up from the stack's bottom once they are merged.
+   */
+  fingering: { glyph: GlyphName; note: Note; y: number; row: number }[];
   articulation?: ArticulationPlan;
   tremolo?: TremoloPlan;
   /** The target heads of its bends, on a staff shown alone. */
@@ -538,9 +541,19 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         for (const head of [...heads].reverse()) {
           const { leftHandFinger, rightHandFinger } = head.note;
           if (rightHandFinger)
-            plan.fingering.push({ glyph: RIGHT_HAND[rightHandFinger], note: head.note });
+            plan.fingering.push({
+              glyph: RIGHT_HAND[rightHandFinger],
+              note: head.note,
+              y: head.y,
+              row: 0,
+            });
           if (leftHandFinger)
-            plan.fingering.push({ glyph: LEFT_HAND[leftHandFinger], note: head.note });
+            plan.fingering.push({
+              glyph: LEFT_HAND[leftHandFinger],
+              note: head.note,
+              y: head.y,
+              row: 0,
+            });
         }
       }
       return plan;
@@ -637,13 +650,28 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     top = Math.min(top, beat.top);
     bottom = Math.max(bottom, beat.bottom);
   }
-  const fingers = Math.max(0, ...beats.map(({ fingering }) => fingering.length));
+  // Voices that start together draw their fingering at one x, so an onset's entries share one
+  // stack across the voices, highest head on top, each at a row of its own.
+  const onsets = new Map<number, BeatPlan['fingering']>();
+  for (const { tick, fingering } of beats) {
+    if (fingering.length === 0) continue;
+    const key = Math.round(tick / TICK_EPSILON);
+    const entries = onsets.get(key);
+    if (entries) entries.push(...fingering);
+    else onsets.set(key, [...fingering]);
+  }
+  let fingers = 0;
+  for (const entries of onsets.values()) {
+    entries.sort((a, b) => a.y - b.y);
+    for (const [i, entry] of entries.entries()) entry.row = entries.length - 1 - i;
+    fingers = Math.max(fingers, entries.length);
+  }
   const fingeringY = top - FINGERING_GAP * space;
   let fingeringTop = fingers > 0 ? fingeringY - fingers * FINGERING_STEP * space : top;
   for (const { fingering } of beats) {
     // Drawn bottom up from `fingeringY`; the right hand's i is taller than a step.
-    for (const [i, { glyph }] of [...fingering].reverse().entries()) {
-      const ink = fingeringY - i * FINGERING_STEP * space - glyphMetrics(glyph).bbox.top * space;
+    for (const { glyph, row } of fingering) {
+      const ink = fingeringY - row * FINGERING_STEP * space - glyphMetrics(glyph).bbox.top * space;
       fingeringTop = Math.min(fingeringTop, ink);
     }
   }

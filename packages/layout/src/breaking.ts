@@ -48,8 +48,13 @@ export interface SystemPlan {
   factor: number;
   /** Below 1 when even the minimums overflow: every minimum is scaled by it. */
   squeeze: number;
-  /** Below 1 when even the rigid parts overflow: they are scaled by it, and `squeeze` is 0. */
+  /**
+   * Below 1 when even the minimums' fixed and movable parts overflow: the movable part (the
+   * voice shifts) is scaled by it, and `squeeze` is 0.
+   */
   rigidScale: number;
+  /** Below 1 only when the fixed parts alone overflow: only their spacing room shrinks by it (the glyphs keep their size and may still pass the bar), and `rigidScale` is 0. */
+  fixedScale: number;
   /** Header pad taken back from an over-wide bar, from its bars' `pad` in order. */
   trim: number;
   /** Width of the bars once stretched. */
@@ -116,32 +121,42 @@ export function courtesyWidth(
 /**
  * The spring factor that makes the bars' springs fill `content`, solved with the minimums in place:
  * a spring held at its minimum stays there and the others shrink further. When even the minimums
- * overflow, `squeeze` scales the part of each above its `rigid` one, and `rigidScale` the rigid
- * parts too when they alone overflow. `natural` is the springs' natural total.
+ * overflow, `squeeze` scales the part of each above its `rigid` and `movable` ones; `rigidScale`
+ * scales the movable parts too when those with the rigid ones overflow, and `fixedScale` the
+ * rigid parts last, when they alone overflow. `natural` is the springs' natural total.
  */
 export function fitSprings(
   bars: readonly (readonly Spring[])[],
   natural: number,
   content: number,
-): { factor: number; squeeze: number; rigidScale?: number } {
+): { factor: number; squeeze: number; rigidScale?: number; fixedScale?: number } {
   let mins = 0;
   let rigids = 0;
+  let movables = 0;
   let squeezable = 0;
   let tightest = 0;
   for (const springs of bars) {
-    for (const { natural: width, min, rigid = 0 } of springs) {
+    for (const { natural: width, min, rigid = 0, movable = 0 } of springs) {
       mins += min;
       rigids += rigid;
-      squeezable += Math.max(0, min - rigid);
+      movables += movable;
+      squeezable += Math.max(0, min - rigid - movable);
       tightest = Math.max(tightest, min / width);
     }
   }
-  if (content < rigids) return { factor: 0, squeeze: 0, rigidScale: Math.max(0, content / rigids) };
   if (content < mins) {
-    return {
-      factor: 0,
-      squeeze: squeezable > 0 ? Math.max(0, (content - rigids) / squeezable) : 1,
-    };
+    const hard = rigids + movables;
+    if (content >= hard) {
+      return { factor: 0, squeeze: squeezable > 0 ? (content - hard) / squeezable : 1 };
+    }
+    if (content >= rigids) {
+      return {
+        factor: 0,
+        squeeze: 0,
+        rigidScale: movables > 0 ? (content - rigids) / movables : 1,
+      };
+    }
+    return { factor: 0, squeeze: 0, rigidScale: 0, fixedScale: Math.max(0, content / rigids) };
   }
   const factor = content / natural;
   if (factor >= tightest) return { factor, squeeze: 1 };
@@ -175,7 +190,7 @@ export function padCuts(
 }
 
 function finish(
-  plan: Omit<SystemPlan, 'factor' | 'squeeze' | 'rigidScale' | 'trim' | 'width'>,
+  plan: Omit<SystemPlan, 'factor' | 'squeeze' | 'rigidScale' | 'fixedScale' | 'trim' | 'width'>,
   measures: readonly BarMeasure[],
   available: number,
   fit: boolean,
@@ -197,13 +212,19 @@ function finish(
   let factor = 1;
   let squeeze = 1;
   let rigidScale = 1;
+  let fixedScale = 1;
   if (excess > 0 && excess <= pads) {
     trim = excess;
   } else if ((excess > 0 || fit) && springs > 0) {
     if (excess > 0) trim = pads;
     const bars: (readonly Spring[])[] = [];
     for (let i = plan.start; i < plan.end; i++) bars.push(measures[i]?.springs ?? []);
-    ({ factor, squeeze, rigidScale = 1 } = fitSprings(bars, springs, room - (fixed - trim)));
+    ({
+      factor,
+      squeeze,
+      rigidScale = 1,
+      fixedScale = 1,
+    } = fitSprings(bars, springs, room - (fixed - trim)));
   }
   const cuts = padCuts(measures, plan.start, plan.end, trim);
   let width = 0;
@@ -211,10 +232,16 @@ function finish(
     const measure = measures[i];
     if (!measure) continue;
     width +=
-      barWidth(measure, plan.opensLine && i === plan.start, factor, squeeze, rigidScale) -
-      (cuts[i - plan.start] ?? 0);
+      barWidth(
+        measure,
+        plan.opensLine && i === plan.start,
+        factor,
+        squeeze,
+        rigidScale,
+        fixedScale,
+      ) - (cuts[i - plan.start] ?? 0);
   }
-  return { ...plan, factor, squeeze, rigidScale, trim, width };
+  return { ...plan, factor, squeeze, rigidScale, fixedScale, trim, width };
 }
 
 /**

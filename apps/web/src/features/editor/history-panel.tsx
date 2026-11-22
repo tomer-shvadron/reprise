@@ -18,7 +18,7 @@ const keepFocus = (event: MouseEvent) => {
 /**
  * The right panel's history: the start state, every edit that is applied (oldest first, the
  * newest marked `aria-current="step"`), then the edits Redo would bring back, dimmed. A row
- * jumps there with repeated undo or redo, so a grouped edit (a paste, an entry) is one row.
+ * jumps there with one `step`, so a grouped edit (a paste, an entry) is one row.
  * The list is one tab stop: arrows and Home/End move, Enter, Space or a click jumps.
  */
 export function HistoryPanel() {
@@ -48,10 +48,7 @@ export function HistoryPanel() {
 
   const jump = (index: number) => {
     const steps = index - document.getState().historyLabels.undo.length;
-    for (let i = 0; i < Math.abs(steps); i += 1) {
-      if (steps < 0) document.getState().undo();
-      else document.getState().redo();
-    }
+    document.getState().step(steps);
   };
 
   const move = (to: number) => {

@@ -116,6 +116,12 @@ export const CHORD_STRIP_SETTING = defineSetting({
   schema: z.boolean(),
   default: false,
 });
+/** Whether editing sounds what it writes: the note when it is entered, the beat when an effect is applied (#510). */
+export const EDIT_SOUND_SETTING = defineSetting({
+  key: 'editing.sound',
+  schema: z.boolean(),
+  default: true,
+});
 /**
  * The practice mode's zoom, remembered like the panel width: the distance from the screen is the
  * one thing worth tuning there, and nothing else sets it. The normal zoom is not stored.
@@ -143,6 +149,7 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   DEFAULT_NOTATION_VOCALS_SETTING,
   CHORD_DIAGRAMS_SETTING,
   CHORD_STRIP_SETTING,
+  EDIT_SOUND_SETTING,
   RIGHT_PANEL_OPEN_SETTING,
   RIGHT_PANEL_WIDTH_SETTING,
   BOTTOM_DOCK_OPEN_SETTING,

@@ -1,6 +1,7 @@
 import {
   COUNT_IN_SETTING,
   COUNT_IN_VOLUME_SETTING,
+  EDIT_SOUND_SETTING,
   FOLLOW_PLAYHEAD_SETTING,
   METRONOME_VOLUME_SETTING,
 } from '@/state/app-settings';
@@ -36,6 +37,11 @@ function Playback() {
         label="Follow the playhead"
         description="Scroll the score to keep the playhead in view. Off, the view never scrolls on its own."
       />
+      <SwitchSetting
+        def={EDIT_SOUND_SETTING}
+        label="Sound notes while editing"
+        description="Play a note when you enter it and the beat when you apply an effect."
+      />
     </>
   );
 }
@@ -48,6 +54,7 @@ export const playbackSection: SettingsSection = {
     COUNT_IN_VOLUME_SETTING,
     METRONOME_VOLUME_SETTING,
     FOLLOW_PLAYHEAD_SETTING,
+    EDIT_SOUND_SETTING,
   ],
   Component: Playback,
 };

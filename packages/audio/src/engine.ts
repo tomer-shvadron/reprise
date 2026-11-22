@@ -3,7 +3,7 @@ import type { Id, Score, Track } from '@reprise/model';
 import { ClickSynth } from './click-synth';
 import { GmBank } from './gm-bank';
 import { outputLatencyOf } from './output-latency';
-import { resolveEffects, stagesOf } from './effects/presets';
+import { effectSpecOf } from './effects/presets';
 import type { EffectStage } from './effects/presets';
 import { Sampler } from './sampler/sampler';
 import type { Instrument, PreviewNote, PreviewOptions, TrackParams } from './sampler/sampler';
@@ -191,6 +191,15 @@ export interface AudioEngine {
    */
   setGmTierBypass(on: boolean): void;
   /**
+   * Whether the file's channel reverb and chorus (CC91 and CC93, `channel.reverb` and
+   * `channel.chorus`) drive the strip's reverb send and a chorus stage (on by default). They
+   * apply only where no preset does: a GM-tier track on the automatic path with the GM tier
+   * bypass on. A preset owns the reverb and chorus wherever one applies, `off` included, on the
+   * HQ tier and on a GM track with the bypass off. `setStageBypass` drops the part like a
+   * preset's. Applies to a loaded song at once.
+   */
+  setChannelEffects(on: boolean): void;
+  /**
    * Bypasses one stage of a track's effects chain for the session, like `setTrack`: not saved,
    * kept through edits, cleared by `unload`. The reverb stage is the track's send.
    */
@@ -366,6 +375,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   let countInVolume = 0.7;
   let masterVolume = 1;
   let gmTierBypass = true;
+  let channelEffectsOn = true;
   /** The assignments whose pack loaded, by track: what the tier and the strips follow. */
   let loadedPacks = new Map<Id, LoadedPack>();
   /**
@@ -474,8 +484,12 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     const assignments = [...loadedPacks.values()].map((entry) => entry.assignment);
     for (const track of tracks) {
       if (!held.has(track.id)) continue;
-      const { preset } = resolveEffects(track, { tier: tierOf(track, assignments), gmTierBypass });
-      sampler.setEffects(track.id, stagesOf(preset, stageBypasses.get(track.id)));
+      const spec = effectSpecOf(
+        track,
+        { tier: tierOf(track, assignments), gmTierBypass, channelEffects: channelEffectsOn },
+        stageBypasses.get(track.id),
+      );
+      sampler.setEffects(track.id, spec);
     }
   }
 
@@ -1218,6 +1232,11 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
 
     setGmTierBypass(on) {
       gmTierBypass = on;
+      if (attached) applyEffects(attached.tracks);
+    },
+
+    setChannelEffects(on) {
+      channelEffectsOn = on;
       if (attached) applyEffects(attached.tracks);
     },
 

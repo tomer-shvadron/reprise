@@ -80,6 +80,51 @@ describe('installEditor, as the services wire it', () => {
     expect(score().tracks[0]?.bars[0]?.voices[0]?.beats).toHaveLength(3);
   });
 
+  it('lands the cursor on the last replayed step of a jump, as repeated undo and redo do', async () => {
+    const jumped = await setup();
+    const stepped = await setup();
+    const edits = (ctx: Awaited<ReturnType<typeof setup>>) => {
+      ctx.services.editing.getState().setEditing(true);
+      for (const bar of [0, 1, 0]) {
+        const beat = ctx.score().tracks[0]?.bars[bar]?.voices[0]?.beats[0]?.id ?? '';
+        ctx.apply(removeBeat({ beatId: beat }));
+      }
+      ctx.state().setEdit({
+        cursor: cursorAtPosition(
+          ctx.score(),
+          { track: 0, bar: 1, voice: 0, stop: 0 },
+          { string: 3, staff: 'tab' },
+        ),
+      });
+    };
+    edits(jumped);
+    edits(stepped);
+    jumped.services.document.getState().step(-3);
+    for (let i = 0; i < 3; i++) stepped.services.document.getState().undo();
+    expect(jumped.state().cursor?.at).toEqual(stepped.state().cursor?.at);
+    expect(jumped.state().cursor?.track).toBe(stepped.state().cursor?.track);
+    jumped.services.document.getState().step(3);
+    for (let i = 0; i < 3; i++) stepped.services.document.getState().redo();
+    expect(jumped.state().cursor?.at).toEqual(stepped.state().cursor?.at);
+  });
+
+  it('leaves the cursor alone in play mode', async () => {
+    const { services, state, apply, score } = await setup();
+    services.editing.getState().setEditing(true);
+    services.editing.getState().setEditing(false);
+    for (const bar of [0, 1]) {
+      apply(removeBeat({ beatId: score().tracks[0]?.bars[bar]?.voices[0]?.beats[0]?.id ?? '' }));
+    }
+    const cursor = state().cursor;
+    // Two steps, so lastChange is the merge and differs from lastReplayed.
+    services.document.getState().step(-2);
+    expect(services.document.getState().lastChange).not.toBe(
+      services.document.getState().lastReplayed,
+    );
+    // Reconcile still re-indexes the cursor; only the landing is for edit mode.
+    expect(state().cursor).toMatchObject({ track: cursor?.track, beat: cursor?.beat });
+  });
+
   it('follows the current track to the same bar and onset', async () => {
     const { services, state, score } = await setup();
     services.editing.getState().setEditing(true);
