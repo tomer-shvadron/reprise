@@ -168,13 +168,10 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
 
   // The export dialog asks which bar is on screen when it opens (#421); nothing is pushed.
   useEffect(() => {
-    services.viewProbe.attach(() => {
+    return services.viewProbe.attach(() => {
       const view = handle.current;
       return view ? firstBarInView(result.systems, view.viewport()) : undefined;
     });
-    return () => {
-      services.viewProbe.attach(undefined);
-    };
   }, [services, result]);
 
   // After the view's own layout effects, so the new geometry is in place.

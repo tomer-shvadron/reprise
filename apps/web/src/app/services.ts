@@ -72,7 +72,7 @@ export interface ScoreViewProbe {
   /** The master-bar index at the top of what is on screen; undefined with no view mounted. */
   barInView(): number | undefined;
   /** The mounted view registers how to read it, and clears it on unmount. */
-  attach(read: (() => number | undefined) | undefined): void;
+  attach(read: () => number | undefined): () => void;
 }
 
 function createViewProbe(): ScoreViewProbe {
@@ -81,6 +81,10 @@ function createViewProbe(): ScoreViewProbe {
     barInView: () => read?.(),
     attach(next) {
       read = next;
+      // Clears only its own reader, so a second view unmounting cannot blank the live one.
+      return () => {
+        if (read === next) read = undefined;
+      };
     },
   };
 }

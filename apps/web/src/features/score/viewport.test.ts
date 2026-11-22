@@ -149,15 +149,25 @@ describe('toLayoutPoint', () => {
 });
 
 describe('firstBarInView', () => {
-  const system = (start: number, end: number, y: number) =>
-    ({ bars: { start, end }, bbox: { x: 0, y, width: 100, height: 50 } }) as never;
-  const systems = [system(0, 4, 0), system(4, 8, 100), system(8, 12, 200)];
+  it('names the first bar of the first system that starts in the window', () => {
+    expect(firstBarInView(stacked, rect(0, 120, 300, 200))).toBe(2);
+  });
 
-  it('names the first bar of the first system on screen', () => {
-    expect(firstBarInView(systems, { x: 0, y: 120, width: 100, height: 200 })).toBe(4);
+  it('skips a system showing only its bottom edge while the next starts in view', () => {
+    // System 1 spans y 100..180; the window opens at 170.
+    expect(firstBarInView(stacked, rect(0, 170, 300, 200))).toBe(2);
+  });
+
+  it('falls back to a system that starts above the window but shows', () => {
+    expect(firstBarInView(stacked, rect(0, 110, 300, 40))).toBe(1);
+  });
+
+  it('follows a window scrolled sideways in a continuous layout', () => {
+    const row = Array.from({ length: 6 }, (_, i) => system(i, rect(i * 300, 0, 300, 80)));
+    expect(firstBarInView(row, rect(650, 0, 400, 200))).toBe(3);
   });
 
   it('is undefined with nothing on screen', () => {
-    expect(firstBarInView(systems, { x: 0, y: 900, width: 100, height: 50 })).toBeUndefined();
+    expect(firstBarInView(stacked, rect(0, 5000, 300, 50))).toBeUndefined();
   });
 });
