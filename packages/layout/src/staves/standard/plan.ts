@@ -636,17 +636,14 @@ interface Box {
   right: number;
 }
 
-/** A beat's heads, as boxes from its onset: its chord's, or its grace notes' with `graces`. */
-function boxes(beat: BeatPlan, graces: boolean): Box[] {
+/** A beat's main heads, as boxes from its onset. */
+function headBoxes(beat: BeatPlan): Box[] {
   const shift = beat.shift ?? 0;
-  const of = (heads: readonly HeadPlan[], offset: number): Box[] =>
-    heads.map((h) => ({
-      position: h.position,
-      left: shift + offset + h.left,
-      right: shift + offset + h.left + h.width,
-    }));
-  if (!graces) return of(beat.chord?.heads ?? [], 0);
-  return beat.graces.flatMap(({ offset, chord }) => of(chord.heads, offset));
+  return (beat.chord?.heads ?? []).map((h) => ({
+    position: h.position,
+    left: shift + h.left,
+    right: shift + h.left + h.width,
+  }));
 }
 
 const overlap = (p: Box, q: Box): boolean =>
@@ -656,24 +653,54 @@ const overlap = (p: Box, q: Box): boolean =>
 /** Whether a head of each chord is a unison or second from one of the other's, overlapping it. */
 function collide(a: BeatPlan, b: BeatPlan): boolean {
   if (!a.chord || !b.chord) return false;
-  const right = boxes(b, false);
-  return boxes(a, false).some((p) => right.some((q) => overlap(p, q)));
+  const right = headBoxes(b);
+  return headBoxes(a).some((p) => right.some((q) => overlap(p, q)));
+}
+
+/** From the onset, the span the beat's grace notes fill (heads, accidentals, stems, flags). */
+function graceSpan(beat: BeatPlan): { left: number; right: number } | undefined {
+  if (beat.graces.length === 0) return undefined;
+  const shift = beat.shift ?? 0;
+  return {
+    left: shift + Math.min(...beat.graces.map(({ offset, chord }) => offset + chord.left)),
+    right: shift + Math.max(...beat.graces.map(({ offset, chord }) => offset + chord.right)),
+  };
 }
 
 /**
- * Whether a grace note of either beat overlaps a head of the other, as two voices' graces on
- * different pitches beside one onset do though their chords clear each other.
+ * Whether one beat's grace notes meet the other's, or a head of the other's chord: any overlap of
+ * their groups' extents counts, whatever the pitches, since a third or fourth apart their stems
+ * and flags still cross; against a chord, only a head a unison or second from a grace's.
  */
 function collideGraces(a: BeatPlan, b: BeatPlan): boolean {
   if (!a.chord || !b.chord) return false;
-  const allA = [...boxes(a, false), ...boxes(a, true)];
-  const allB = [...boxes(b, false), ...boxes(b, true)];
-  const graceA = boxes(a, true);
-  const graceB = boxes(b, true);
-  return (
-    graceA.some((p) => allB.some((q) => overlap(p, q))) ||
-    graceB.some((q) => allA.some((p) => overlap(p, q)))
-  );
+  const spanA = graceSpan(a);
+  const spanB = graceSpan(b);
+  if (
+    spanA &&
+    spanB &&
+    Math.min(spanA.right, spanB.right) - Math.max(spanA.left, spanB.left) > 1e-6
+  )
+    return true;
+  const meets = (x: BeatPlan, y: BeatPlan): boolean => {
+    const heads = headBoxes(y);
+    const shift = x.shift ?? 0;
+    return x.graces.some(({ offset, chord }) =>
+      chord.heads.some((h) =>
+        heads.some((q) =>
+          overlap(
+            {
+              position: h.position,
+              left: shift + offset + h.left,
+              right: shift + offset + h.left + h.width,
+            },
+            q,
+          ),
+        ),
+      ),
+    );
+  };
+  return meets(a, b) || meets(b, a);
 }
 
 /**

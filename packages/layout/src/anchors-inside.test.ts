@@ -1,7 +1,7 @@
 import type { Score } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { assert, constantFrom, integer, property } from 'fast-check';
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { PAGE_SIZES, layout, type LayoutOptions } from './index';
 import { expectValid } from './test/check-result';
@@ -27,7 +27,7 @@ describe('anchors stay inside their system', () => {
     first.voice(1);
     for (let i = 0; i < 16; i++) first.beat('16', [note(1, 1), note(2, 1)]);
     const built = first.build({ ids: 'sequential' });
-    // `expectValid` checks every anchor against its system's frame;
+    // `expectValid` checks every anchor against its system's frame.
     expectValid(layout(built, options(built, 200, 'paged')));
   });
 
@@ -47,20 +47,42 @@ describe('anchors stay inside their system', () => {
     expectValid(layout(built, options(built, PAGE_SIZES.a4.width, 'paged')));
   });
 
-  it('keeps two voices apart when both carry grace notes before the same beat', () => {
-    // The main chords sit far apart, so only the graces, identical in both voices, meet (#465).
-    const grace = () => ({
-      grace: [{ duration: 16 as const, before: true, notes: [note(3, 5)] }],
+  it.each([
+    ['identical', 5],
+    ['a third apart', 9],
+    ['a fourth apart', 10],
+  ])('keeps two voices apart when their grace notes are %s', (_name, fret) => {
+    // The main chords sit far apart, so only the graces meet (#465): a third or fourth apart,
+    // their heads clear each other but their stems and flags cross.
+    const grace = (at: number) => ({
+      grace: [{ duration: 16 as const, before: true, notes: [note(3, at)] }],
     });
     const first = score().track('guitar').bar();
-    first.beat('4', [note(1, 0)], grace()).beat('4', [note(1, 0)]);
+    first.beat('4', [note(1, 0)], grace(5)).beat('4', [note(1, 0)]);
     first
       .voice(1)
-      .beat('4', [note(6, 3)], grace())
+      .beat('4', [note(6, 3)], grace(fret))
       .beat('4', [note(6, 3)]);
     const built = first.build({ ids: 'sequential' });
-    expectValid(layout(built, options(built, PAGE_SIZES.a4.width, 'paged')));
+    const result = layout(built, options(built, PAGE_SIZES.a4.width, 'paged'));
+    expectValid(result);
+    // The anchors alone clear each other here; the later voice moves right of the graces' extent.
+    const [high, low] = [0, 1].map((voice) =>
+      result.anchors.find((a) => a.kind === 'note' && a.voice === voice),
+    );
+    expect(low?.bbox.x).toBeGreaterThan((high?.bbox.x ?? 0) + 5);
   });
+
+  it('holds for the random scores #465 found, at every width in both modes', () => {
+    for (const seed of [37, 97, 293, 323, 358, 373]) {
+      const built = randomScore(seed, { diagrams: true });
+      for (const width of [320, 500, 700, 1200]) {
+        for (const mode of ['paged', 'continuous'] as const) {
+          expectValid(layout(built, options(built, width, mode)));
+        }
+      }
+    }
+  }, 30_000);
 
   it('holds for random scores with chord diagrams, in both modes at narrow and wide lines', () => {
     assert(
