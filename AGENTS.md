@@ -91,6 +91,7 @@ pnpm typecheck             # tsc -b across every workspace
 pnpm test                  # Vitest, every workspace as its own project
 pnpm format:check          # Prettier check; pnpm format writes
 pnpm conflicts:check       # fails on merge conflict markers in tracked text files, git's or Prettier-rewritten
+pnpm colors:check          # fails on a hex, rgb, hsl or oklch literal or a Tailwind palette class in apps/web/src outside index.css; ALLOWED in scripts/colors/check.ts lists the exceptions
 pnpm bench                 # the budgets table, one bench file at a time; scaled on CI, see the budgets note
 pnpm bench:compare <base-dir>  # the budgeted bench rows against another worktree, alternating; CI runs it against main
 pnpm dev                   # the web app on the Vite dev server
@@ -107,7 +108,7 @@ pnpm e2e                   # the player flows: Playwright Test against the produ
 pnpm test:visual           # painter screenshots; locally against your own references in e2e/visual/__local__/ (gitignored, made by the first run), on CI against the committed Linux baselines; pnpm visual:accept adopts a failed CI run's images
 ```
 
-The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm conflicts:check`, `pnpm bench`, `pnpm fixtures:check`, `pnpm check:files fixtures`, `pnpm build` and `pnpm test:visual`, `pnpm e2e` in its own `e2e` job, and `pnpm bench:compare` against `main` in its own `bench-compare` job ([.github/workflows/ci.yml](.github/workflows/ci.yml)). The `ci` check is an aggregator over parallel jobs (`static`, `unit` as three groups of Vitest projects, `bench`, `files`, `build`) and fails unless every one succeeded; `e2e` likewise aggregates three Playwright shards that serve the `build` job's output. A new Vitest project goes in a `unit` group in `ci.yml`, or `scripts/ci/vitest-groups.test.ts` fails.
+The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm conflicts:check`, `pnpm colors:check`, `pnpm bench`, `pnpm fixtures:check`, `pnpm check:files fixtures`, `pnpm build` and `pnpm test:visual`, `pnpm e2e` in its own `e2e` job, and `pnpm bench:compare` against `main` in its own `bench-compare` job ([.github/workflows/ci.yml](.github/workflows/ci.yml)). The `ci` check is an aggregator over parallel jobs (`static`, `unit` as three groups of Vitest projects, `bench`, `files`, `build`) and fails unless every one succeeded; `e2e` likewise aggregates three Playwright shards that serve the `build` job's output. A new Vitest project goes in a `unit` group in `ci.yml`, or `scripts/ci/vitest-groups.test.ts` fails.
 
 ## Testing
 

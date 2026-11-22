@@ -15,6 +15,7 @@
   --color-solo: var(--solo);
   --color-solo-foreground: var(--solo-foreground);
   --color-arpeggio: var(--arpeggio);
+  --color-success: var(--success);
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
@@ -115,6 +116,8 @@
   --solo-foreground: oklch(0.2 0.02 70);
   /* The fretboard's chord tones: a teal clear of mute (red), solo (amber) and the paper accent (blue). */
   --arpeggio: oklch(0.78 0.14 165);
+  /* In tune on the tuner; green text and bars, 4.5:1 or better on the background. */
+  --success: oklch(0.765 0.177 163);
   /* The selection pill: no shadow on the dark chrome, a hairline border instead. */
   --pill-shadow: none;
   --pill-border: var(--border);
@@ -133,13 +136,13 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.54 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: oklch(0.6 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -154,7 +157,7 @@
   /* 5.5:1 on the accent; the shared muted foreground is 4.34:1 there. */
   --sidebar-accent-muted-foreground: oklch(0.5 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.6 0 0);
   --paper: var(--paper-light);
   --ink: var(--ink-light);
   --ink-muted: var(--ink-muted-light);
@@ -164,6 +167,7 @@
   --solo: oklch(0.82 0.16 80);
   --solo-foreground: oklch(0.2 0.02 70);
   --arpeggio: oklch(0.52 0.13 165);
+  --success: oklch(0.508 0.118 165);
   /* The selection pill floats over white paper: a soft shadow, no border. */
   --pill-shadow: 0 1px 3px oklch(0 0 0 / 18%), 0 4px 12px oklch(0 0 0 / 12%);
   --pill-border: transparent;

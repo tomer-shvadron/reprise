@@ -95,7 +95,7 @@ const ReferenceField = memo(function ReferenceField({
 
 const plural = (n: number, word: string) => `${String(n)} ${word}${n === 1 ? '' : 's'}`;
 
-const GREEN = 'text-emerald-700 dark:text-emerald-400';
+const GREEN = 'text-success';
 
 /**
  * The note, the meter and what they say. It alone follows the reading, which changes every

@@ -205,14 +205,14 @@ function paintDots(layer: SVGGElement, dots: readonly Dot[], geometry: Geometry)
       circle.setAttribute('cx', String(geometry.dotX(dot.absolute)));
       circle.setAttribute('cy', String(geometry.stringY(dot.string)));
       circle.setAttribute('r', String(DOT_RADIUS));
-      circle.setAttribute('fill', 'var(--color-primary, #2563eb)');
+      circle.setAttribute('fill', 'var(--color-primary)');
       const label = doc.createElementNS(SVG_NS, 'text');
       label.setAttribute('x', String(geometry.dotX(dot.absolute)));
       label.setAttribute('y', String(geometry.stringY(dot.string) + 3.5));
       label.setAttribute('text-anchor', 'middle');
       label.setAttribute('font-size', '10');
       label.setAttribute('font-weight', '600');
-      label.setAttribute('fill', 'var(--color-primary-foreground, #fff)');
+      label.setAttribute('fill', 'var(--color-primary-foreground)');
       label.setAttribute('aria-hidden', 'true');
       label.textContent = dot.name;
       group.append(circle, label);

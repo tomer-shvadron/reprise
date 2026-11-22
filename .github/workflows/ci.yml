@@ -35,6 +35,9 @@ jobs:
       - name: Conflict markers
         run: pnpm conflicts:check
 
+      - name: Raw colours
+        run: pnpm colors:check
+
       - name: Lint
         run: pnpm lint
 
