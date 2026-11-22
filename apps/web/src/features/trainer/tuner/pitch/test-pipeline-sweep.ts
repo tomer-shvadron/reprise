@@ -56,7 +56,7 @@ export function sweep(options: { snrDb: number; inharmonicity?: number; weak?: b
           const label = `${name} ${String(detune)} seed ${String(seed)} at ${String(sampleRate)}`;
           expect(count, label).toBeGreaterThan(10);
           // The lock stays hidden while the cutoff closes in, see `settleFramesFor`. The long
-          // window's median of eleven can wait for all of them, up to 5 hops more (#474).
+          // window's median of eleven can wait for all of them, up to 6 hops more, 11 - 5 frames (#474).
           const windowMs = (windowFor(sampleRate, base) / sampleRate) * 1000;
           expect(first, label).toBeLessThanOrEqual(16 + medianFramesFor(windowMs) - TRACKER.median);
           slowest = Math.max(slowest, first);

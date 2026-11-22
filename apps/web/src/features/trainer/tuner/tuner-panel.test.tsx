@@ -159,9 +159,10 @@ describe('TunerPanel', () => {
     expect(screen.queryByRole('group', { name: 'Strings' })).not.toBeInTheDocument();
     await listen();
     // The chromatic window is 4096: its first reading waits for six agreeing frames (#474).
-    act(() => {
-      rig.tick(16);
-    });
+    for (let i = 0; i < 8 && !screen.queryByLabelText('A2'); i += 1)
+      act(() => {
+        rig.tick(1);
+      });
     expect(screen.getByLabelText('A2')).toBeInTheDocument();
     expect(screen.getByTestId('tuner-cents')).toHaveTextContent('+12');
   });

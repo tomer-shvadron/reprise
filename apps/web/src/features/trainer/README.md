@@ -112,8 +112,8 @@ shared field is a `type:contract` issue for the lead.
   lock; three accepted frames more than 50 cents from the median move the lock, and a single
   octave-off frame is ignored. The reading is the median of the last five accepted frames in
   fractional MIDI, or of eleven at the 4096 window (over 50 ms), where a splice from dropped
-  samples spans up to five frames; the gates still judge against the newest five (#474). When the gate closes the last reading is held 1.5 s (`held`, dimmed), then
-  clears. In tune is entered after five readings within 3 cents and left beyond 5. A **glitch
+  samples spans up to five frames; the gates still judge against the newest five (#474). When
+  the gate closes the last reading is held 1.5 s (`held`, dimmed), then clears. In tune is entered after five readings within 3 cents and left beyond 5. A **glitch
   gate** freezes the reading (undimmed) for up to 8 frames that sit more than 2 cents from the
   median with the clarity 0.05 under the note's running clarity, or 0.02 under it when the frame
   is also more than 8 cents from the last frame the history took (a dropout, not a peg turn,
@@ -127,7 +127,7 @@ shared field is a `type:contract` issue for the lead.
   9 at 4096), counted in time, not in accepted frames. The frames taken through the old cutoff
   are dropped, and the first median is the frames after it. That first reading waits until its
   frames agree within 2 cents, or until there are five (at most 2 hops, 40 ms, more, only when
-  the first three spread over 2 cents): dropped samples bias several frames in a row (#433). A
+  the first three spread over 2 cents; at 2048 the spread is judged over the whole fill): dropped samples bias several frames in a row (#433). A
   fresh note shows a reading about 8 hops (0.16 s) after the window fills. At the 4096 window
   six frames must agree, or eleven are taken (#474): dropped samples then stay within 1.1 cents,
   at the cost of the first reading about 3 hops (60 ms) later, 8 hops (160 ms) in the worst

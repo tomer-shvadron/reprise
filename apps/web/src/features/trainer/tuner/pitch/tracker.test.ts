@@ -118,6 +118,20 @@ describe('the tracker', () => {
   // about 5 cents at clarity 1.0, so no gate sees it. Frames a hop apart share most of their
   // samples, so when the deadline falls inside the splice the first median of three was two bad
   // frames and one good, and the meter showed the bad one.
+  // #474 leaves the 2048 window as it was: the spread is judged over the whole fill, so a first
+  // frame 3 cents off holds the reading back until the fifth frame, not the fourth.
+  it('judges the first reading over the whole fill at the 2048 window', () => {
+    const tracker = createTracker({ windowMs: 42.7 });
+    const at = (timeMs: number, cents: number) =>
+      tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 1 }, 0.1, timeMs).reading;
+    at(0, 0);
+    at(20, 0);
+    const deadline = 20 + settleFramesFor(42.7) * TRACKER.hopMs;
+    for (let t = 40; t < deadline; t += 20) at(t, 0);
+    const shown = [3, 0, 0, 0, 0].map((cents, i) => at(deadline + i * 20, cents)?.held === false);
+    expect(shown).toEqual([false, false, false, false, true]);
+  });
+
   it('does not show a first reading whose frames disagree, but waits for a median of five', () => {
     const tracker = createTracker();
     const at = (timeMs: number, cents: number) =>
@@ -375,8 +389,12 @@ describe('the tracker', () => {
     };
 
     it('keeps agreement within the median, for every window', () => {
-      for (let w = 20; w <= 200; w += 1)
+      for (let w = 20; w <= 200; w += 1) {
         expect(agreeFramesFor(w)).toBeLessThanOrEqual(medianFramesFor(w));
+        // The agreeing frames stay a strict majority of the median, so a sliding exit emits a
+        // median inside the agreeing block.
+        expect(2 * agreeFramesFor(w)).toBeGreaterThan(medianFramesFor(w));
+      }
       expect(medianFramesFor(42.7)).toBe(TRACKER.median);
       expect(medianFramesFor(windowMs)).toBe(11);
       expect(agreeFramesFor(windowMs)).toBe(6);

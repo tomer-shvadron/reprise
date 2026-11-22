@@ -388,7 +388,11 @@ export function createTracker(options: TrackerOptions = {}) {
           refill === 'filling' &&
           history.length >= agreeFrames &&
           (history.length >= medianFrames ||
-            spreadCents(history, history.length - agreeFrames) <= TRACKER.glitchCents)
+            spreadCents(
+              history,
+              // Short windows judge the whole fill, as before #474; only the long median can slide.
+              medianFrames > TRACKER.median ? history.length - agreeFrames : 0,
+            ) <= TRACKER.glitchCents)
         )
           refill = 'none';
         if (dirty || refill !== 'none')
