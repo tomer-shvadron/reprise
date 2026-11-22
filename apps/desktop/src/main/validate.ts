@@ -5,6 +5,7 @@ import type {
   HistoryMenuLabels,
   InvokeArgs,
   InvokeChannel,
+  MenuCheckboxId,
   MenuChecks,
   MenuCommandId,
   MenuKey,
@@ -14,7 +15,7 @@ import type {
   RecentSong,
 } from '@reprise/web';
 
-import { MENU_COMMANDS } from './menu';
+import { MENU_CHECKBOXES, MENU_COMMANDS } from './menu';
 import { isStoragePath, parseStoragePath, StoragePathError } from './storage-path';
 
 /** The path as sent once it has passed the syntax check; main resolves it against a root. */
@@ -267,6 +268,7 @@ const ROLE_KEYS: readonly (readonly [string, boolean, boolean, boolean])[] = [
   ['v', true, false, false],
 ];
 
+const isCheckboxId = (id: string): id is MenuCheckboxId => Object.hasOwn(MENU_CHECKBOXES, id);
 const isMenuCommandId = (id: string): id is MenuCommandId => Object.hasOwn(MENU_COMMANDS, id);
 
 function parseMenuKey(id: string, value: unknown): MenuKey | null {
@@ -328,7 +330,9 @@ export function parseMenuChecks(value: unknown): MenuChecks {
   if (!isRecord(value)) throw new PayloadError('Expected the menu checks');
   const checks: MenuChecks = {};
   for (const [id, raw] of Object.entries(value)) {
-    if (!isMenuCommandId(id)) throw new PayloadError(`Unknown menu command '${id}'`);
+    if (!isCheckboxId(id)) {
+      throw new PayloadError(`'${id}' is not a checkbox in the menu`);
+    }
     if (raw === undefined) continue;
     if (typeof raw !== 'boolean') throw new PayloadError(`Expected a boolean for '${id}'`);
     checks[id] = raw;

@@ -228,16 +228,25 @@ export interface MenuKey {
 /** The key of each menu command; `null` or absent leaves the item without one. */
 export type MenuKeys = Partial<Record<MenuCommandId, MenuKey | null>>;
 
-/** The state of each checkbox item in the native menu; an id the menu has no checkbox for is refused. */
-export type MenuChecks = Partial<Record<MenuCommandId, boolean>>;
+/** The menu items that are checkboxes. */
+export type MenuCheckboxId =
+  | 'transport.toggleLoop'
+  | 'transport.toggleCountIn'
+  | 'transport.toggleMetronome'
+  | 'transport.toggleFixedTempo';
+
+/** The state of each checkbox item in the native menu; main refuses an id that is not one. */
+export type MenuChecks = Partial<Record<MenuCheckboxId, boolean>>;
 
 /** Main-to-renderer event channels and their payloads. */
 export interface EventChannels {
   /**
-   * `viaAccelerator` is true when the item's key, not a click, ran it: the renderer then leaves
-   * a key that has no Cmd or Ctrl to a focused text field, as it does for its own keys.
+   * `withAlt` is true only when an accelerator with Alt ran the item (Electron's
+   * `triggeredByAccelerator` also covers keyboard menu navigation and screen readers, which never
+   * hold Alt for it): the renderer then leaves the key to a focused text field, where Option+C
+   * types a character. Choosing the item from the menu always runs it.
    */
-  'menu:command': [id: MenuCommandId, viaAccelerator?: boolean];
+  'menu:command': [id: MenuCommandId, withAlt?: boolean];
   'menu:open-recent': [id: string];
   /** The user asked to close the window while the document is edited; answer with `window:close`. */
   'window:close-requested': [];

@@ -15,7 +15,7 @@ import { App } from './app';
 
 function renderApp(platform: Platform = fakePlatform()) {
   const services = createTestServices({ platform });
-  let menu: ((id: MenuCommandId, viaAccelerator?: boolean) => void) | undefined;
+  let menu: ((id: MenuCommandId, withAlt?: boolean) => void) | undefined;
   render(
     <App
       services={services}
@@ -26,9 +26,9 @@ function renderApp(platform: Platform = fakePlatform()) {
       }}
     />,
   );
-  const send = async (id: MenuCommandId, viaAccelerator?: boolean) => {
+  const send = async (id: MenuCommandId, withAlt?: boolean) => {
     await act(async () => {
-      menu?.(id, viaAccelerator);
+      menu?.(id, withAlt);
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
   };

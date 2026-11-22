@@ -705,7 +705,7 @@ describe('text fields and open dialogs', () => {
     expect(run.undo).toHaveBeenCalledOnce();
   });
 
-  it('has a menu accelerator without Cmd or Ctrl yield to a focused text field only', () => {
+  it('has an Alt-only menu accelerator yield to a focused text field, and nothing else', () => {
     const input = document.createElement('input');
     document.body.append(input);
     const alt = { key: 'c', alt: true };
@@ -713,10 +713,11 @@ describe('text fields and open dialogs', () => {
       expect(menuKeyYieldsToField(alt)).toBe(false);
       input.focus();
       expect(menuKeyYieldsToField(alt)).toBe(true);
-      expect(menuKeyYieldsToField({ key: 'F9' })).toBe(true);
-      // A key with Cmd or Ctrl is the menu's own, as Save is while a field has focus.
+      expect(menuKeyYieldsToField({ key: 'm', alt: true, shift: true })).toBe(true);
+      // An F-key types nothing, and a Cmd or Ctrl key is the menu's own, as Save is.
+      expect(menuKeyYieldsToField({ key: 'F9' })).toBe(false);
       expect(menuKeyYieldsToField({ key: 's', mod: true })).toBe(false);
-      expect(menuKeyYieldsToField({ key: 'F9', mod: true })).toBe(false);
+      expect(menuKeyYieldsToField({ key: 'c', mod: true, alt: true })).toBe(false);
       expect(menuKeyYieldsToField(undefined)).toBe(false);
     } finally {
       input.remove();

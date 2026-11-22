@@ -127,12 +127,14 @@ export function menuCommandAllowed(id: string): boolean {
 }
 
 /**
- * Whether a menu accelerator is typing: the key has no Cmd or Ctrl (Alt alone, or an F-key) and
- * focus is in a text field or another control that takes bare keys, the same rule as for the
- * renderer's own keys (`leavesKeyToTarget`). The menu item still runs from a click.
+ * Whether a menu accelerator is typing: the key is Alt without Cmd or Ctrl (Option+C is a
+ * character on a Mac) and focus is in a text field or another control that takes bare keys.
+ * Other keys are not held back: an F-key types nothing, and the renderer prevents its own key
+ * when it runs a command, so the menu does not run it a second time. The menu item itself always
+ * runs from a click, the keyboard or a screen reader.
  */
 export function menuKeyYieldsToField(shortcut: Shortcut | undefined): boolean {
-  return shortcut !== undefined && !shortcut.mod && isEditable(document.activeElement);
+  return shortcut?.alt === true && shortcut.mod !== true && isEditable(document.activeElement);
 }
 
 /** Keys that delete text, so a text field keeps them whatever the modifiers. */

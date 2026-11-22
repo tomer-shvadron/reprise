@@ -361,13 +361,35 @@ describe('About Reprise', () => {
       expect(shape(entries)).not.toContain('Slow Down 5%');
     });
 
-    it('sends whether a key or a click ran an item', () => {
+    it('puts a checkbox back to the pushed state when Electron flips it', () => {
+      const { entries, options } = playback({ checked: { 'transport.toggleCountIn': true } });
+      const tick = (label: string) => {
+        const entry = entries.find((item) => item.label === label);
+        const item = { checked: label === 'Loop' };
+        const click = entry?.click as ((...args: unknown[]) => void) | undefined;
+        // Electron has flipped the tick by the time the handler runs.
+        item.checked = !item.checked;
+        click?.(item, undefined, {});
+        return item.checked;
+      };
+
+      // Loop with no song open: the renderer pushes nothing, so the tick stays off.
+      expect(tick('Loop')).toBe(false);
+      expect(options.sendCommand).toHaveBeenLastCalledWith('transport.toggleLoop');
+      expect(tick('Count-in')).toBe(true);
+    });
+
+    it('sends whether an Alt key or the menu ran an item', () => {
       const { entries, options } = playback();
       const loop = entries.find((item) => item.label === 'Loop');
       const click = loop?.click as ((...args: unknown[]) => void) | undefined;
-      click?.({}, undefined, { triggeredByAccelerator: true });
+      const item = { checked: false };
+      click?.(item, undefined, { triggeredByAccelerator: true, altKey: true });
       expect(options.sendCommand).toHaveBeenLastCalledWith('transport.toggleLoop', true);
-      click?.({}, undefined, { triggeredByAccelerator: false });
+      // Keyboard menu navigation and screen readers are "accelerator" activations without Alt.
+      click?.(item, undefined, { triggeredByAccelerator: true, altKey: false });
+      expect(options.sendCommand).toHaveBeenLastCalledWith('transport.toggleLoop');
+      click?.(item, undefined, { triggeredByAccelerator: false, altKey: true });
       expect(options.sendCommand).toHaveBeenLastCalledWith('transport.toggleLoop');
     });
   });

@@ -2,6 +2,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 
 import type {
   HistoryMenuLabels,
+  MenuCheckboxId,
   MenuChecks,
   MenuCommandId,
   MenuKey,
@@ -57,6 +58,14 @@ export const MENU_COMMANDS = {
   'transport.masterVolume': { label: 'Master Volume…' },
 } satisfies Record<MenuCommandId, MenuCommand>;
 
+/** The items that are checkboxes; `validate.ts` refuses a check for any other id. */
+export const MENU_CHECKBOXES: Readonly<Record<MenuCheckboxId, true>> = {
+  'transport.toggleLoop': true,
+  'transport.toggleCountIn': true,
+  'transport.toggleMetronome': true,
+  'transport.toggleFixedTempo': true,
+};
+
 /** The step items' labels while Fixed Tempo is on: the keys then step the BPM, not the percent. */
 const FIXED_STEP_LABELS: Partial<Record<MenuCommandId, string>> = {
   'transport.slowDown': 'Slow Down 5 BPM',
@@ -98,8 +107,8 @@ export interface MenuOptions {
   isMac: boolean;
   isPackaged: boolean;
   docsUrl: string;
-  /** `viaAccelerator` is passed (true) only when the item's key ran it, not a click. */
-  sendCommand: (id: MenuCommandId, viaAccelerator?: boolean) => void;
+  /** `withAlt` is passed (true) only when an accelerator with Alt ran the item. */
+  sendCommand: (id: MenuCommandId, withAlt?: boolean) => void;
   openExternal: (url: string) => void;
   /** Shows the About box; macOS has its own entry in the application menu. */
   showAbout?: () => void;
@@ -135,18 +144,30 @@ export function menuTemplate({
   const command = (id: MenuCommandId): MenuItemConstructorOptions => ({
     label: MENU_COMMANDS[id].label,
     ...acceleratorProp(keys[id]),
-    // Electron says whether the key or a click ran the item; a test may press it with no event.
-    click: (_item, _window, event?: { triggeredByAccelerator?: boolean }) => {
-      if (event?.triggeredByAccelerator) sendCommand(id, true);
+    // `triggeredByAccelerator` is "not a mouse click" (keyboard menu navigation and screen readers
+    // included), so only an Alt accelerator counts: Option+C types a character in a text field,
+    // while choosing the item from the menu must always run it. A test may press with no event.
+    click: (_item, _window, event?: { triggeredByAccelerator?: boolean; altKey?: boolean }) => {
+      if (event?.triggeredByAccelerator && event.altKey) sendCommand(id, true);
       else sendCommand(id);
     },
   });
   // The native item flips itself on a click; the renderer's push right after sets the truth.
-  const checkbox = (id: MenuCommandId): MenuItemConstructorOptions => ({
-    ...command(id),
-    type: 'checkbox',
-    checked: checked[id] === true,
-  });
+  const checkbox = (id: MenuCheckboxId): MenuItemConstructorOptions => {
+    const { click } = command(id);
+    return {
+      ...command(id),
+      type: 'checkbox',
+      checked: checked[id] === true,
+      // Electron flips the tick on every activation, but the renderer pushes only when its state
+      // changes (nothing does with no song open, or when the modal rule drops the command): put
+      // the tick back to the state the renderer last sent, which a later push then replaces.
+      click: (item: { checked: boolean } | undefined, window, event) => {
+        if (item) item.checked = checked[id] === true;
+        click?.(item as never, window, event);
+      },
+    };
+  };
   const fixed = checked['transport.toggleFixedTempo'] === true;
   const step = (id: 'transport.slowDown' | 'transport.speedUp'): MenuItemConstructorOptions => ({
     ...command(id),

@@ -182,16 +182,12 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
 
   useEffect(
     () =>
-      onMenuCommand?.((id, viaAccelerator) => {
+      onMenuCommand?.((id, withAlt) => {
         const command = registry.get(id);
         if (!command || !menuCommandAllowed(id)) return;
-        // The renderer leaves a key without Cmd or Ctrl to a focused field; the menu's own
-        // accelerator (Option+C is a character on a Mac) must do the same, while a click on the
-        // item runs it from anywhere.
-        if (
-          viaAccelerator &&
-          menuKeyYieldsToField(shortcutOn(registry.shortcutOf(command), keyboard))
-        ) {
+        // An Alt accelerator is left to a focused field, as the renderer leaves its own keys
+        // (Option+C is a character on a Mac); choosing the item from the menu runs it anywhere.
+        if (withAlt && menuKeyYieldsToField(shortcutOn(registry.shortcutOf(command), keyboard))) {
           return;
         }
         runCommand(command);

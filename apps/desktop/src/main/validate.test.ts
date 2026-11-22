@@ -193,6 +193,8 @@ describe('menu:set-checked', () => {
       ['x'],
       [[]],
       [{ 'not.a.command': true }],
+      [{ 'file.save': true }],
+      [{ 'transport.playPause': false }],
       [{ 'transport.toggleLoop': 1 }],
       [{ 'transport.toggleLoop': null }],
       [{}, {}],

@@ -271,11 +271,11 @@ registerInvokeHandlers(
   isTrusted,
 );
 
-function sendMenuCommand(id: MenuCommandId, viaAccelerator = false): void {
+function sendMenuCommand(id: MenuCommandId, withAlt = false): void {
   const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
   if (window) {
     // The flag is left off a click, so the common message stays the bare id.
-    if (viaAccelerator) sendEvent(window.webContents, 'menu:command', id, true);
+    if (withAlt) sendEvent(window.webContents, 'menu:command', id, true);
     else sendEvent(window.webContents, 'menu:command', id);
   }
 }
