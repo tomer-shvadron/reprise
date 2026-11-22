@@ -98,7 +98,8 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
           const half = glyphWidth(DYNAMICS_GLYPHS[dynamics], input.space) / 2;
           const room = half + DYNAMICS_SIDE * input.space;
           onset.left = Math.max(onset.left, room);
-          onset.right = Math.max(onset.right, room);
+          // A dynamic sits at the voice's drawn x, so its room is counted from the shifted onset.
+          onset.right = Math.max(onset.right, (beat.shift ?? 0) + room);
         }
         onset.rigid = onset.right;
         onset.fixed = Math.max(0, onset.right - (beat.shift ?? 0));
