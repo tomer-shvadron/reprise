@@ -1,8 +1,8 @@
 import { note, score } from '@reprise/model/testing';
 import { assert, constant, constantFrom, integer, oneof, property, tuple } from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, inject, it } from 'vitest';
 
-import type { Bend, Notation, Score } from '@reprise/model';
+import { parseNative, type Bend, type Notation, type Score } from '@reprise/model';
 
 import {
   DEFAULT_MARGINS,
@@ -16,11 +16,14 @@ import { randomScore } from './test/random-score';
 
 const EPSILON = 0.02;
 
-/**
- * Seeds whose standard bars still draw lane-effect text (`let ring`, the bend label `full`) past
- * a 320 px system; #477 reserves room for it and deletes this set.
- */
-const UNTIL_477 = new Set([16, 59, 158, 161]);
+// The package compiles against ES2022 alone, which declares no TextEncoder.
+declare const TextEncoder: new () => { encode(input: string): Uint8Array };
+
+declare module 'vitest' {
+  export interface ProvidedContext {
+    scoreFixtures: { path: string; native: string }[];
+  }
+}
 
 /**
  * Primitives, as `kind node`, that reach past the right edge of the system drawing them. Only the
@@ -129,10 +132,7 @@ describe('primitives stay inside their system', () => {
     for (const seed of [16, 169, 250, 399]) {
       const built = randomScore(seed, { diagrams: true });
       const found = outside(layout(built, options(built, 320, 'standard')));
-      // Seed 16 keeps its bend label `full`, 0.3 px out: lane-effect text, #477's.
-      const rest = seed === 16 ? found.filter((entry) => !entry.startsWith('text ')) : found;
-      expect(rest, `seed ${String(seed)}`).toEqual([]);
-      if (seed === 16) expect(found.filter((entry) => entry.startsWith('text '))).toHaveLength(1);
+      expect(found, `seed ${String(seed)}`).toEqual([]);
     }
   });
 
@@ -185,7 +185,6 @@ describe('primitives stay inside their system', () => {
     // The sampled property below covers about a seventh of the seeds per run, so the sweep is
     // exhaustive: a seed a later change breaks fails here, not on an unrelated PR.
     for (let seed = 0; seed <= 400; seed++) {
-      if (UNTIL_477.has(seed)) continue;
       const built = randomScore(seed, { diagrams: true });
       const result = layout(built, options(built, 320, 'standard'));
       expect(outside(result), `seed ${String(seed)}`).toEqual([]);
@@ -196,8 +195,7 @@ describe('primitives stay inside their system', () => {
   it('holds for random scores in paged mode at narrow and wide lines', () => {
     // Paged only: continuous mode never squeezes (`finish` squeezes only paged lines), so it
     // could not reach the squeezed cases this guards. At 320 px tab and standard are held to it,
-    // standard but for the seeds in `UNTIL_477` (lane-effect text, #477); `both` is not: its
-    // rigid extent scales the tab's fixed glyphs along with the voice shifts.
+    // `both` is not: its rigid extent scales the tab's fixed glyphs along with the voice shifts.
     assert(
       property(
         integer({ min: 0, max: 400 }),
@@ -206,7 +204,6 @@ describe('primitives stay inside their system', () => {
           tuple(constantFrom(500, 700, 1200), constantFrom<Notation>('tab', 'standard', 'both')),
         ),
         (seed, [width, notation]) => {
-          if (width === 320 && notation === 'standard' && UNTIL_477.has(seed)) return;
           const built = randomScore(seed, { diagrams: true });
           const result = layout(built, options(built, width, notation));
           const label = `seed ${String(seed)} ${String(width)} ${notation}`;
@@ -217,4 +214,20 @@ describe('primitives stay inside their system', () => {
       { numRuns: 240 },
     );
   }, 60_000);
+
+  it('keeps every fixture inside its system at 320 px in tab and standard', () => {
+    // The random scores draw no whammy bar and few bends, so the corpus holds the labels the
+    // sweep cannot reach (a whammy's `-½`, a bend's `1½`).
+    const found: string[] = [];
+    const fixtures = inject('scoreFixtures');
+    expect(fixtures.length).toBeGreaterThan(0);
+    for (const { path, native } of fixtures) {
+      const built = parseNative(new TextEncoder().encode(native)).score;
+      for (const notation of ['tab', 'standard'] as const) {
+        const result = layout(built, options(built, 320, notation));
+        for (const entry of outside(result)) found.push(`${path} ${notation} ${entry}`);
+      }
+    }
+    expect(found).toEqual([]);
+  }, 120_000);
 });

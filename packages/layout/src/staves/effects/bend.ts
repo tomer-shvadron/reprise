@@ -70,6 +70,8 @@ export interface BendFrame {
   releaseTop: number;
   /** A tied note continues its bend and gets no pre-bend arrow. */
   tied: boolean;
+  /** Where a label may reach at most, in px: the bar's content end. A label that would pass it shifts left to end there. */
+  limit?: number;
 }
 
 /**
@@ -115,7 +117,16 @@ export function drawBend(
   const label = (content: string, px: number, y: number, anchor: 'start' | 'middle'): void => {
     let at = y;
     for (;;) {
-      const mark = text(content, px, at, size, { anchor, node });
+      let mark = text(content, px, at, size, { anchor, node });
+      const over = frame.limit === undefined ? 0 : mark.bbox.x + mark.bbox.width - frame.limit;
+      if (over > 0) {
+        // A release label sits right of its arrow's tip: where that passes the limit it moves to
+        // the tip's left instead of onto the arrowhead; a centred one shifts left.
+        mark =
+          anchor === 'start'
+            ? text(content, px - 2 * RELEASE_LABEL_GAP * space, at, size, { anchor: 'end', node })
+            : text(content, px - over, at, size, { anchor, node });
+      }
       const hits = drawn.labels.filter((other) => overlap(other.bbox, mark.bbox));
       if (hits.some((other) => other.text === content)) return;
       const blocks = [

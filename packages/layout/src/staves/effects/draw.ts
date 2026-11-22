@@ -203,8 +203,20 @@ function drawWhammies(context: LaneDraw, band: LaneBand): void {
         p.value >= 0
           ? level(p.value) - WHAMMY.gap * space
           : level(p.value) + WHAMMY.gap * space + textExtent(labelSize).ascent;
+      // Centred on the graph's last point, near the content end: shifted left to end there.
+      const content = contentEnd(placement);
+      const label = text(bendLabel(p.value), at(p.position), y, labelSize, {
+        anchor: 'middle',
+        node,
+      });
+      const over = label.bbox.x + label.bbox.width - content;
       sink.primitives.push(
-        text(bendLabel(p.value), at(p.position), y, labelSize, { anchor: 'middle', node }),
+        over > 0
+          ? text(bendLabel(p.value), at(p.position) - over, y, labelSize, {
+              anchor: 'middle',
+              node,
+            })
+          : label,
       );
     }
   }
