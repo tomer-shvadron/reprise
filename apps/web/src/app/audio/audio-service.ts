@@ -74,6 +74,8 @@ export type { PreviewNote, PreviewOptions };
 export { MEMORY_BUDGET_RANGE };
 export const PREVIEW_VELOCITY_RANGE = { min: 1, max: 127 } as const;
 export const PREVIEW_SECONDS_RANGE = { min: 0.05, max: 5 } as const;
+/** A `previewBeat` that waited longer than this for a rebuild is dropped: late feedback is worse than none. */
+const PREVIEW_BEAT_LATE_MS = 250;
 const MAX_FRET = 127;
 
 function clamp(value: number, min: number, max: number): number {
@@ -161,6 +163,22 @@ export interface AudioService {
    */
   previewNote(trackId: Id, note: PreviewNote, options?: PreviewOptions): void;
   /**
+   * Sounds one beat of the open song as written, effects included (bends, slides, palm mute,
+   * golpe, wah, let ring and the rest), through the same planning as playback, so applying an
+   * effect in the editor is heard. No options: the beat's own notes, dynamics and tempo, the last
+   * strike sounding at least 0.6 s. Stopped or playing, past mute and solo; it never touches the
+   * song's voices, mixer or pedal. Not applied: a mid-song program, volume or pan change on the
+   * beat. Contract, as `previewNote`:
+   * - A `RangeError` for a track or beat the open song lacks, thrown before unlocking or touching
+   *   the engine, so call it last in a handler.
+   * - Nothing happens, with no error, with no document, while it loads, when the output failed, for
+   *   a beat in a bar playback never reaches and for a sample not yet decoded (it misses once).
+   * - It unlocks the context, so call it from a gesture. When an edit has queued a rebuild or a
+   *   load is in flight it then waits for `settled()`, so the beat sounds as edited; a preview
+   *   that waited over 250 ms is dropped and a newer one replaces a waiting one.
+   */
+  previewBeat(trackId: Id, beatId: Id): void;
+  /**
    * Undoes `releasePack` for a pack that is still installed (the folder removal failed): the song
    * reloads with it. A no-op for a pack that was not released.
    */
@@ -222,6 +240,8 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   let generation = 0;
   let transport: PlaybackState = 'stopped';
   let rebuildQueued = false;
+  /** The `previewBeat` waiting on a rebuild: the newest wins. */
+  let pendingBeat: object | undefined;
   let disposed = false;
   const inflight = new Set<Promise<unknown>>();
   /** Packs `releasePack` took out, by the files object they had; see `releasePack`. */
@@ -717,6 +737,49 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
           }),
         },
       );
+    },
+
+    previewBeat(trackId, beatId) {
+      if (disposed) return;
+      if (!doc || !loaded) return;
+      const has = (score: Score): boolean | undefined =>
+        score.tracks
+          .find((entry) => entry.id === trackId)
+          ?.bars.some((bar) =>
+            bar.voices.some((voice) => voice.beats.some((beat) => beat.id === beatId)),
+          );
+      const known = has(doc.score);
+      if (known === undefined) {
+        throw new RangeError(`previewBeat: the open song has no track ${trackId}`);
+      }
+      if (!known) throw new RangeError(`previewBeat: track ${trackId} has no beat ${beatId}`);
+      // Inside the gesture, before any wait: the context can only be resumed from one.
+      service.unlock();
+      if (playback.getState().output.status === 'error') return;
+      const token = {};
+      pendingBeat = token;
+      const sound = (): void => {
+        if (pendingBeat !== token || disposed || !engineScore || !has(engineScore)) return;
+        pendingBeat = undefined;
+        engine.previewBeat(trackId, beatId);
+      };
+      // An edit queues a rebuild that has not reached the engine, which would sound the beat as
+      // it was before; wait for it (and the loads in flight), and drop a preview that would sound
+      // late, as `Sampler.previewNote` does. A newer preview replaces a waiting one.
+      if (!rebuildQueued && inflight.size === 0 && engineScore === doc.score) {
+        sound();
+        return;
+      }
+      const requested = performance.now();
+      const generationThen = generation;
+      void service.settled().then(() => {
+        if (
+          generationThen === generation &&
+          performance.now() - requested <= PREVIEW_BEAT_LATE_MS
+        ) {
+          sound();
+        } else if (pendingBeat === token) pendingBeat = undefined;
+      });
     },
 
     async releasePack(id) {

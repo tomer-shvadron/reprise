@@ -210,8 +210,10 @@ export function dispatchShortcut(
     });
   // What the key prints decides first; the physical key stands in only when nothing matched it,
   // so a layout's printed character never loses a command to the key's US-layout twin.
+  // Between the two, the printed character with a Shift or Option the layout needs to type it.
   const byCharacter = matchingBy('character');
-  const matching = byCharacter.length > 0 ? byCharacter : matchingBy('physical');
+  const byRelaxed = byCharacter.length > 0 ? byCharacter : matchingBy('relaxed');
+  const matching = byRelaxed.length > 0 ? byRelaxed : matchingBy('physical');
   // An active context's binding shadows the context-free one on the same key; between active
   // contexts, the earlier one in COMMAND_CONTEXTS wins.
   const command = matching.sort((a, b) => contextRank(a.context) - contextRank(b.context))[0];

@@ -360,8 +360,8 @@ export class Sampler {
   }
 
   /** A wah pedal change on the track's strip at `at`; see `ChannelStrip.setWah`. */
-  setWah(id: Id, state: WahState, at: number, restore = false): void {
-    this.#state(id).strip.setWah(state, at, restore);
+  setWah(id: Id, state: WahState, at: number, restore = false, preview = false): void {
+    this.#state(id).strip.setWah(state, at, restore, preview);
   }
 
   /**
@@ -394,7 +394,12 @@ export class Sampler {
    */
   noteOn(id: Id, request: NoteOnRequest): VoiceHandle | undefined {
     const state = this.#state(id);
-    return this.#start(state, request, state.strip.input);
+    // A preview note (`AudioEngine.previewBeat`) goes past the mute gate, like `previewNote`.
+    return this.#start(
+      state,
+      request,
+      request.preview ? state.strip.previewInput : state.strip.input,
+    );
   }
 
   #start(
@@ -624,6 +629,7 @@ export class Sampler {
     const requested = this.context.currentTime;
     const play = (): VoiceHandle | undefined => {
       const when = this.context.currentTime;
+      state.strip.resetPreviewWah(when);
       const voice = this.#start(
         state,
         { key, velocity, when, string, preview: true, ...(course !== null && { course }) },
