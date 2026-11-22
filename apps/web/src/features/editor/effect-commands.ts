@@ -121,6 +121,8 @@ export type EffectKeyName =
   | 'golpeFinger'
   | 'pickScrapeDown'
   | 'pickScrapeUp'
+  | 'wahClosed'
+  | 'wahOpen'
   | 'fadeIn'
   | 'fadeOut'
   | 'volumeSwell'
@@ -259,8 +261,7 @@ export const EFFECT_KEY_TABLE: readonly EffectKey[] = [
     action: { kind: 'pickStroke', direction: 'up' },
     key: { key: 'u', shift: true },
   },
-  // Golpe and pick scrape have no default key; bind them in Settings, Keyboard. Wah (#355) adds
-  // its entries here: closed on Shift+W, open on Alt+Shift+W.
+  // Golpe and pick scrape have no default key; bind them in Settings, Keyboard.
   {
     id: 'golpeThumb',
     title: 'Toggle golpe (thumb)',
@@ -299,6 +300,20 @@ export const EFFECT_KEY_TABLE: readonly EffectKey[] = [
     id: 'volumeSwell',
     title: 'Toggle volume swell',
     action: { kind: 'beatFlag', flag: 'volumeSwell' },
+  },
+  // Wah: one field holds the pedal, so closed and open exclude each other. Alt+Shift+W types
+  // "„" on a Mac; the key handler falls back to the physical key, as for the other Alt chords.
+  {
+    id: 'wahClosed',
+    title: 'Toggle wah closed (+)',
+    action: { kind: 'wah', wah: 'closed' },
+    key: { key: 'w', shift: true },
+  },
+  {
+    id: 'wahOpen',
+    title: 'Toggle wah open (o)',
+    action: { kind: 'wah', wah: 'open' },
+    key: { key: 'w', shift: true, alt: true },
   },
   {
     id: 'whammyVibrato',

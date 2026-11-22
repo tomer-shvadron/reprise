@@ -1,6 +1,8 @@
 import { BypassSlot, realtimeDefer } from '../effects/bypass-slot';
 import type { Defer, Path } from '../effects/bypass-slot';
 import { EffectsChain } from '../effects/chain';
+import { WahPedal } from '../effects/wah';
+import type { WahState } from '../wah-lane';
 import { INLINE_STAGES } from '../effects/presets';
 import type { EffectSpec } from '../effects/presets';
 import { ImpulseBank } from '../effects/reverb-bus';
@@ -99,6 +101,7 @@ export class ChannelStrip {
   #spec = '{}';
   #send: GainNode | undefined;
   #sendLevel = 0;
+  #wah: WahPedal | undefined;
 
   constructor(context: BaseAudioContext, destination: AudioNode, effects?: StripEffects) {
     this.#context = context;
@@ -130,6 +133,29 @@ export class ChannelStrip {
   /** The effects chain while the track has one: its stages, or `undefined` for the direct path. */
   get chain(): EffectsChain | undefined {
     return this.#chain;
+  }
+
+  /** The wah pedal, once a mark has asked for one. */
+  get wah(): WahPedal | undefined {
+    return this.#wah;
+  }
+
+  /**
+   * The wah pedal's state from `at`. The pedal is spliced in between the mute gate and the
+   * insert on the first call that needs it, before the effects, as a pedal sits before the amp,
+   * and stays for the strip's life: off it is the dry signal exactly. A restore to `off` on a
+   * strip that never had one changes nothing. Notes previewed in the editor join after it.
+   */
+  setWah(state: WahState, at: number, restore = false): void {
+    if (!this.#wah) {
+      if (state === 'off') return;
+      const pedal = new WahPedal(this.#context);
+      this.#gate.disconnect(this.insert.input);
+      this.#gate.connect(pedal.input);
+      pedal.output.connect(this.insert.input);
+      this.#wah = pedal;
+    }
+    this.#wah.set(state, at, restore);
   }
 
   /** The send into the reverb bus, while it is connected. */
@@ -250,6 +276,7 @@ export class ChannelStrip {
   cancelAfter(when: number): void {
     this.#gainTargets = this.#cancel(this.#fader.gain, this.#gainTargets, when);
     this.#panTargets = this.#cancel(this.#panner.pan, this.#panTargets, when);
+    this.#wah?.cancelAfter(when);
     this.#gain = this.#gainTargets.at(-1)?.value ?? this.#gain;
     this.#pan = this.#panTargets.at(-1)?.value ?? this.#pan;
   }
@@ -285,6 +312,8 @@ export class ChannelStrip {
   dispose(): void {
     // First: it disconnects its own edges from the insert, which the loop below would sever.
     this.#slot.dispose();
+    this.#wah?.dispose();
+    this.#wah = undefined;
     for (const node of [
       this.input,
       this.previewInput,
