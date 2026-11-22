@@ -19,10 +19,11 @@ const TRACKS = 8;
 const BARS = 300;
 const EDITS = 100;
 // Measured on the reference machine (M4 Pro), the jump alone: step(-100) 25 ms and step(100) 18 ms,
-// the same under three parallel runs (26 ms at worst). The 100-call undo and redo loop it replaces
-// took 353 and 247 ms with the same subscribers. The bound is 10x the alone figure (260 ms)
-// rounded up on the 1-2-5 series. The whole test runs in about 1.5 s with its imports, so the
-// timeout below is the 30 s floor.
+// and 26 ms at worst under three parallel runs. The 100-call undo and redo loop it replaces took
+// 353 and 247 ms with the same subscribers. The bound is 10x the alone figure (250 ms), which is
+// also 10x the parallel worst (260 ms), rounded up on the 1-2-5 series; it cannot tell the loop
+// from the new code, the single-publish assertions do. The whole test took about 1.5 s alone and
+// 1.5 s at worst under three parallel runs, so the timeout below is the 30 s floor.
 const JUMP_BOUND_MS = 500;
 
 describe('a long history jump', () => {

@@ -82,20 +82,25 @@ describe('the layout store', () => {
     const { document, spy } = setup();
     await document.getState().openBytes('a.reprise', await bytesOf('A', 3));
     const { cache } = lastCall(spy);
+    const touched: string[] = [];
+    const record = () => {
+      touched.push(...(document.getState().lastChange?.touchedBars ?? []));
+    };
     edit(document, 5);
+    record();
     document.getState().apply(insertBar({ index: 1 }));
+    record();
     edit(document, 6);
-    const touched = document.getState().undoLabel;
-    expect(touched).toBeDefined();
+    record();
     const calls = spy.mock.calls.length;
 
     expect(document.getState().step(-3)).toBe(3);
     expect(spy.mock.calls.length).toBe(calls + 1);
     expect(lastCall(spy).cache).toBe(cache);
     const dirty = lastCall(spy).options.dirtyBars ?? [];
-    const merged = document.getState().lastChange?.touchedBars ?? [];
-    expect(dirty).toEqual(merged);
-    expect(dirty.length).toBeGreaterThan(1);
+    // Every bar any jumped step touched, the inserted bar included.
+    for (const id of touched) expect(dirty).toContain(id);
+    expect(touched.length).toBeGreaterThan(2);
   });
 
   it('re-lays out for a view change, never for zoom, theme or panels', async () => {

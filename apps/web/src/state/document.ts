@@ -145,7 +145,11 @@ export interface DocumentState {
    */
   songId: Id | undefined;
   view: DocumentView;
-  /** The change that produced `score`; undefined right after an open. */
+  /**
+   * The change that produced `score`; undefined right after an open. After a jump it is the merge
+   * of the replayed steps: `touchedBars` is safe to use, but the patch paths address intermediate
+   * scores, not positions in `score`; use `lastReplayed` for those.
+   */
   lastChange: Change | undefined;
   /**
    * After an undo or redo (`lastStep`), the last step it replayed: `lastChange` itself after one

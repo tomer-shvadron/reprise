@@ -317,9 +317,19 @@ describe('step', () => {
     const stored = history.steps[2];
     stored?.inverse.push({ op: 'replace', path: ['tracks', 99, 'name'], value: 'x' });
     const before = { undo: history.undoLabels, redo: history.redoLabels };
-    expect(() => history.step(-3)).toThrow();
-    expect(history.undoLabels).toEqual(before.undo);
-    expect(history.redoLabels).toEqual(before.redo);
+    let thrown: unknown;
+    try {
+      history.step(-3);
+    } catch (error) {
+      thrown = error;
+    }
+    // The patch failure itself, not a guard that fired before the loop.
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(HistoryError);
+    expect(thrown).not.toBeInstanceOf(RangeError);
+    expect(history.undoLabels).toBe(before.undo);
+    expect(history.redoLabels).toBe(before.redo);
+    expect(history.canRedo).toBe(false);
     expect(history.undo()?.score).toEqual(scores[4]);
   });
 });

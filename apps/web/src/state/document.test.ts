@@ -1138,6 +1138,10 @@ describe('document store history labels and the last step', () => {
       store.getState().lastReplayed?.touchedBars,
     );
     expect(store.getState().lastChange).not.toBe(store.getState().lastReplayed);
+    // The step nearest the target is the oldest undone one, the edit that set fret 2.
+    expect(store.getState().lastReplayed?.inverse.map((patch): unknown => patch.value)).toEqual([
+      2,
+    ]);
     expect(store.getState().lastChange?.patches).toHaveLength(
       3 * (store.getState().lastReplayed?.patches.length ?? 0),
     );
@@ -1164,7 +1168,7 @@ describe('document store history labels and the last step', () => {
     expect(published).toHaveBeenCalledTimes(1);
   });
 
-  it('sets lastReplayed to lastChange after one step, and clears it on apply and close', async () => {
+  it('sets lastReplayed to lastChange after one step, and clears it on apply, open, newDocument and close', async () => {
     const store = await opened();
     store.getState().apply(editOf(store, 2));
     expect(store.getState().lastReplayed).toBeUndefined();
@@ -1174,6 +1178,15 @@ describe('document store history labels and the last step', () => {
     expect(store.getState().lastReplayed).toBe(store.getState().lastChange);
     store.getState().apply(editOf(store, 3));
     expect(store.getState().lastReplayed).toBeUndefined();
+    store.getState().undo();
+    store.getState().newDocument(song('Fresh'));
+    expect(store.getState().lastReplayed).toBeUndefined();
+    store.getState().apply(editOf(store, 2));
+    store.getState().undo();
+    expect(store.getState().lastReplayed).toBeDefined();
+    await store.getState().openBytes('song.gp5', GP5);
+    expect(store.getState().lastReplayed).toBeUndefined();
+    store.getState().apply(editOf(store, 2));
     store.getState().undo();
     store.getState().close();
     expect(store.getState().lastReplayed).toBeUndefined();

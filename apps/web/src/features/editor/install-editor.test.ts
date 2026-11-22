@@ -112,9 +112,15 @@ describe('installEditor, as the services wire it', () => {
     const { services, state, apply, score } = await setup();
     services.editing.getState().setEditing(true);
     services.editing.getState().setEditing(false);
-    apply(removeBeat({ beatId: score().tracks[0]?.bars[0]?.voices[0]?.beats[0]?.id ?? '' }));
+    for (const bar of [0, 1]) {
+      apply(removeBeat({ beatId: score().tracks[0]?.bars[bar]?.voices[0]?.beats[0]?.id ?? '' }));
+    }
     const cursor = state().cursor;
-    services.document.getState().step(-1);
+    // Two steps, so lastChange is the merge and differs from lastReplayed.
+    services.document.getState().step(-2);
+    expect(services.document.getState().lastChange).not.toBe(
+      services.document.getState().lastReplayed,
+    );
     // Reconcile still re-indexes the cursor; only the landing is for edit mode.
     expect(state().cursor).toMatchObject({ track: cursor?.track, beat: cursor?.beat });
   });
