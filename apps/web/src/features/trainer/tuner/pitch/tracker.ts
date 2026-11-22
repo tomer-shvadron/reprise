@@ -59,6 +59,13 @@ export const TRACKER = {
   clarityAverage: 0.15,
   cleanFrames: 3,
   glitchCents: 2,
+  /**
+   * A jump this far inside one hop is no string moving (a bend is a couple of cents a frame), and
+   * the frames a stream dropout left, 18 and 38 cents off in #433, kept a clarity only 0.03
+   * under the note's, so they need a smaller dip to be suspect than a few cents' drift does.
+   */
+  bigGlitchCents: 8,
+  bigGlitchClarityDip: 0.02,
   glitchFrames: 8,
   searchCutoffHz: 1500,
   lockedCutoffFactor: 2.5,
@@ -100,6 +107,9 @@ const median = (values: readonly number[]) => {
 
 const cutoffFor = (hz: number) =>
   Math.min(TRACKER.searchCutoffHz, Math.max(TRACKER.minCutoffHz, TRACKER.lockedCutoffFactor * hz));
+
+const spreadCents = (values: readonly number[]) =>
+  (Math.max(...values) - Math.min(...values)) * 100;
 
 const centsBetween = (a: number, b: number) => Math.abs(a - b) * 100;
 
@@ -258,8 +268,12 @@ export function createTracker(options: TrackerOptions = {}) {
         locked &&
         near &&
         !dirty &&
-        detection.clarity < clarityAvg - TRACKER.glitchClarityDip &&
-        centsBetween(midi, centre) > TRACKER.glitchCents;
+        centsBetween(midi, centre) > TRACKER.glitchCents &&
+        detection.clarity <
+          clarityAvg -
+            (centsBetween(midi, centre) > TRACKER.bigGlitchCents
+              ? TRACKER.bigGlitchClarityDip
+              : TRACKER.glitchClarityDip);
       if (suspect && glitches < TRACKER.glitchFrames) {
         glitches += 1;
         clean = 0;
@@ -312,7 +326,15 @@ export function createTracker(options: TrackerOptions = {}) {
         history.push(midi);
         if (history.length > TRACKER.median) history.shift();
         peakRms = Math.max(peakRms, rmsValue);
-        if (refill === 'filling' && history.length >= TRACKER.settledFrames) refill = 'none';
+        // Frames a hop apart share most of their samples, so a splice in the input (dropped
+        // samples, #433) biases several in a row and a median of three can be mostly bad: the
+        // first reading waits until they agree, or until the history is a full median.
+        if (
+          refill === 'filling' &&
+          history.length >= TRACKER.settledFrames &&
+          (history.length >= TRACKER.median || spreadCents(history) <= TRACKER.glitchCents)
+        )
+          refill = 'none';
         if (dirty || refill !== 'none')
           return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
         return { reading: emit(median(history)), cutoffHz };
