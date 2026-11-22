@@ -415,8 +415,11 @@ export function renderTab(
       for (const label of beat.labels) drawLabel(context, label, x, size, beat.voice);
       drawGraces(context, beat, x);
       const upper = beat.direction === 'up';
-      const top = placement.top - (upper && analysed.rhythm ? analysed.rows.upper : reach);
-      const bottom = placement.bottom + (upper || !analysed.rhythm ? reach : analysed.rows.lower);
+      const top =
+        placement.top - (upper && analysed.rhythm && !voice.hidden ? analysed.rows.upper : reach);
+      const bottom =
+        placement.bottom +
+        (upper || !analysed.rhythm || voice.hidden ? reach : analysed.rows.lower);
       anchor(
         context,
         'beat',
