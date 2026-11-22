@@ -158,7 +158,8 @@ export function measureBar(
   const rigid = ticks.map(() => 0);
   const fixed = ticks.map(() => 0);
   const ideal = ticks.map(() => 0);
-  const floor = ticks.map(() => 0);
+  // Room the fingering of two neighbouring marked onsets needs between them, `from` to `to`.
+  const clearances: { from: number; to: number; need: number }[] = [];
 
   const extents = slots.map((slot) => {
     const bar = trackBar(slot, index);
@@ -180,7 +181,7 @@ export function measureBar(
       if (!mark) continue;
       const before = marks[prev];
       if (before)
-        floor[prev] = Math.max(floor[prev] ?? 0, before.right + mark.left + MARK_GAP * space);
+        clearances.push({ from: prev, to: j, need: before.right + mark.left + MARK_GAP * space });
       prev = j;
     }
     for (const extent of measured.onsets) {
@@ -210,7 +211,16 @@ export function measureBar(
     const gap = Math.max(next - tick, TICK_EPSILON);
     const movablePart = movableParts[i] ?? 0;
     const fixedPart = fixedParts[i] ?? 0;
-    const marksPart = Math.max(0, (floor[i] ?? 0) - fixedPart - movablePart);
+    // What the springs from here to the next marked onset already hold of the room takes off
+    // what this one adds. At `markScale` 1 every scale is 1, so each spring holds its F + M.
+    let marksPart = 0;
+    for (const { from, to, need } of clearances) {
+      if (from !== i) continue;
+      let held = 0;
+      for (let k = from; k < to; k++) held += (fixedParts[k] ?? 0) + (movableParts[k] ?? 0);
+      marksPart = Math.max(marksPart, need - held);
+    }
+    marksPart = Math.max(0, marksPart);
     const min = Math.max(
       (right[i] ?? 0) + (i + 1 < onsets.length ? (left[i + 1] ?? 0) : 0) + ONSET_GAP * space,
       fixedPart + movablePart + marksPart,

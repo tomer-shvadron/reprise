@@ -49,18 +49,15 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
         const t = fingering(label.note);
         if (t !== undefined) half = Math.max(half, textWidth(t, TAB.fingerSize * space) / 2);
       }
-    if (half > 0) {
-      const target = last && beat.tick - last.tick < TICK_EPSILON ? last : undefined;
-      if (target)
-        target.marks = {
-          left: Math.max(target.marks?.left ?? 0, half),
-          right: Math.max(target.marks?.right ?? 0, half),
-        };
-    }
     if (last && beat.tick - last.tick < TICK_EPSILON) {
       last.left = Math.max(last.left, left);
       last.right = Math.max(last.right, right);
       last.rigid = Math.max(last.rigid ?? 0, beat.right);
+      if (half > 0)
+        last.marks = {
+          left: Math.max(last.marks?.left ?? 0, half),
+          right: Math.max(last.marks?.right ?? 0, half),
+        };
       if (beat.labelRight) last.ideal = Math.max(last.ideal ?? 0, beat.labelRight);
     } else {
       onsets.push({
