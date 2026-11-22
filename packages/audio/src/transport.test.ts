@@ -490,6 +490,30 @@ describe('Transport (OfflineAudioContext)', () => {
     expect(h.sink.hits[1]?.calledAt).toBeLessThanOrEqual(h.sink.hits[1]?.when ?? 0);
   });
 
+  it('gives a loop one hit per pass on its first beat and none on the beat at its end', async () => {
+    let builder = score().tempo(120).track('guitar');
+    for (let bar = 0; bar < 4; bar++) {
+      builder = builder.bar();
+      const effects = bar === 1 || bar === 3 ? { effects: { golpe: 'thumb' as const } } : {};
+      builder = builder.beat('4', [note(1, bar)], effects);
+      for (let beat = 1; beat < 4; beat++) builder = builder.beat('4', [note(1, bar)]);
+    }
+    const looped = builder.build();
+    const ids = looped.masterBars;
+    if (!ids[1] || !ids[2]) throw new Error('fixture');
+    const h = await harness(looped, 10.5);
+    h.engine.setLoop({ startBar: ids[1].id, endBar: ids[2].id });
+    h.engine.play();
+    await h.render();
+
+    // A loop starts playback at its first bar (4 s a pass): its golpe sounds each pass, bar 4's never.
+    expect(h.sink.hits.map((hit) => hit.masterBarIndex)).toEqual([1, 1, 1]);
+    expectTimes(
+      h.sink.hits.map((hit) => hit.when),
+      [0.1, 4.1, 8.1],
+    );
+  });
+
   it('does not replay a golpe from before the start point', async () => {
     const song = score()
       .tempo(120)

@@ -343,58 +343,18 @@ export function notesInRange(
 }
 
 /**
- * Every beat carrying `Beat.mix` whose tick is in `[from, to)`, from `runStartTick` up to
- * `limitTick`: rests and tied continuations too, which send no note.
+ * The beat-level events in `[from, to)`, from `runStartTick` up to `limitTick`, found in one
+ * walk of the beats: every beat carrying `Beat.mix` and every beat carrying `BeatEffects.golpe`,
+ * rests and tied continuations included, which send no note. The next beat-level effect joins
+ * this walk rather than adding another.
  */
-export function mixesInRange(
+export function beatEventsInRange(
   timeline: Timeline,
   from: number,
   to: number,
   options: { runStartTick: number; limitTick: number },
-): MixOnset[] {
+): { mixes: MixOnset[]; hits: HitOnset[] } {
   const mixes: MixOnset[] = [];
-  const low = Math.max(from, options.runStartTick);
-  const high = Math.min(to, options.limitTick);
-  for (const [sequenceIndex, pass] of passesOverlapping(timeline, low, high)) {
-    for (const [trackIndex, track] of timeline.score.tracks.entries()) {
-      const bar = track.bars[pass.masterBarIndex];
-      if (!bar) continue;
-      for (const [voiceIndex, voice] of bar.voices.entries()) {
-        let offset = 0;
-        for (const [beatIndex, beat] of voice.beats.entries()) {
-          const tick = pass.startTick + offset;
-          offset += beatTicks(beat);
-          if (!beat.mix || tick < low - EPSILON || tick >= high - EPSILON) continue;
-          mixes.push({
-            tick,
-            sequenceIndex,
-            masterBarIndex: pass.masterBarIndex,
-            passIndex: pass.passIndex,
-            trackIndex,
-            voiceIndex,
-            beatIndex,
-            track,
-            beat,
-            mix: beat.mix,
-          });
-        }
-      }
-    }
-  }
-  return mixes.sort((a, b) => a.tick - b.tick);
-}
-
-/**
- * Every beat carrying `BeatEffects.golpe` whose tick is in `[from, to)`, from `runStartTick` up
- * to `limitTick`: rests and tied-only beats too, which send no note. Like `mixesInRange`, but a
- * hit is an event, so the scheduler never replays the ones before a run's start.
- */
-export function hitsInRange(
-  timeline: Timeline,
-  from: number,
-  to: number,
-  options: { runStartTick: number; limitTick: number },
-): HitOnset[] {
   const hits: HitOnset[] = [];
   const low = Math.max(from, options.runStartTick);
   const high = Math.min(to, options.limitTick);
@@ -407,9 +367,10 @@ export function hitsInRange(
         for (const [beatIndex, beat] of voice.beats.entries()) {
           const tick = pass.startTick + offset;
           offset += beatTicks(beat);
-          const golpe = beat.effects.golpe;
-          if (!golpe || tick < low - EPSILON || tick >= high - EPSILON) continue;
-          hits.push({
+          const { mix } = beat;
+          const { golpe } = beat.effects;
+          if ((!mix && !golpe) || tick < low - EPSILON || tick >= high - EPSILON) continue;
+          const where = {
             tick,
             sequenceIndex,
             masterBarIndex: pass.masterBarIndex,
@@ -419,13 +380,40 @@ export function hitsInRange(
             beatIndex,
             track,
             beat,
-            golpe,
-          });
+          };
+          if (mix) mixes.push({ ...where, mix });
+          if (golpe) hits.push({ ...where, golpe });
         }
       }
     }
   }
-  return hits.sort((a, b) => a.tick - b.tick);
+  return {
+    mixes: mixes.sort((x, y) => x.tick - y.tick),
+    hits: hits.sort((x, y) => x.tick - y.tick),
+  };
+}
+
+/** Every beat carrying `Beat.mix` in the window; see `beatEventsInRange`. */
+export function mixesInRange(
+  timeline: Timeline,
+  from: number,
+  to: number,
+  options: { runStartTick: number; limitTick: number },
+): MixOnset[] {
+  return beatEventsInRange(timeline, from, to, options).mixes;
+}
+
+/**
+ * Every beat carrying `BeatEffects.golpe` in the window. A hit is an event, so the scheduler
+ * never replays the ones before a run's start the way it does mixer changes.
+ */
+export function hitsInRange(
+  timeline: Timeline,
+  from: number,
+  to: number,
+  options: { runStartTick: number; limitTick: number },
+): HitOnset[] {
+  return beatEventsInRange(timeline, from, to, options).hits;
 }
 
 function beatUnit(denominator: number): number {

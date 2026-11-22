@@ -11,10 +11,10 @@ import { PPQ, positionAtSeconds, secondsAtTick } from '@reprise/model';
 import type { MixerChange } from '@reprise/model';
 
 import {
+  beatEventsInRange,
   bpmAtTick,
   clicksInRange,
   countInTicks,
-  hitsInRange,
   mixesInRange,
   notesInRange,
 } from './timeline';
@@ -281,11 +281,12 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
         mixes.push({ ...mix, mix: settled(mix.mix), when, secondsPerTick });
       }
     }
-    for (const mix of mixesInRange(timeline, next.cursorTick, target, range)) {
+    const beatEvents = beatEventsInRange(timeline, next.cursorTick, target, range);
+    for (const mix of beatEvents.mixes) {
       const when = Math.max(timeAtTick(timeline, anchor, mix.tick), now);
       mixes.push({ ...mix, when, secondsPerTick: secondsPerTickAt(mix.tick) });
     }
-    for (const hit of hitsInRange(timeline, next.cursorTick, target, range)) {
+    for (const hit of beatEvents.hits) {
       const when = fit(timeAtTick(timeline, anchor, hit.tick));
       if (when !== undefined) hits.push({ ...hit, when });
     }
