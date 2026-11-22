@@ -1,5 +1,5 @@
 import { beatTicks, midiNote, soundingPitch } from '@reprise/model';
-import type { BeatEffects, Note, Track } from '@reprise/model';
+import type { BeatEffects, Note, PickScrape, Track } from '@reprise/model';
 
 import type { FilterSettings } from '../sampler/voice';
 import { ARTICULATION } from './parameters';
@@ -70,6 +70,11 @@ export interface NotePlan {
   continues: boolean;
   /** A dead note with no sampled layer: a short filtered noise burst instead of the instrument. */
   dead: boolean;
+  /**
+   * A pick scrape: the strike is a noise sweep (key `SCRAPE_KEY`) that replaces the pitched note,
+   * with `filter` and `filterChanges` as the bandpass sweep.
+   */
+  scrape: PickScrape | undefined;
   /** Semitones relative to each strike's pitch at an absolute time; absent when flat. */
   pitch: ((time: number) => number) | undefined;
   gain: GainPoint[];
@@ -188,6 +193,38 @@ function retriggers(when: number, end: number, step: number): { when: number; en
 }
 
 /**
+ * A scrape replaces the strike: one noise sweep over the note, ties folded in, capped. It is
+ * a picking-hand noise, so no pitch articulation, course, ring or slide applies to it.
+ */
+function planScrape(input: PlanInput, scrape: PickScrape): NotePlan {
+  const { when } = input;
+  const { key, maxLength, from, to, q, step } = ARTICULATION.pickScrape;
+  const end = when + Math.min(input.length, maxLength);
+  const span = end - when;
+  // White noise has no spectrum to detune, so the sweep is the bandpass itself, geometric in
+  // frequency: an octave of travel takes the same time wherever it is.
+  const [start, finish] = scrape === 'down' ? [from, to] : [to, from];
+  const at = (time: number): number =>
+    start * (finish / start) ** (span > 0 ? clamp01((time - when) / span) : 0);
+  const filterChanges: NotePlan['filterChanges'] = [];
+  for (let time = when + step; time < end - 1e-9; time += step) {
+    filterChanges.push({ at: time, filter: { type: 'bandpass', frequency: at(time), q } });
+  }
+  return {
+    strikes: [{ key, detune: 0, velocity: noteVelocity(input.note), when, end }],
+    continues: false,
+    dead: false,
+    scrape,
+    pitch: undefined,
+    gain: [],
+    filter: { type: 'bandpass', frequency: start, q },
+    filterChanges,
+    letRingUntil: undefined,
+    legatoInto: undefined,
+  };
+}
+
+/**
  * How one note sounds: its attacks, pitch curve, level shape, filter and release. Pure, so the
  * mapping is testable without rendering. Drum tracks take only velocity, fades and retriggers;
  * pitch, filter and length articulations are a string instrument's.
@@ -196,6 +233,8 @@ export function planNote(input: PlanInput): NotePlan {
   const { track, note, effects, when } = input;
   const tonal = track.kind !== 'drums';
   const sampled = input.sampled ?? NO_EFFECTS;
+  // Before the dead check: Guitar Pro marks a pick slide on a muted (x) note, and the scrape replaces it.
+  if (tonal && note.pickScrape) return planScrape(input, note.pickScrape);
   const key = soundingPitch(track, note);
   const rounded = Math.round(key);
   // A dead note is short and has no pitch shape either way; only without a layer is it a burst.
@@ -269,6 +308,7 @@ export function planNote(input: PlanInput): NotePlan {
     strikes,
     continues: continues !== undefined,
     dead: dead && !sampled.has('dead'),
+    scrape: undefined,
     pitch,
     gain: chainGain(chain.segments, tonal, sampled.has('palmMute')),
     filter,

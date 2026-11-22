@@ -7,6 +7,7 @@ import {
   clicksInRange,
   countInTicks,
   createTimeline,
+  hitsInRange,
   loopRange,
   mixesInRange,
   notesInRange,
@@ -205,6 +206,69 @@ describe('mixesInRange', () => {
     expect(
       mixesInRange(createTimeline(song), 0, 2 * BAR, { runStartTick: 3 * PPQ, limitTick: BAR }),
     ).toEqual([]);
+  });
+});
+
+describe('hitsInRange', () => {
+  const golpe = (kind: 'thumb' | 'finger') => ({ effects: { golpe: kind } });
+
+  it('reports a golpe on a rest and on a tied-only beat, which send no note', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('2', [note(1, 5)], golpe('thumb'))
+      .beat('2', [note(1, 5, { tie: true })], golpe('finger'))
+      .bar()
+      .rest('1', golpe('thumb'))
+      .build();
+    const hits = hitsInRange(createTimeline(song), 0, 2 * BAR, {
+      runStartTick: 0,
+      limitTick: 2 * BAR,
+    });
+
+    expect(hits.map((h) => [h.tick, h.beatIndex, h.golpe])).toEqual([
+      [0, 0, 'thumb'],
+      [2 * PPQ, 1, 'finger'],
+      [BAR, 0, 'thumb'],
+    ]);
+  });
+
+  it('reports the hit on every pass of a repeat', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .repeatStart()
+      .beat('1', [note(1, 0)], golpe('thumb'))
+      .repeatEnd(2)
+      .build();
+    const timeline = createTimeline(song);
+    const hits = hitsInRange(timeline, 0, timeline.endTick, {
+      runStartTick: 0,
+      limitTick: timeline.endTick,
+    });
+
+    expect(hits.map((h) => [h.tick, h.passIndex])).toEqual([
+      [0, 0],
+      [BAR, 1],
+    ]);
+  });
+
+  it('never before the run start nor at or past the limit', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)], golpe('thumb'))
+      .beat('4', [note(1, 0)], golpe('finger'))
+      .beat('4', [note(1, 0)], golpe('thumb'))
+      .rest('4')
+      .build();
+    const timeline = createTimeline(song);
+    const ticks = (runStartTick: number, limitTick: number) =>
+      hitsInRange(timeline, 0, BAR, { runStartTick, limitTick }).map((h) => h.tick);
+
+    expect(ticks(0, BAR)).toEqual([0, PPQ, 2 * PPQ]);
+    expect(ticks(PPQ, BAR)).toEqual([PPQ, 2 * PPQ]);
+    expect(ticks(0, 2 * PPQ)).toEqual([0, PPQ]);
   });
 });
 
