@@ -274,7 +274,7 @@ const fileStem = (path: string) => path.slice(path.lastIndexOf('/') + 1).replace
  * left out because `synth_pop` is a genre far more often than a bass technique.
  */
 const FILE_TAIL =
-  /^(?:pm|palm|palm mute[d]?|dead|dead notes?|x notes?|harm|harms|harmonics?|nh|natural harmonics?|ah|pinch|pinch harmonics?|artificial harmonics?|legato|hammer[- ]?ons?|ho|stacc|staccato|tap|tapping|slap|slapping)$/i;
+  /^(?:pm|palm|palm mute[d]?|dead|dead notes?|x notes?|harm|harms|harmonics?|nh|natural harmonics?|ah|pinch|pinch harmonics?|artificial harmonics?|legato|hammer[- ]?ons?|ho|pull(?: ?offs?)?|po|stacc|staccato|tap|tapping|slap|slapping)$/i;
 
 /**
  * A stem split into an instrument's stem and the set its tail names (`guitar_pm` is `guitar` plus

@@ -105,8 +105,10 @@ file (`sw_label`), which the engine reads at load with no entry.
   instrument: `guitar.sfz`, `guitar_pm.sfz`, `guitar harm.sfz` become one instrument `guitar` with
   `default`, `palmMute` and `harmonic`. The tail is the last one or two words after `_`, `-` or a
   space, and all of it must be a whole articulation name: `pm`, `palm mute`, `dead`, `harm`,
-  `harmonics`, `nh`, `pinch`, `artificial harmonics`, `legato`, `hammer on`, `ho`, `stacc`,
-  `staccato`, `tap`, `slap`. `trumpet_mute`, `piano_hammer`, `piano_tape`, `synth_pop` and
+  `harmonics`, `nh`, `pinch`, `artificial harmonics`, `legato`, `hammer on`, `ho`, `pull`, `pull off`, `po`, `stacc`,
+  `staccato`, `tap`, `slap`. Hammer-ons and pull-offs share the `legato` set. `pop` is deliberately
+  not a file-name tail (`synth_pop` is a genre far more often than a bass technique), though a
+  keyswitch label `pop` still names the set. `trumpet_mute`, `piano_hammer`, `piano_tape`, `synth_pop` and
   `guitar_slapback` are instruments. A file already grouped never serves as a base (so
   `guitar_pm_harm.sfz` stays an instrument), a second file for a taken set, and a tail whose base is
   not there or did not pass the check, stay instruments. There is no mapping UI.

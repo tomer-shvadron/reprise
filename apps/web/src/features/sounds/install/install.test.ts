@@ -190,7 +190,19 @@ describe('installPack: a custom pack', () => {
       expect(used).toHaveLength(names.length);
     });
 
+    it.each(['po', 'PO', 'pull', 'pull off', 'pull-off', 'pull_offs', 'ho'])(
+      'makes guitar_%s the legato set of guitar',
+      async (tail) => {
+        expect(await install(['guitar.sfz', `guitar_${tail}.sfz`])).toEqual([
+          ['guitar', { default: 'guitar.sfz', legato: `guitar_${tail}.sfz` }],
+        ]);
+      },
+    );
+
     it.each([
+      ['guitar', 'guitar_pool'],
+      ['guitar', 'guitar_pot'],
+      ['guitar', 'guitar_pulley'],
       ['trumpet', 'trumpet_mute'],
       ['piano', 'piano_hammer'],
       ['piano', 'piano_tape'],
