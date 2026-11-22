@@ -18,6 +18,7 @@ import {
   type NoteEffects,
   type SlideKind,
   type Golpe,
+  type Wah,
   type PickScrape,
   type StrokeDirection,
   type Trill,
@@ -59,6 +60,7 @@ export type EffectAction =
   | { kind: 'pickStroke'; direction: StrokeDirection }
   | { kind: 'golpe'; golpe: Golpe }
   | { kind: 'pickScrape'; direction: PickScrape }
+  | { kind: 'wah'; wah: Wah }
   | { kind: 'beatVibrato'; vibrato: 'slight' | 'wide' }
   | { kind: 'whammy'; whammy: Whammy; label?: string }
   | { kind: 'brush'; direction: StrokeDirection }
@@ -475,6 +477,17 @@ function beatSpec(action: EffectAction): BeatSpec | undefined {
         present: (beat) => beat.effects.golpe !== undefined,
         set: { effects: { golpe: action.golpe } },
         clear: { effects: { golpe: null } },
+      };
+    case 'wah':
+      // Open and closed share one field, so they exclude each other; a rest may carry a mark.
+      return {
+        onRests: true,
+        label: `wah (${action.wah})`,
+        anyTrack: false,
+        has: (beat) => beat.effects.wah === action.wah,
+        present: (beat) => beat.effects.wah !== undefined,
+        set: { effects: { wah: action.wah } },
+        clear: { effects: { wah: null } },
       };
     case 'beatVibrato':
       return {
