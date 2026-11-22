@@ -366,9 +366,9 @@ function drawWords(context: Context, xs: Map<TabBeat, number>): void {
           return label === undefined ? [] : [{ note, label }];
         })
       : [];
-    for (const [j, { note, label }] of fingered.entries()) {
+    for (const { note, label } of fingered) {
       if (!lanes.fingering) break;
-      const k = beat.fingerBase + fingered.length - 1 - j;
+      const k = analysed.fingerRows.get(note) ?? 0;
       const y = lanes.fingering.bottom - k * TAB.fingerRow * space - 0.25 * space;
       sink.primitives.push(text(label, x, y, fingerSize, { anchor: 'middle', node: note.id }));
     }

@@ -139,11 +139,6 @@ export interface TabBeat {
   connects: boolean;
   /** Whether measure keeps room for the beat's dynamic: `reservedDynamics` holds it. */
   dynamicsChange: boolean;
-  /**
-   * Fingering rows already taken at this beat's onset by the beats of earlier voices, so the
-   * digits of voices that start together stack instead of sharing a row.
-   */
-  fingerBase: number;
 }
 
 export interface TabVoice {
@@ -186,6 +181,8 @@ export interface TabBar {
   beats: TabBeat[];
   rows: TabRows;
   maxFingers: number;
+  /** The fingering row of each fingered note, counted up from the lane's bottom. */
+  fingerRows: ReadonlyMap<Note, number>;
 }
 
 export interface TabOptions {
@@ -421,7 +418,6 @@ function analyseBeat(
     stroke,
     connects: drawn,
     dynamicsChange: false,
-    fingerBase: 0,
   };
 }
 
@@ -575,21 +571,24 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
     beats.push(...voiceBeats);
   }
 
-  // Voices that start together draw their digits in one lane at one x, so each stacks above the
-  // digits of the voices before it; the lane is as tall as the fullest onset.
+  // Voices that start together draw their fingering in one lane at one x, so the notes of an
+  // onset take one row each, in string order across the voices (the first string on top); the
+  // lane is as tall as the fullest onset.
+  const fingerRows = new Map<Note, number>();
   if (rhythm) {
-    const taken: { tick: number; rows: number }[] = [];
+    const onsets = new Map<number, Note[]>();
     for (const analysed of beats) {
-      const count = analysed.beat.notes.filter((note) => fingering(note) !== undefined).length;
-      if (count === 0) continue;
-      let onset = taken.find((entry) => Math.abs(entry.tick - analysed.tick) < TICK_EPSILON);
-      if (!onset) {
-        onset = { tick: analysed.tick, rows: 0 };
-        taken.push(onset);
-      }
-      analysed.fingerBase = onset.rows;
-      onset.rows += count;
-      maxFingers = Math.max(maxFingers, onset.rows);
+      const fingered = analysed.beat.notes.filter((note) => fingering(note) !== undefined);
+      if (fingered.length === 0) continue;
+      const key = Math.round(analysed.tick / TICK_EPSILON);
+      const notes = onsets.get(key);
+      if (notes) notes.push(...fingered);
+      else onsets.set(key, [...fingered]);
+    }
+    for (const notes of onsets.values()) {
+      notes.sort((a, b) => a.string - b.string);
+      for (const [i, note] of notes.entries()) fingerRows.set(note, notes.length - 1 - i);
+      maxFingers = Math.max(maxFingers, notes.length);
     }
   }
 
@@ -614,7 +613,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
     lyrics: words.lyrics,
     ...arcRoom(bar, strings, space),
   };
-  const analysed: TabBar = { rhythm, voices, beats, rows, maxFingers };
+  const analysed: TabBar = { rhythm, voices, beats, rows, maxFingers, fingerRows };
   let byKey = analyses.get(bar);
   if (!byKey) {
     byKey = new Map();
