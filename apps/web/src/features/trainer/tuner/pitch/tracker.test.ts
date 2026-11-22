@@ -107,6 +107,28 @@ describe('the tracker', () => {
     },
   );
 
+  // #433: a few samples dropped from the input bias every frame whose window holds the splice by
+  // about 5 cents at clarity 1.0, so no gate sees it. Frames a hop apart share most of their
+  // samples, so when the deadline falls inside the splice the first median of three was two bad
+  // frames and one good, and the meter showed the bad one.
+  it('does not show a first reading whose frames disagree, but waits for a median of five', () => {
+    const tracker = createTracker();
+    const at = (timeMs: number, cents: number) =>
+      tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 1 }, 0.1, timeMs).reading;
+    at(0, 7);
+    at(20, 7);
+    const deadline = 20 + settleFramesFor(43) * TRACKER.hopMs;
+    for (let t = 40; t < deadline; t += TRACKER.hopMs) at(t, 7);
+    expect(at(deadline, 12)).toBeUndefined();
+    expect(at(deadline + 20, 12)).toBeUndefined();
+    // Two bad frames and a good one: not agreeing, so still nothing, instead of the bad median.
+    expect(at(deadline + 40, 7)).toBeUndefined();
+    expect(at(deadline + 60, 7)).toBeUndefined();
+    const first = at(deadline + 80, 7);
+    expect(first?.held).toBe(false);
+    expect(Math.abs(((first?.midi ?? 0) - 45) * 100 - 7)).toBeLessThan(0.5);
+  });
+
   describe('glitch gate', () => {
     const rig = () => {
       const tracker = createTracker();
@@ -139,6 +161,49 @@ describe('the tracker', () => {
         expect(reading?.midi).toBeCloseTo(45.07, 3);
       }
       expect(at(7, 1).frozen).toBe(false);
+    });
+
+    it('freezes frames a dropout left 18 cents off at a clarity only 0.03 down (#433)', () => {
+      const at = rig();
+      lockAt(at, 7);
+      const before = at(7, 1).reading;
+      for (const cents of [26, 25.2, 25, 25.2, 25.1]) {
+        const { reading, frozen } = at(cents, 0.97);
+        expect(frozen).toBe(true);
+        expect(reading).toBe(before);
+      }
+    });
+
+    // Clarity wobbles frame to frame on a real mic; a turn of the peg must still move the meter.
+    it.each([5, 6])(
+      'never freezes a glide of %i cents a hop with clarity jittering by 0.03',
+      (perHop) => {
+        const at = rig();
+        // A note whose own clarity is 0.96, as a real mic's is.
+        for (let i = 0; i < settleFramesFor(43) + 8; i += 1) at(0, 0.96);
+        let seed = 3;
+        const jitter = () => {
+          seed = (seed * 1664525 + 1013904223) >>> 0;
+          return (seed / 2 ** 32 - 0.5) * 0.06;
+        };
+        let previous: Reading | undefined;
+        for (let i = 1; i <= 40; i += 1) {
+          const { reading } = at(i * perHop, 0.96 + jitter());
+          expect(reading).not.toBe(previous);
+          previous = reading;
+        }
+      },
+    );
+
+    it('does not light the stale reading for the attack frame of a re-pluck in the hold', () => {
+      const at = rig();
+      lockAt(at, -20);
+      const live = at(-20, 1).reading;
+      expect(at(-20, 0.1).reading?.held).toBe(true);
+      // The attack frame 15 cents away at a dipped clarity: a new pluck, so the gate stays out.
+      const { reading, frozen } = at(-5, 0.95);
+      expect(frozen).toBe(false);
+      expect(reading).not.toBe(live);
     });
 
     it('takes a clean change of pitch over at once', () => {
