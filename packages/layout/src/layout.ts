@@ -30,6 +30,7 @@ import {
 import { staffBar, staffSlots, trackBar, type StaffSlot } from './slots';
 import { partVertical, splitSlots } from './split';
 import { LANE_HEIGHT, mergeLanes, type LaneRequests } from './staves/lanes';
+import { tiesIntoNext } from './staves/standard/bend-targets';
 import { BAR_REACH } from './staves/staff-module';
 import type { Anchor, LayoutOptions, LayoutResult, Page, Primitive, Range, System } from './types';
 import { verticalLayout, type VerticalLayout } from './vertical';
@@ -59,6 +60,8 @@ function barInputs(score: Score, context: BarContext, options: ResolvedOptions):
     score.masterBars[index - 1]?.keySignature,
     ...tracks.map((track) => track.bars[index]),
     ...before.map(({ track }) => track.bars[index - 1]),
+    // A bent note tied into the next bar draws no target heads, so this bar reads its ties.
+    ...before.map(({ track }) => tiesIntoNext(track.bars[index + 1])),
     ...context.clefs,
     ...context.clefChanges,
     context.showTime,

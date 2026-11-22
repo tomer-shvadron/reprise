@@ -13,7 +13,7 @@ import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
 import { hiddenVoices } from '../hidden-voices';
 import type { StaffBar } from '../staff-module';
-import { TARGET, bendSpan, type BendPlan, type TargetObstacle } from './bend-targets';
+import { TARGET, bendSpan, tiedOnward, type BendPlan, type TargetObstacle } from './bend-targets';
 import {
   crossesLedger,
   headEdges,
@@ -265,6 +265,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   const key = input.keySignature;
   const percussion = options.percussion;
   const previousBar = input.barIndex > 0 ? track.bars[input.barIndex - 1] : undefined;
+  const nextBar = track.bars[input.barIndex + 1];
   const previousKey = input.score.masterBars[input.barIndex - 1]?.keySignature;
   // The track's only staff: it also carries what both mode leaves to the tab.
   const lone = input.staves.length === 1;
@@ -278,6 +279,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
           ? { bar: previousBar, key: previousKey }
           : undefined,
         lone,
+        nextBar,
       );
   const hasNotes = (voice: Bar['voices'][number]): boolean =>
     voice.beats.some((beat) => !beat.rest && beat.notes.length > 0);
@@ -312,7 +314,13 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     const byPosition = new Map<number, ChordNote[]>();
     const obstacles: TargetObstacle[] = [];
     for (const { note } of bent) {
-      for (const { target, placed, key: id } of placeTargets(track, note, key, input.clef)) {
+      for (const { target, placed, key: id } of placeTargets(
+        track,
+        note,
+        key,
+        input.clef,
+        tiedOnward(track, bar, nextBar, plan.voice, plan.index, note),
+      )) {
         const shown = accidentals.get(id);
         const entry: ChordNote = {
           note,

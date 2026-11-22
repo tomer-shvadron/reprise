@@ -18,7 +18,7 @@ import {
   type Track,
 } from '@reprise/model';
 
-import { targetKey, targetsOf, type BendTarget } from './bend-targets';
+import { targetKey, targetsOf, tiedOnward, type BendTarget } from './bend-targets';
 import { sameTick } from '../../ticks';
 
 /** An accidental printed before a note: the alteration it shows, and whether as a reminder. */
@@ -141,8 +141,9 @@ function targetSpellings(
   track: SpellTrack,
   note: Note,
   key: KeySignature,
+  tied: boolean,
 ): { target: BendTarget; spelling: Spelling; key: string }[] {
-  return targetsOf(track, note).map((target, index) => ({
+  return targetsOf(track, note, tied).map((target, index) => ({
     target,
     spelling:
       target.value === 0
@@ -158,8 +159,9 @@ export function placeTargets(
   note: Note,
   key: KeySignature,
   clef: Clef,
+  tied: boolean,
 ): { target: BendTarget; placed: PlacedNote; key: string }[] {
-  return targetSpellings(track, note, key).map(({ target, spelling, key: id }) => ({
+  return targetSpellings(track, note, key, tied).map(({ target, spelling, key: id }) => ({
     target,
     key: id,
     placed: {
@@ -195,7 +197,13 @@ interface TimedNote {
  * higher string number), so the result does not depend on the order notes were entered in.
  * With `targets`, a bend's target heads follow their beat's main notes.
  */
-function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature, targets: boolean): TimedNote[] {
+function timedNotes(
+  track: SpellTrack,
+  bar: Bar,
+  next: Bar | undefined,
+  key: KeySignature,
+  targets: boolean,
+): TimedNote[] {
   const out: TimedNote[] = [];
   // Voices reach one onset by different tuplet sums, a float apart; every note there takes the
   // first tick seen, so the exact comparisons and chord ids below see one onset.
@@ -236,7 +244,7 @@ function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature, targets: boo
   let graces = 0;
   for (const [voice, { beats }] of bar.voices.entries()) {
     let raw = 0;
-    for (const beat of beats) {
+    for (const [beatIndex, beat] of beats.entries()) {
       const tick = snap(raw);
       let order = 0;
       for (const grace of beat.grace ?? []) {
@@ -248,7 +256,12 @@ function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature, targets: boo
       // A bend's targets read after every main head of the beat, in the order the bend reaches them.
       if (targets) {
         for (const note of beat.notes) {
-          for (const { target, spelling, key: id } of targetSpellings(track, note, key)) {
+          for (const { target, spelling, key: id } of targetSpellings(
+            track,
+            note,
+            key,
+            tiedOnward(track, bar, next, voice, beatIndex, note),
+          )) {
             out.push({
               tick,
               voice,
@@ -302,6 +315,7 @@ type Memory = Map<number, Alter | typeof UNSETTLED>;
 function walk(
   track: SpellTrack,
   bar: Bar,
+  next: Bar | undefined,
   key: KeySignature,
   previous: Memory | undefined,
   shown: Map<string, ShownAccidental> | undefined,
@@ -312,7 +326,7 @@ function walk(
   const seen = new Set<number>();
   // Slots left ambiguous by a split chord, with the chord that split them.
   const unsettled = new Map<number, string>();
-  const timed = timedNotes(track, bar, key, targets);
+  const timed = timedNotes(track, bar, next, key, targets);
   let run = 0;
   for (const [i, { tick, note, kind, key: id, chord, spelling, slot }] of timed.entries()) {
     if (timed[run]?.tick !== tick) run = i;
@@ -360,22 +374,36 @@ function walk(
 
 const memories = new WeakMap<
   Bar,
-  { track: SpellTrack; fifths: number; minor: boolean; targets: boolean; memory: Memory }
+  {
+    track: SpellTrack;
+    next: Bar | undefined;
+    fifths: number;
+    minor: boolean;
+    targets: boolean;
+    memory: Memory;
+  }
 >();
 
 /** What a bar's walk leaves in measure memory, remembered per bar for the bar after. */
-function barMemory(track: SpellTrack, bar: Bar, key: KeySignature, targets: boolean): Memory {
+function barMemory(
+  track: SpellTrack,
+  bar: Bar,
+  next: Bar | undefined,
+  key: KeySignature,
+  targets: boolean,
+): Memory {
   const cached = memories.get(bar);
   if (
     cached?.track === track &&
+    cached.next === next &&
     cached.fifths === key.fifths &&
     cached.minor === key.minor &&
     cached.targets === targets
   ) {
     return cached.memory;
   }
-  const memory = walk(track, bar, key, undefined, undefined, targets);
-  memories.set(bar, { track, fifths: key.fifths, minor: key.minor, targets, memory });
+  const memory = walk(track, bar, next, key, undefined, undefined, targets);
+  memories.set(bar, { track, next, fifths: key.fifths, minor: key.minor, targets, memory });
   return memory;
 }
 
@@ -390,10 +418,18 @@ export function barAccidentals(
   key: KeySignature,
   previous: { bar: Bar; key: KeySignature } | undefined,
   targets: boolean,
+  next?: Bar,
 ): Map<string, ShownAccidental> {
   const shown = new Map<string, ShownAccidental>();
-  const memory = previous && barMemory(track, previous.bar, previous.key, targets);
-  const printed = walk(track, bar, key, memory, shown, targets);
-  memories.set(bar, { track, fifths: key.fifths, minor: key.minor, targets, memory: printed });
+  const memory = previous && barMemory(track, previous.bar, bar, previous.key, targets);
+  const printed = walk(track, bar, next, key, memory, shown, targets);
+  memories.set(bar, {
+    track,
+    next,
+    fifths: key.fifths,
+    minor: key.minor,
+    targets,
+    memory: printed,
+  });
   return shown;
 }
