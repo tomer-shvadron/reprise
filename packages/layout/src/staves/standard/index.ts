@@ -111,8 +111,10 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
         if (!onset) continue;
         onset.left = Math.max(onset.left, reserved.left);
         onset.right = Math.max(onset.right, reserved.right);
-        // Lane-effect labels (`let ring`, a bend's `full`) are drawn at their natural width, so
-        // squeezing must not shrink their room: it counts as rigid. Roomy lines never squeeze.
+        // What `reserved` holds (run labels like `let ring`, strokes, fades, the tap letter, the
+        // trill glyph) is drawn at its natural width, so squeezing must not shrink its room: it
+        // counts as rigid. A line whose minimums fit never squeezes, so it is unchanged. A bend's
+        // label reserves nothing here; `BendFrame.limit` keeps it inside the bar.
         onset.rigid = Math.max(onset.rigid ?? 0, reserved.right);
       }
       return { onsets, above: plan.above, below: plan.below };
