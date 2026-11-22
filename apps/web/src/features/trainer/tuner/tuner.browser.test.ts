@@ -3,10 +3,45 @@ import { describe, expect, it } from 'vitest';
 import { createTestServices, fakePlatform, memoryStorage } from '@/test/services';
 
 import { BUTTERWORTH_Q_DB, createCaptureContext, openCapture } from './capture';
+import { detectPitch } from './pitch/mpm';
 import { lowpassChain, whiteNoise } from './test-signals';
 import { createTuner } from './tuner-store';
 
 const A2_PLUS_7 = 110 * 2 ** (7 / 1200);
+
+/**
+ * A capture with a second, unfiltered tap on the same stream that notes when the microphone
+ * signal itself was off. On a loaded runner (the whole browser suite at once) the audio thread is
+ * starved, the fake stream underruns and stutters, and the tone is 15 to 80 cents off for a
+ * while; the tuner reads that faithfully (#433). The tap sits before the tracker's lowpass, so
+ * the cutoff ramp's own artefacts, which the test exists to catch, never trip it. Readings in
+ * the stretch after a bad frame say nothing about the tuner and are not counted.
+ */
+const BAD_INPUT_SETTLE_MS = 600;
+function watchInput(badAt: { wall: number }): typeof openCapture {
+  return async (stream, context, size) => {
+    const input = await openCapture(stream, context, size);
+    const tap = context.createAnalyser();
+    tap.fftSize = size;
+    const source = context.createMediaStreamSource(stream);
+    source.connect(tap);
+    const raw = new Float32Array(size);
+    return {
+      ...input,
+      read: (into) => {
+        input.read(into);
+        tap.getFloatTimeDomainData(raw);
+        const found = detectPitch(raw, input.sampleRate, { minHz: 69, maxHz: 1500 });
+        const cents = found ? Math.abs(1200 * Math.log2(found.hz / A2_PLUS_7)) : Infinity;
+        if (cents > 1 || (found?.clarity ?? 0) < 0.99) badAt.wall = performance.now();
+      },
+      close: () => {
+        source.disconnect();
+        input.close();
+      },
+    };
+  };
+}
 
 /** A second context playing a harmonic tone into a MediaStream, standing in for the microphone. */
 async function fakeMicrophone(hz: number) {
@@ -63,14 +98,19 @@ describe('the tuner on real Web Audio', () => {
     const services = createTestServices({
       platform: fakePlatform({ microphone: () => Promise.resolve(mic.stream) }),
     });
-    const tuner = createTuner(services, { storage: () => memoryStorage() });
-    // Every live reading counts, from the first: the cutoff ramps on the real filter when the
+    const badAt = { wall: -Infinity };
+    const tuner = createTuner(services, {
+      storage: () => memoryStorage(),
+      openCapture: watchInput(badAt),
+    });
+    // Every live reading on a healthy audio thread counts, from the first: the cutoff ramps on the real filter when the
     // note locks, and frames read through the ramp are tens of cents off at high clarity unless
     // the tracker holds the lock back until they have passed.
     const errors: number[] = [];
     const stop = tuner.subscribe((state, previous) => {
       const { reading } = state;
       if (!reading || reading.held || reading === previous.reading) return;
+      if (performance.now() - badAt.wall < BAD_INPUT_SETTLE_MS) return;
       errors.push(Math.abs((reading.midi - 45) * 100 - 7));
     });
     const detach = tuner.getState().attach();
