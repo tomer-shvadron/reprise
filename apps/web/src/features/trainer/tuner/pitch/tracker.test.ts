@@ -327,6 +327,41 @@ describe('the tracker', () => {
     expect(Math.abs(at(0, 0.1, 1200).cutoffHz - 275)).toBeLessThan(1);
   });
 
+  describe('a re-pluck inside the hold (#332)', () => {
+    const start = () => {
+      const tracker = createTracker();
+      const at = (cents: number, timeMs: number, hz0 = 110) =>
+        tracker.push({ hz: hz0 * 2 ** (cents / 1200), clarity: 0.99 }, 0.1, timeMs);
+      const settle = settleFramesFor(43);
+      for (let i = 0; i < settle + 8; i += 1) at(0, i * 20);
+      for (let i = 0; i < TRACKER.openAfterRejects + 2; i += 1)
+        tracker.push(undefined, 0, 400 + i * 20);
+      return { at, settle };
+    };
+
+    it('continues the reading when the attack frame sits on the other side of the note', () => {
+      const { at, settle } = start();
+      // The attack frame reads 30 cents flat and the string then settles 30 sharp: each is near the old centre but 60 cents from the other, so a history emptied by the re-pluck would call the second away.
+      const out = [at(-30, 600)];
+      for (let i = 1; i < settle + 6; i += 1) out.push(at(30, 600 + i * 20));
+      // The note continues: held readings until the cutoff change has cleared the window. A
+      // re-lock on the attack frame's centre would light a fresh live reading at once.
+      expect(out.every((s) => s.reading !== undefined)).toBe(true);
+      expect(out.slice(0, settle - 3).every((s) => s.reading?.held === true)).toBe(true);
+      expect(out.at(-1)?.reading?.held).toBe(false);
+    });
+
+    it('still re-locks on a different pitch', () => {
+      const { at, settle } = start();
+      const out = [];
+      for (let i = 0; i < settle + 6; i += 1) out.push(at(200, 600 + i * 20));
+      expect(out.some((s) => s.reading === undefined)).toBe(true);
+      const last = out.at(-1)?.reading;
+      expect(last?.held).toBe(false);
+      expect(Math.abs((last?.midi ?? 0) - 47)).toBeLessThan(0.05);
+    });
+  });
+
   it('keeps every reading within 3 cents when a string is plucked again inside the hold', () => {
     const hz = 82.41 * 2 ** (7 / 1200);
     const decayed = pluck({

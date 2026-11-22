@@ -314,7 +314,9 @@ export function createTracker(options: TrackerOptions = {}) {
           settleUntilMs = timeMs + settleFrames * TRACKER.hopMs;
           dirty = true;
           cutoffHz = cutoffFor(detection.hz);
-          history = [];
+          // The history stays, as in the refill below: it is the centre `near` is judged against,
+          // and emptying it here made an attack frame the centre, so the real pitch read as away
+          // and re-locked (#332). It is emptied at the settle deadline.
         }
         if (dirty && settlingAt(timeMs) <= 2) {
           // The frames from here on went through the new cutoff alone.
