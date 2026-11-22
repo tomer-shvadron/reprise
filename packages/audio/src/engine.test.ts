@@ -836,6 +836,127 @@ describe('effects chains', () => {
     engine.dispose();
   });
 
+  describe('channel reverb and chorus from the file', () => {
+    const withChannel = (reverb: number, chorus: number, sound?: { preset?: string }) => {
+      const { id, song } = guitar(sound);
+      return {
+        id,
+        song: applyCommand(
+          song,
+          setTrackProperties({ trackId: id }, { channel: { reverb, chorus } }),
+        ).score,
+      };
+    };
+
+    it('drives the send and a chorus-only chain on a GM track, and 0 and 0 builds nothing', async () => {
+      const { id, song } = withChannel(100, 50);
+      const { engine, live } = await setup();
+      await engine.load(song, GM);
+      engine.unlock();
+      const strip = live().sampler.strip(id);
+      expect(strip?.reverbSend).toBeDefined();
+      expect(strip?.chain?.active).toEqual(['modulation']);
+      engine.dispose();
+
+      const bare = withChannel(0, 0);
+      const second = await setup();
+      await second.engine.load(bare.song, GM);
+      second.engine.unlock();
+      const bareStrip = second.live().sampler.strip(bare.id);
+      expect(bareStrip?.chain).toBeUndefined();
+      expect(bareStrip?.reverbSend).toBeUndefined();
+      second.engine.dispose();
+    });
+
+    it('is removed by setChannelEffects(false) and restored by true', async () => {
+      const { id, song } = withChannel(100, 50);
+      const { engine, live } = await setup();
+      await engine.load(song, GM);
+      engine.unlock();
+      const strip = live().sampler.strip(id);
+      engine.setChannelEffects(false);
+      // The send itself is disconnected from a timer; its level is the spec's, covered by
+      // `effectSpecOf`.
+      expect(strip?.chain).toBeUndefined();
+      engine.setChannelEffects(true);
+      expect(strip?.chain?.active).toEqual(['modulation']);
+      expect(strip?.reverbSend).toBeDefined();
+      engine.dispose();
+    });
+
+    it('is ignored where a preset applies', async () => {
+      const named = withChannel(100, 50, { preset: 'off' });
+      const { engine, live } = await setup();
+      await engine.load(named.song, GM);
+      engine.unlock();
+      expect(live().sampler.strip(named.id)?.chain).toBeUndefined();
+      expect(live().sampler.strip(named.id)?.reverbSend).toBeUndefined();
+      engine.dispose();
+
+      const hq = withChannel(100, 50);
+      const second = await setup();
+      const pack = syntheticSfzPack();
+      await second.engine.load(hq.song, {
+        tier: 'hq',
+        packs: [
+          {
+            trackId: hq.id,
+            pack: { id: 'steelpack001', files: pack.files },
+            entries: { default: 'default.sfz' },
+          },
+        ],
+      });
+      second.engine.unlock();
+      // The family preset (distortion), not the file's chorus alone.
+      expect(second.live().sampler.strip(hq.id)?.chain?.active).toContain('drive');
+      second.engine.dispose();
+    });
+
+    it('drops the chorus through a modulation stage bypass', async () => {
+      const { id, song } = withChannel(100, 50);
+      const { engine, live } = await setup();
+      await engine.load(song, GM);
+      engine.unlock();
+      const strip = live().sampler.strip(id);
+      engine.setStageBypass(id, 'modulation', true);
+      expect(strip?.chain).toBeUndefined();
+      engine.setStageBypass(id, 'modulation', false);
+      expect(strip?.chain?.active).toEqual(['modulation']);
+      engine.dispose();
+    });
+
+    it('applies a channel edit at once, with no rebuild and no stop', async () => {
+      const { id, song } = withChannel(0, 0);
+      const { engine, states, render, live } = await setup({ seconds: 1.4 });
+      await engine.load(song, GM);
+      engine.play();
+      const { sampler, transport } = live();
+      const load = vi.spyOn(transport, 'load');
+      let statesAt = 0;
+      let sent = false;
+
+      await render([
+        {
+          at: 1,
+          run: () => {
+            statesAt = states.length;
+            const next = applyCommand(
+              song,
+              setTrackProperties({ trackId: id }, { channel: { reverb: 80 } }),
+            ).score;
+            void engine.load(next, GM);
+            sent = sampler.strip(id)?.reverbSend !== undefined;
+          },
+        },
+      ]);
+
+      expect(load).not.toHaveBeenCalled();
+      expect(states.slice(statesAt)).toEqual([]);
+      expect(sent).toBe(true);
+      engine.dispose();
+    });
+  });
+
   it('uses the family preset on a track with a pack assigned, the HQ tier', async () => {
     const { id, song } = guitar();
     const { engine, live } = await setup();

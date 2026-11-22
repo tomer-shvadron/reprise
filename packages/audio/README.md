@@ -327,8 +327,8 @@ assignments by track); it is not part of the contract.
 
 ### Known gaps
 
-- Effects presets are not driven by CC91/CC93 (`channel.reverb`, `channel.chorus`) or a beat's
-  `mix` reverb and chorus: the reverb send and chorus depth come from the preset only (#235).
+- A beat's `Beat.mix` reverb and chorus are not played, and the soundfont's per-zone
+  `reverbEffectsSend` / `chorusEffectsSend` generators are parsed but unused.
 - The memory setting has no screen yet: `setMemoryBudget` is applied from the persisted preference (`installTransport`), the status bar only reads `memory`, and the Sounds screen's control is WP-094 PR C.
 - `previewNote` of a sample not yet decoded requests its decode (a miss) and starts the note when
   the sample is resident, unless that takes over 500 ms, when the note is dropped; a newer preview on the same string (or key), a stop, `removeTrack` or `dispose` cancels it. Previews choke only previews (#204).
@@ -765,6 +765,8 @@ stack; `keys`, `drums` and `other` only a reverb send; `off` nothing.
 | absent or unknown            | gm   | on (default)   | no chain, the GM tier's own sound |
 | absent or unknown            | gm   | off            | the family preset                 |
 
+The third input, channel effects, fills the "no chain" row only (see below).
+
 So the bypass governs automatic presets on GM tracks only: a preset the user picks applies on
 either tier. The exported `tierOf(track, packs)` is `hq` when an assignment names the track, `gm`
 otherwise, and the engine applies it to the assignments that loaded; a track that names a pack in
@@ -773,6 +775,24 @@ track; and `setStageBypass(trackId, stage, bypassed)` is a session override like
 saved, kept through edits, cleared by `unload`); the reverb stage's bypass is its send at 0. A
 `sound` edit that changes only `preset` is timeline-neutral (`timelineNeutral`), so it and its undo
 are heard at once with no rebuild; a `packId` or `instrument` change is not.
+
+### Channel reverb and chorus (GM tier)
+
+A gp3/gp4/gp5 file's per-track reverb and chorus (`channel.reverb`, `channel.chorus`, CC91 and
+CC93, 0 to 127) drive the strip, mapped linearly after the SF2 2.04 default modulators (sections
+8.4.8 and 8.4.9, 20% at CC 127; FluidSynth ships the same pair). `channelEffects(channel)` gives
+a reverb send of `REVERB_SEND_AT_FULL * cc / 127` (0.2 at full scale) and a `modulation` stage
+with `mix = CHORUS_MIX_AT_FULL * cc / 127` (0.4 at full scale, rate and depth those of `clean`:
+0.8 Hz, 2 ms). A value of 0 builds nothing. In GP units, a value `g` from 0 to 16 is `8g` on
+the CC scale.
+
+The file's values apply exactly where no preset does, the MIDI-mode sound: a GM-tier track on the
+automatic path with the GM tier bypass on, and `setChannelEffects(on)` (on by default) enabled.
+Wherever a preset applies (a `sound.preset` including `off`, any HQ-tier track, a GM track with
+the bypass off) the preset owns the reverb and chorus and the file's values are ignored, as GP's
+RSE ignores them. `effectSpecOf(track, context, bypassed)` is the single resolution;
+`setStageBypass` drops the `reverb` or `modulation` part like a preset's. A channel edit is
+timeline-neutral, so it re-resolves with no rebuild.
 
 ### Switching, bypass and idle paths
 
