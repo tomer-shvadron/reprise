@@ -1,3 +1,5 @@
+import { splitEntry } from '@reprise/audio';
+
 import { curatedPack } from './curated-packs';
 import type { InstalledPack, PackInstrument } from './manifest';
 
@@ -25,8 +27,10 @@ export function reconcileCurated(pack: InstalledPack): Reconciled {
   const instruments: PackInstrument[] = [];
   for (const instrument of listed.instruments) {
     const entries: Record<string, string> = {};
-    for (const [set, path] of Object.entries(instrument.entries)) {
-      if (present.has(fold(path))) entries[set] = path;
+    for (const [set, value] of Object.entries(instrument.entries)) {
+      // A value may carry `#key:<keys>` after the file (a dead set's noise keys).
+      const path = splitEntry(value)?.path ?? value;
+      if (present.has(fold(path))) entries[set] = value;
       else dropped.push(`${instrument.name}: ${set}`);
     }
     if (Object.hasOwn(entries, 'default')) instruments.push({ ...instrument, entries });

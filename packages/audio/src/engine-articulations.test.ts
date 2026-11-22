@@ -13,6 +13,7 @@ import type { Signal } from './test/signal';
 import {
   GUITAR_EXTRA_TONES,
   GUITAR_FILE_TONES,
+  GUITAR_NOISES,
   GUITAR_TONES,
   syntheticGuitarPack,
 } from './testing/synthetic-guitar-pack';
@@ -277,4 +278,111 @@ describe('HQ articulation files', () => {
     ]);
     engine.dispose();
   });
+});
+
+describe('HQ dead notes on the muted-string noise keys of a pack', () => {
+  const low = GUITAR_NOISES.tones[0];
+  const high = GUITAR_NOISES.tones[3];
+  const NOISE_TONES = GUITAR_NOISES.tones.flat();
+
+  /** A six-string guitar, one quarter per `[string, spec]`: string 6 is the lowest. */
+  function deadSong(...beats: [number, NoteSpec?][]): Score {
+    let builder = score()
+      .tempo(120)
+      .track('guitar', { program: 25, tuning: [40, 45, 50, 55, 59, 64] })
+      .bar();
+    for (const [index, [string, spec]] of beats.entries()) {
+      if (index > 0 && index % 4 === 0) builder = builder.bar();
+      builder = builder.beat('4', [note(string, 12, { dead: true, ...spec })]);
+    }
+    return builder.build();
+  }
+
+  function heardNoise(signal: Signal, beat: number, tones: readonly number[] = NOISE_TONES) {
+    const from = START + beat * BEAT + 0.03;
+    const [loudest] = [...tones, ...ALL_TONES]
+      .map((hertz) => ({ hertz, level: toneLevel(signal, hertz, from, from + 0.12) }))
+      .sort((a, b) => b.level - a.level);
+    return loudest && loudest.level > 0.004 ? loudest.hertz : undefined;
+  }
+
+  it('plays the noise of the string, not the pitch, and no release sample after it', async () => {
+    const pack = syntheticGuitarPack({ noises: true });
+    const built = deadSong([6], [1]);
+    const { signal, engine } = await played(built, pack, 2);
+    expect(heardNoise(signal, 0)).toBe(low[0]);
+    expect(heardNoise(signal, 1)).toBe(high[0]);
+    for (const beat of [0, 1]) {
+      const from = START + beat * BEAT;
+      expect(toneLevel(signal, GUITAR_TONES.release, from, from + BEAT)).toBeLessThan(0.004);
+    }
+    engine.dispose();
+  });
+
+  it('rotates the takes of a key through repeated dead notes on a string', async () => {
+    const pack = syntheticGuitarPack({ noises: true });
+    const built = deadSong([6], [6], [6]);
+    const { signal, engine } = await played(built, pack, 3);
+    expect([0, 1, 2].map((beat) => heardNoise(signal, beat))).toEqual([low[0], low[1], low[0]]);
+    engine.dispose();
+  });
+
+  it('plays the noise for a ghost dead note, quieter, and for a palm-muted one at full level', async () => {
+    const pack = syntheticGuitarPack({ noises: true });
+    const built = deadSong([6], [6, { ghost: true }], [6, { palmMute: true }]);
+    const { signal, engine } = await played(built, pack, 3);
+    const level = (beat: number) => {
+      const from = START + beat * BEAT + 0.03;
+      return toneLevel(signal, low[beat % 2] ?? 0, from, from + 0.12);
+    };
+    expect([0, 1, 2].map((beat) => heardNoise(signal, beat))).toEqual([low[0], low[1], low[0]]);
+    expect(level(1)).toBeLessThan(level(0));
+    expect(level(2)).toBeGreaterThan(level(0) * 0.5);
+    engine.dispose();
+  });
+
+  it('beats a Dead Note keyswitch layer', async () => {
+    const pack = syntheticGuitarPack({ noises: true, articulations: true });
+    const { signal, engine } = await played(deadSong([6]), pack, 1);
+    expect(heardNoise(signal, 0)).toBe(low[0]);
+    engine.dispose();
+  });
+
+  it('reads the noises from a file of their own, resident before play', async () => {
+    const pack = syntheticGuitarPack({ noises: 'file' });
+    const built = deadSong([1]);
+    const { engine, render } = await setup(START + BEAT + 0.3);
+    await engine.load(built, options(built, pack));
+    expect([...packInstrumentsOf(engine.memory().residents, 'guitarpack01')].sort()).toEqual([
+      'default.sfz',
+      'noises.sfz',
+    ]);
+    engine.play();
+    expect(heardNoise(signalOf(await render()), 0)).toBe(high[0]);
+    expect(debugAudioEngine(engine).skippedEntries?.get(trackOf(built))).toEqual([]);
+    engine.dispose();
+  });
+
+  it.each(['default.sfz#key:104', 'default.sfz#key:100-110', 'default.sfz#key:x'])(
+    'drops the set for %s and plays the burst',
+    async (dead) => {
+      const pack = syntheticGuitarPack({ noises: true });
+      const built = deadSong([6]);
+      const { engine, render } = await setup(START + BEAT + 0.3);
+      await engine.load(built, {
+        tier: 'hq',
+        packs: [
+          {
+            trackId: trackOf(built),
+            pack: { id: 'guitarpack01', files: pack.files },
+            entries: { ...pack.entries, dead },
+          },
+        ],
+      });
+      expect(debugAudioEngine(engine).skippedEntries?.get(trackOf(built))).toEqual(['dead']);
+      engine.play();
+      expect(heardNoise(signalOf(await render()), 0)).toBeUndefined();
+      engine.dispose();
+    },
+  );
 });

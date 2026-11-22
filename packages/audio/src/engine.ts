@@ -8,7 +8,7 @@ import type { EffectStage } from './effects/presets';
 import { Sampler } from './sampler/sampler';
 import type { Instrument, PreviewNote, PreviewOptions, TrackParams } from './sampler/sampler';
 import { createSamplerSink } from './sampler/sampler-sink';
-import { ARTICULATION_SETS, setsOfLayers } from './articulations/sets';
+import { ARTICULATION_SETS, setsOfLayers, splitEntry } from './articulations/sets';
 import type { ArticulationSet, PlanVoicing, Voicing } from './articulations/sets';
 import {
   DEFAULT_PRELOAD_BARS,
@@ -759,7 +759,11 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
    * winning. A file that fails drops only its set, and a key that names no set is ignored; both
    * are listed for `debugAudioEngine` and nothing else.
    */
-  async function resolveSets(assignment: PackAssignment, layers: readonly SfzLayer[]) {
+  async function resolveSets(
+    assignment: PackAssignment,
+    layers: readonly SfzLayer[],
+    defaultId: InstrumentId,
+  ) {
     const { pack, entries } = assignment;
     const voicing: Voicing['sets'] = {};
     const planned: PlanVoicing = {};
@@ -770,17 +774,40 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       .sort();
     await Promise.all(
       named.map(async (name) => {
-        const path = entries[name];
+        const value = entries[name];
         const set = ARTICULATION_SETS.find((known) => known === name);
-        if (set === undefined || path === undefined) {
+        const split = value === undefined ? undefined : splitEntry(value);
+        // A fixed key is a muted noise, which only the dead set has.
+        if (set === undefined || split === undefined || (split.keys && set !== 'dead')) {
           skipped.push(name);
           return;
         }
         try {
-          const parsed = await parseEntry(pack, path);
-          voicing[set] = { instrument: { regions: parsed.regions, source: required(source) } };
-          planned[set] = { instrument: parsed.id };
-          ids.push({ id: parsed.id, regions: parsed.regions });
+          const parsed = await parseEntry(pack, split.path);
+          const { keys } = split;
+          // Exact coverage in the layer that plays: the nearest-region fallback would play a pitched note.
+          if (
+            keys?.some(
+              (key) =>
+                !parsed.regions.regions.some(
+                  (region) =>
+                    region.layer === undefined &&
+                    region.trigger !== 'release' &&
+                    region.keyLo <= key &&
+                    key <= region.keyHi,
+                ),
+            )
+          ) {
+            skipped.push(name);
+            return;
+          }
+          voicing[set] = {
+            instrument: { regions: parsed.regions, source: required(source) },
+            ...(keys && { keys }),
+          };
+          planned[set] = { instrument: parsed.id, ...(keys && { keys }) };
+          // The default file's own noise is a set of the default instrument: nothing more to keep.
+          if (parsed.id !== defaultId) ids.push({ id: parsed.id, regions: parsed.regions });
         } catch {
           skipped.push(name);
         }
@@ -842,7 +869,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
         try {
           if (path === undefined) throw new Error('the assignment has no default entry');
           const { id, regions, sfz, layers } = await parseEntry(pack, path);
-          const sets = await resolveSets(assignment, layers);
+          const sets = await resolveSets(assignment, layers, id);
           const hasLegato =
             regions.hasLegatoRegions || sets.maps.some((map) => map.hasLegatoRegions);
           loaded.set(trackId, {

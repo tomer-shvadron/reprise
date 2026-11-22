@@ -72,3 +72,44 @@ describe('reconcileCurated', () => {
     expect(reconcileCurated(custom).pack).toBe(custom);
   });
 });
+
+describe('reconcileCurated with noise keys', () => {
+  const emily = () => {
+    const listed = curatedPack('qxmLveBRBWt8');
+    if (!listed) throw new Error('Emilyguitar is not in the curated list');
+    return listed;
+  };
+  const installed = (skip: string[] = []): InstalledPack => {
+    const listed = emily();
+    const names = new Set(
+      listed.instruments.flatMap((i) => Object.values(i.entries).map((v) => v.split('#')[0] ?? v)),
+    );
+    return {
+      ...listed,
+      instruments: listed.instruments.map((i) => ({
+        ...i,
+        entries: { default: i.entries['default'] ?? '' },
+      })),
+      curated: true,
+      source: 'download' as const,
+      installedAt: '2026-11-01T00:00:00.000Z',
+      files: [...names].filter((n) => !skip.includes(n)).map((n): [string, number] => [n, 10]),
+    };
+  };
+
+  it('keeps the noise keys on the dead entry, and checks the file before them', () => {
+    const { pack, dropped } = reconcileCurated(installed());
+    expect(dropped).toEqual([]);
+    const dead = Object.fromEntries(pack.instruments.map((i) => [i.key, i.entries['dead']]));
+    expect(dead['basic']).toBe('emily_basic.sfz#key:91-95');
+    expect(dead['five-voices']).toBe('emily_basic.sfz#key:91-95');
+  });
+
+  it('drops only the dead set when its file is missing', () => {
+    const { pack, dropped } = reconcileCurated(installed(['emily_basic.sfz']));
+    expect(dropped).toContain('Five voices: dead');
+    expect(pack.instruments.find((i) => i.key === 'five-voices')?.entries).toEqual({
+      default: 'emily_five_voice.sfz',
+    });
+  });
+});

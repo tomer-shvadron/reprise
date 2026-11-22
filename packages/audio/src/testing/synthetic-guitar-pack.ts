@@ -23,6 +23,17 @@ export const GUITAR_FILE_TONES = { palmMute: 2000, staccato: 2100 } as const;
 /** `rt_decay` of the release samples, in dB per second held. */
 export const GUITAR_RELEASE_DECAY = 6;
 
+/**
+ * The muted-string noise keys `noises` adds, above every layer's range (40 to 88) and the
+ * switches (24 to 33): one sine per key (at least 100 Hz apart), the first key with two takes by
+ * `seq_length=2`, and a release region on each that a noise strike must never start.
+ */
+export const GUITAR_NOISES = {
+  keys: [100, 101, 102, 103],
+  /** The tones of each key's takes, in `seq_position` order. */
+  tones: [[3000, 3100], [3200], [3300], [3400]],
+} as const;
+
 export interface SyntheticGuitarPack extends SyntheticSfzPack {
   /** What `PackAssignment.entries` takes for it: only the default file, with its labelled layers. */
   entries: Readonly<Record<string, string>>;
@@ -73,6 +84,12 @@ export interface SyntheticGuitarPackOptions {
    * articulation is declared.
    */
   perFile?: boolean;
+  /**
+   * Adds the muted-string noise keys of `GUITAR_NOISES` and returns `entries.dead` for them
+   * (`<file>#key:100-103`): `true` puts them in `default.sfz`, `'file'` in `noises.sfz`, a file of
+   * their own, as a pack whose default sound has none borrows another file's.
+   */
+  noises?: boolean | 'file';
 }
 
 const SWITCHES = {
@@ -131,6 +148,24 @@ function selectionRegions(): string[] {
   ];
 }
 
+const noisePath = (hertz: number): string => `samples/noise${String(hertz)}.wav`;
+
+function noiseRegions(): string[] {
+  const lines: string[] = [];
+  for (const [index, key] of GUITAR_NOISES.keys.entries()) {
+    const takes = GUITAR_NOISES.tones[index] ?? [];
+    lines.push(
+      `<group> lokey=${String(key)} hikey=${String(key)} pitch_keycenter=${String(key)}`,
+      ...takes.map(
+        (hertz, take) =>
+          `<region> sample=${noisePath(hertz)}${takes.length > 1 ? ` seq_length=${String(takes.length)} seq_position=${String(take + 1)}` : ''}`,
+      ),
+      `<region> sample=samples/release.wav trigger=release rt_decay=${String(GUITAR_RELEASE_DECAY)} loop_mode=one_shot`,
+    );
+  }
+  return lines;
+}
+
 /**
  * A reference electric guitar built in memory, shaped like a keyswitch library: `default.sfz`
  * holds a sustain layer and a palm-mute, a harmonic and a legato one, each switched by a labelled
@@ -152,6 +187,7 @@ export function syntheticGuitarPack(options: SyntheticGuitarPackOptions = {}): S
     ...(options.articulations ? [layerText('dead'), layerText('staccato')] : []),
     `<region> sample=samples/release.wav trigger=release rt_decay=${String(GUITAR_RELEASE_DECAY)} loop_mode=one_shot`,
     ...(options.selection ? selectionRegions() : []),
+    ...(options.noises === true ? noiseRegions() : []),
     '',
   ].join('\n');
   const tone = (frequency: number, seconds: number): Uint8Array =>
@@ -176,6 +212,16 @@ export function syntheticGuitarPack(options: SyntheticGuitarPackOptions = {}): S
     contents.set('samples/file-pm.wav', tone(GUITAR_FILE_TONES.palmMute, 0.5));
     contents.set('samples/file-stacc.wav', tone(GUITAR_FILE_TONES.staccato, 0.5));
   }
+  if (options.noises) {
+    if (options.noises === 'file') {
+      contents.set(
+        'noises.sfz',
+        new TextEncoder().encode(['<global> pitch_keycenter=69', ...noiseRegions(), ''].join('\n')),
+      );
+    }
+    for (const hertz of GUITAR_NOISES.tones.flat())
+      contents.set(noisePath(hertz), tone(hertz, 0.5));
+  }
   if (options.selection) {
     for (const hertz of selectionTones()) contents.set(selectionPath(hertz), tone(hertz, 0.5));
   }
@@ -193,11 +239,19 @@ export function syntheticGuitarPack(options: SyntheticGuitarPackOptions = {}): S
   return {
     files,
     contents,
-    sfz: options.perFile ? ['default.sfz', 'gtr_pm.sfz', 'gtr_stacc.sfz'] : ['default.sfz'],
+    sfz: [
+      'default.sfz',
+      ...(options.perFile ? ['gtr_pm.sfz', 'gtr_stacc.sfz'] : []),
+      ...(options.noises === 'file' ? ['noises.sfz'] : []),
+    ],
     reads,
-    entries: options.perFile
-      ? { default: 'default.sfz', palmMute: 'gtr_pm.sfz', staccato: 'gtr_stacc.sfz' }
-      : { default: 'default.sfz' },
+    entries: {
+      default: 'default.sfz',
+      ...(options.perFile && { palmMute: 'gtr_pm.sfz', staccato: 'gtr_stacc.sfz' }),
+      ...(options.noises && {
+        dead: `${options.noises === 'file' ? 'noises.sfz' : 'default.sfz'}#key:100-103`,
+      }),
+    },
     layers: {
       palmMute: `sw:${String(SWITCHES.palmMute)}`,
       harmonic: `sw:${String(SWITCHES.harmonic)}`,

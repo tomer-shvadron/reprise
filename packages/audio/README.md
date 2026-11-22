@@ -1261,15 +1261,37 @@ still filtered at 900 Hz. A track on General MIDI, a drum track, a pack without 
 when the pack has no `dead` set (it is the noise burst, which no other set replaces) all get
 `default` and drop nothing.
 
-| The note has                  | The pack has the set                                              | The pack lacks it                                                                           |
-| ----------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| palm mute                     | the layer; no 900 Hz low-pass, no -18 dB / 250 ms decay           | default with both (ADR-0004)                                                                |
-| dead note                     | the layer at the note's key, released at 250 ms or the note's end | the noise burst and its 2.5 kHz filter                                                      |
-| natural harmonic              | the layer at the sounding pitch; no +6 dB shelf                   | default at the sounding pitch with the shelf                                                |
-| other harmonics               | `artificialHarmonic`, else `harmonic`; no shelf                   | default with the shelf (`semi` keeps its +12)                                               |
-| hammer-on, pull-off, tap      | the layer, or `trigger=legato` regions; no 20 ms offset           | the 20 ms offset                                                                            |
-| staccato                      | the layer or file; the half-beat release stays                    | default with the half-beat release                                                          |
-| tap, slap, pop (beat effects) | `tap` (else `legato`), `slap`, `pop`                              | default; a tap is still a hammer-on (-1 step, 20 ms); slap and pop get no special treatment |
+| The note has                  | The pack has the set                                                                         | The pack lacks it                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| palm mute                     | the layer; no 900 Hz low-pass, no -18 dB / 250 ms decay                                      | default with both (ADR-0004)                                                                |
+| dead note                     | the layer at the note's key, released at 250 ms or the note's end; no palm-mute decay on top | the noise burst and its 2.5 kHz filter                                                      |
+| natural harmonic              | the layer at the sounding pitch; no +6 dB shelf                                              | default at the sounding pitch with the shelf                                                |
+| other harmonics               | `artificialHarmonic`, else `harmonic`; no shelf                                              | default with the shelf (`semi` keeps its +12)                                               |
+| hammer-on, pull-off, tap      | the layer, or `trigger=legato` regions; no 20 ms offset                                      | the 20 ms offset                                                                            |
+| staccato                      | the layer or file; the half-beat release stays                                               | default with the half-beat release                                                          |
+| tap, slap, pop (beat effects) | `tap` (else `legato`), `slap`, `pop`                                                         | default; a tap is still a hammer-on (-1 step, 20 ms); slap and pop get no special treatment |
+
+**Noise keys for a dead note (#286).** `entries.dead` may be `<file>#key:<keys>`, a file and a comma
+list of MIDI keys and ranges, lowest string first (`75-78`, `91,92,93,94,95`). Only a value that ends
+in `#key:` reads so (`C#.sfz` stays a path), `splitEntry(value)` returns `{ path, keys? }`, and a
+malformed list (empty, past 127, reversed, or more than 10 keys), or `#key:` on any set but `dead`,
+makes the entry invalid: its set is dropped and listed in `skipped`. The set then plays the file's
+muted-string noise at a key chosen by the string, not by the pitch: `keyOnString(keys, track,
+string)` counts strings from the lowest (`tuning.length - string`) and clamps, so extra high
+strings take the last key. A path equal to `entries.default` is the default instrument's own parse
+(no second instrument); another file is an instrument of its own, resident like any set file. Every
+listed key must have a region of the default layer that contains it (no nearest-region fallback),
+or the set is dropped. The precedence is an explicit `entries.dead` (file or keys), then a
+`Dead`-labelled keyswitch layer, then the burst, which is also the fallback for a malformed entry,
+an unmapped key and a custom pack. The strike keeps `string` (it damps the ringing string), plays
+no course partner, starts no release region (a muted noise does not let a string go), and is
+released at 250 ms or the note's end. Round robins and random takes follow `select()`: the
+sequence counter is per track, layer and fixed key, so each string's noise rotates on its own and
+a stop resets it. `SetVoicing.keys`, `PlanVoicing.keys` and `PlanInput.fixedKey` carry it; the
+planner plans only the keys the song's dead notes use, instead of their pitch and course partner.
+A sampled `dead` set also carries a palm mute (`SAMPLED.dead` is `dead` and `palmMute`), so an x with
+P.M. is not damped twice. `previewBeat` takes the same path. `syntheticGuitarPack({ noises: true |
+'file' })` adds noise keys 100 to 103 (`GUITAR_NOISES`) for tests.
 
 Bends, slides, vibrato, trills, tremolo, dynamics and fades stay automation in both tiers. This
 widens ADR-0004's "palm mute and harmonics" to the dead, legato and staccato layers the work

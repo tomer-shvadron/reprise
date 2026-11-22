@@ -46,6 +46,11 @@ export interface PlanInput {
    * synthesized automation is left out. Absent on General MIDI, where nothing is.
    */
   sampled?: ReadonlySet<SampledEffect>;
+  /**
+   * The key a sampled dead note plays instead of its pitch: a pack's muted-string noise, chosen
+   * by the string (`keyOnString`). Only read for a dead note.
+   */
+  fixedKey?: number;
 }
 
 /**
@@ -247,7 +252,8 @@ export function planNote(input: PlanInput): NotePlan {
   const sampled = input.sampled ?? NO_EFFECTS;
   // Before the dead check: Guitar Pro marks a pick slide on a muted (x) note, and the scrape replaces it.
   if (tonal && note.pickScrape) return planScrape(input, note.pickScrape);
-  const key = soundingPitch(track, note);
+  const fixed = tonal && note.dead ? input.fixedKey : undefined;
+  const key = fixed ?? soundingPitch(track, note);
   const rounded = Math.round(key);
   // A dead note is short and has no pitch shape either way; only without a layer is it a burst.
   const dead = tonal && note.dead;

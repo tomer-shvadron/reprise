@@ -45,6 +45,19 @@ describe('instrumentLabel', () => {
     expect(instrumentLabel('sfz:SynthPack001@1:pm.sfz', single)).toBe('Synthetic Pack (Palm mute)');
   });
 
+  it('labels a file by its path when an entry carries noise keys after it', () => {
+    const [only] = installed().instruments;
+    if (!only) throw new Error('no instrument');
+    const single = [
+      installed({
+        instruments: [{ ...only, entries: { default: 'a.sfz', dead: 'noises.sfz#key:91-95' } }],
+      }),
+    ];
+    expect(instrumentLabel('sfz:SynthPack001@1:noises.sfz', single)).toBe(
+      'Synthetic Pack (Dead note)',
+    );
+  });
+
   it('names an unknown set by its key', () => {
     const [only] = installed().instruments;
     if (!only) throw new Error('no instrument');
