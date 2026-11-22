@@ -47,24 +47,26 @@ export const ARTICULATION = {
   dead: { length: 0.08, sampledLength: 0.25, cutoff: 2500 },
 
   /**
-   * A picking-hand scrape replaces the note: bandpassed noise whose spectrum sweeps `sweep`
-   * semitones (down for a down scrape) over the note, at most `maxLength` long.
+   * A picking-hand scrape replaces the note: white noise through a bandpass whose centre sweeps
+   * from `from` to `to` Hz (reversed for an up scrape), moved every `step` seconds, at most
+   * `maxLength` long.
    */
   pickScrape: {
-    /** The key the noise region is rooted at: played unshifted, it keeps its spectrum until the sweep. */
+    /** The key the noise region is rooted at; the noise is not detuned. */
     key: 60,
     maxLength: 1,
-    sweep: 12,
-    cutoff: 1500,
+    from: 3000,
+    to: 800,
     q: 2,
+    step: 0.01,
     attack: 0.01,
     release: 0.05,
-    /** The noise buffer's length: the fastest sweep (an octave up) reads it at up to twice speed. */
-    bufferLength: 1.6,
+    /** The noise buffer's length, at least `maxLength`. */
+    bufferLength: 1.1,
   },
   /**
-   * A golpe is a synthesized body hit: a sine falling from `frequency` to `endFrequency` plus a
-   * short low-passed noise burst. The thumb is the lower, rounder one.
+   * A golpe is a synthesized body hit: a sine gliding from `frequency` to `endFrequency` over its
+   * `decay`, plus a short low-passed noise burst. The thumb is the lower, rounder one.
    */
   golpe: {
     thumb: { frequency: 90, endFrequency: 55, decay: 0.16, noiseCutoff: 400, noiseLength: 0.03 },
@@ -76,11 +78,11 @@ export const ARTICULATION = {
       noiseLength: 0.015,
     },
     /** Level of the noise burst against the sine. */
-    noiseAmplitude: 0.6,
+    noiseAmplitude: 0.3,
     /** When the voice is released after the hit. */
     length: 0.4,
     /** The velocity of a hit on a beat with no notes. */
-    restVelocity: 79,
+    restVelocity: DYNAMICS_VELOCITY.mf,
   },
 
   staccatoFraction: 0.5,

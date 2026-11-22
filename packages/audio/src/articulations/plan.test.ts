@@ -57,34 +57,45 @@ describe('noteVelocity', () => {
 describe('pick scrape', () => {
   const scrape = (direction: 'down' | 'up', spec: Partial<PlanInput> = {}) =>
     planNote(input(guitar, note(1, 7, { pickScrape: direction }), spec));
+  const { from, to } = ARTICULATION.pickScrape;
+  /** The bandpass centre in effect at `time`: the onset filter, then each change up to it. */
+  const centreAt = (plan: ReturnType<typeof scrape>, time: number): number | undefined => {
+    let centre = plan.filter?.frequency;
+    for (const change of plan.filterChanges)
+      if (change.at <= time) centre = change.filter.frequency;
+    return centre;
+  };
 
-  it('replaces the strike with one noise sweep: no doubling-pitch, bend or vibrato terms', () => {
+  it('replaces the strike with one noise sweep: no pitch, bend, vibrato or tremolo terms', () => {
     const plan = planNote(
       input(guitar, note(1, 7, { pickScrape: 'down', vibrato: 'wide' }), {
         effects: { tremoloPicking: 16 },
-        links: [],
       }),
     );
     expect(plan.scrape).toBe('down');
     expect(plan.strikes).toHaveLength(1);
     expect(plan.strikes[0]).toMatchObject({ key: ARTICULATION.pickScrape.key, detune: 0 });
-    expect(plan.filter).toMatchObject({
-      type: 'bandpass',
-      frequency: ARTICULATION.pickScrape.cutoff,
-    });
+    expect(plan.pitch).toBeUndefined();
+    expect(plan.filter).toMatchObject({ type: 'bandpass' });
     expect(plan.gain).toEqual([]);
     expect(plan.letRingUntil).toBeUndefined();
     expect(plan.legatoInto).toBeUndefined();
   });
 
-  it('sweeps down for a down scrape and up for an up scrape, over the note', () => {
+  it('sweeps the bandpass from high to low for a down scrape and low to high for an up one', () => {
     const down = scrape('down', { length: 0.8 });
     const upward = scrape('up', { length: 0.8 });
-    expect(down.pitch?.(1)).toBeCloseTo(0, 9);
-    expect(down.pitch?.(1.4)).toBeCloseTo(-ARTICULATION.pickScrape.sweep / 2, 9);
-    expect(down.pitch?.(1.8)).toBeCloseTo(-ARTICULATION.pickScrape.sweep, 9);
-    expect(upward.pitch?.(1.4)).toBeCloseTo(ARTICULATION.pickScrape.sweep / 2, 9);
-    expect(upward.pitch?.(9)).toBeCloseTo(ARTICULATION.pickScrape.sweep, 9);
+    expect(centreAt(down, 1)).toBeCloseTo(from, 6);
+    expect(centreAt(down, 1.8) ?? 0).toBeLessThan(to * 1.05);
+    expect(centreAt(upward, 1)).toBeCloseTo(to, 6);
+    expect(centreAt(upward, 1.8) ?? 0).toBeGreaterThan(from * 0.95);
+    // Geometric: halfway is the geometric mean, and each change moves the right way.
+    expect(centreAt(down, 1.4) ?? 0).toBeCloseTo(Math.sqrt(from * to), -2);
+    const centres = down.filterChanges.map((change) => change.filter.frequency);
+    expect(centres.every((value, index) => index === 0 || value < (centres[index - 1] ?? 0))).toBe(
+      true,
+    );
+    for (const change of down.filterChanges) expect(change.at).toBeLessThan(1.8);
   });
 
   it('caps the length and keeps a short note short', () => {
@@ -97,19 +108,20 @@ describe('pick scrape', () => {
 
   it('works on the origin of a tie chain, whose length already folds the ties in', () => {
     const plan = planNote(
-      input(guitar, note(1, 7, { pickScrape: 'up' }), {
-        length: 1.5,
-        links: [link({}, 1.5)],
-      }),
+      input(guitar, note(1, 7, { pickScrape: 'up' }), { length: 1.5, links: [link({}, 1.5)] }),
     );
     expect(plan.strikes[0]?.end).toBeCloseTo(1 + ARTICULATION.pickScrape.maxLength, 9);
     expect(plan.scrape).toBe('up');
   });
 
-  it('leaves a dead note a dead note, and a drum track alone', () => {
-    expect(planNote(input(guitar, note(1, 7, { pickScrape: 'down', dead: true }))).scrape).toBe(
-      undefined,
-    );
+  it('scrapes a dead note, which Guitar Pro writes a pick slide on', () => {
+    const plan = planNote(input(guitar, note(1, 7, { pickScrape: 'down', dead: true })));
+    expect(plan.scrape).toBe('down');
+    expect(plan.dead).toBe(false);
+    expect(plan.strikes[0]?.end).toBeGreaterThan(1.3);
+  });
+
+  it('leaves a drum track alone', () => {
     expect(planNote(input(drums, midi(38, { pickScrape: 'down' }))).scrape).toBe(undefined);
   });
 });
