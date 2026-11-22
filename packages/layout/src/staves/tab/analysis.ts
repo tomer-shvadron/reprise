@@ -41,6 +41,7 @@ import {
 } from '../effects';
 import { hiddenVoices } from '../hidden-voices';
 import type { StaffBar } from '../staff-module';
+import { TICK_EPSILON } from '../../ticks';
 
 /** Every size and distance of the tab staff, in staff spaces. */
 export const TAB = {
@@ -138,6 +139,11 @@ export interface TabBeat {
   connects: boolean;
   /** Whether measure keeps room for the beat's dynamic: `reservedDynamics` holds it. */
   dynamicsChange: boolean;
+  /**
+   * Fingering rows already taken at this beat's onset by the beats of earlier voices, so the
+   * digits of voices that start together stack instead of sharing a row.
+   */
+  fingerBase: number;
 }
 
 export interface TabVoice {
@@ -415,6 +421,7 @@ function analyseBeat(
     stroke,
     connects: drawn,
     dynamicsChange: false,
+    fingerBase: 0,
   };
 }
 
@@ -544,12 +551,6 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
       analysed.dynamicsChange = reserved.has(beat.id);
       voiceBeats.push(analysed);
       tick += analysed.event.ticks;
-      if (rhythm) {
-        maxFingers = Math.max(
-          maxFingers,
-          beat.notes.filter((note) => fingering(note) !== undefined).length,
-        );
-      }
     }
     const events = voiceBeats.map((analysed) => analysed.event);
     const tuplets = tupletGroups(events);
@@ -572,6 +573,24 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
       tremolo: tremolo * space,
     });
     beats.push(...voiceBeats);
+  }
+
+  // Voices that start together draw their digits in one lane at one x, so each stacks above the
+  // digits of the voices before it; the lane is as tall as the fullest onset.
+  if (rhythm) {
+    const taken: { tick: number; rows: number }[] = [];
+    for (const analysed of beats) {
+      const count = analysed.beat.notes.filter((note) => fingering(note) !== undefined).length;
+      if (count === 0) continue;
+      let onset = taken.find((entry) => Math.abs(entry.tick - analysed.tick) < TICK_EPSILON);
+      if (!onset) {
+        onset = { tick: analysed.tick, rows: 0 };
+        taken.push(onset);
+      }
+      analysed.fingerBase = onset.rows;
+      onset.rows += count;
+      maxFingers = Math.max(maxFingers, onset.rows);
+    }
   }
 
   const words = wordRows(

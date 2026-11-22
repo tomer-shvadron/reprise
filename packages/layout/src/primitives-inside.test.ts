@@ -223,6 +223,33 @@ describe('primitives stay inside their system', () => {
     }
   }, 60_000);
 
+  it('prints no two fingering digits on one spot, and none overlapping where the bar fits (#511)', () => {
+    // Seeds 116, 215, 218 and 384 stacked the digits of two voices at one onset in one row.
+    // Where a bar is squeezed far below its minimum (320 px, dense bars of hundreds of beats)
+    // the digits of neighbouring onsets may still touch, like any glyphs there; the sweep
+    // therefore asks for no overlap from 480 px up, and at 320 px only that no two share an x.
+    const digits = (result: LayoutResult): [number, number][] =>
+      overlappingMarks(result).flatMap(([a, b]) =>
+        a.kind === 'text' && b.kind === 'text' && /^[1-4]$/.test(a.text) && /^[1-4]$/.test(b.text)
+          ? [[a.bbox.x, b.bbox.x] as [number, number]]
+          : [],
+      );
+    for (let seed = 0; seed <= 400; seed++) {
+      const built = randomScore(seed, { diagrams: true });
+      const narrow = digits(layout(built, options(built, 320, 'tab')));
+      expect(
+        narrow.filter(([a, b]) => Math.abs(a - b) < 0.5),
+        `seed ${String(seed)} 320`,
+      ).toEqual([]);
+      for (const width of [480, PAGE_SIZES.a4.width]) {
+        expect(
+          digits(layout(built, options(built, width, 'tab'))),
+          `seed ${String(seed)} ${String(width)}`,
+        ).toEqual([]);
+      }
+    }
+  }, 120_000);
+
   it('holds for random scores in paged mode at narrow and wide lines', () => {
     // Paged only: continuous mode never squeezes (`finish` squeezes only paged lines), so it
     // could not reach the squeezed cases this guards.
