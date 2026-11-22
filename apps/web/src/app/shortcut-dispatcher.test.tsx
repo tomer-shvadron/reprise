@@ -12,6 +12,7 @@ import { formatShortcut, type KeyboardPlatform } from './keyboard';
 import {
   installShortcutDispatcher,
   menuCommandAllowed,
+  menuKeyYieldsToField,
   modalBlocksCommand,
 } from './shortcut-dispatcher';
 
@@ -702,5 +703,23 @@ describe('text fields and open dialogs', () => {
 
     expect(run.open).toHaveBeenCalledOnce();
     expect(run.undo).toHaveBeenCalledOnce();
+  });
+
+  it('has a menu accelerator without Cmd or Ctrl yield to a focused text field only', () => {
+    const input = document.createElement('input');
+    document.body.append(input);
+    const alt = { key: 'c', alt: true };
+    try {
+      expect(menuKeyYieldsToField(alt)).toBe(false);
+      input.focus();
+      expect(menuKeyYieldsToField(alt)).toBe(true);
+      expect(menuKeyYieldsToField({ key: 'F9' })).toBe(true);
+      // A key with Cmd or Ctrl is the menu's own, as Save is while a field has focus.
+      expect(menuKeyYieldsToField({ key: 's', mod: true })).toBe(false);
+      expect(menuKeyYieldsToField({ key: 'F9', mod: true })).toBe(false);
+      expect(menuKeyYieldsToField(undefined)).toBe(false);
+    } finally {
+      input.remove();
+    }
   });
 });

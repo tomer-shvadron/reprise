@@ -5,6 +5,7 @@ import type {
   HistoryMenuLabels,
   InvokeArgs,
   InvokeChannel,
+  MenuChecks,
   MenuCommandId,
   MenuKey,
   MenuKeys,
@@ -319,6 +320,22 @@ export function parseMenuKeys(value: unknown): MenuKeys {
   return keys;
 }
 
+/**
+ * `{ <menu command id>: boolean }`; an id the menu does not have, or a non-boolean, refuses the
+ * map, and so does anything that is not an object.
+ */
+export function parseMenuChecks(value: unknown): MenuChecks {
+  if (!isRecord(value)) throw new PayloadError('Expected the menu checks');
+  const checks: MenuChecks = {};
+  for (const [id, raw] of Object.entries(value)) {
+    if (!isMenuCommandId(id)) throw new PayloadError(`Unknown menu command '${id}'`);
+    if (raw === undefined) continue;
+    if (typeof raw !== 'boolean') throw new PayloadError(`Expected a boolean for '${id}'`);
+    checks[id] = raw;
+  }
+  return checks;
+}
+
 /** At most ten items; an id is opaque so an overlong one is refused, a title is cut. */
 export function parseRecentSongs(value: unknown): RecentSong[] {
   if (!Array.isArray(value)) throw new PayloadError('Expected a list of recent songs');
@@ -393,6 +410,10 @@ export const parsers: Parsers = {
   'menu:set-keys': (args) => {
     arity(args, 1, 'menu:set-keys');
     return [parseMenuKeys(args[0])];
+  },
+  'menu:set-checked': (args) => {
+    arity(args, 1, 'menu:set-checked');
+    return [parseMenuChecks(args[0])];
   },
   'app:library-dir': (args) => {
     arity(args, 0, 'app:library-dir');

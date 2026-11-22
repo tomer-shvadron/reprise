@@ -55,9 +55,10 @@ import { MenuRegistryContext } from './context-menu/menu-context';
 import { runCommand } from './command-registry';
 import { DropZone } from './drop-zone';
 import { installFirstGesture } from './first-gesture';
+import { installMenuChecks } from './install-menu-checks';
 import { installMenuKeys } from './install-menu-keys';
 import { SHORTCUT_OVERRIDES_SETTING } from './keymap';
-import { formatShortcut, type KeyboardPlatform } from './keyboard';
+import { formatShortcut, shortcutOn, type KeyboardPlatform } from './keyboard';
 import { PanelRail, PanelTabs } from './right-panel';
 import { Notices } from './notices';
 import { SavePromptDialog } from './save-prompt';
@@ -65,7 +66,11 @@ import { ScorePane } from './score-pane';
 import { StatusBar } from './status-bar/status-bar';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
-import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispatcher';
+import {
+  installShortcutDispatcher,
+  menuCommandAllowed,
+  menuKeyYieldsToField,
+} from './shortcut-dispatcher';
 import { SETTINGS_SECTIONS } from './settings-sections';
 import { UnsavedChangesHost } from './unsaved-dialog';
 import { installWindowTitle } from './window-title';
@@ -166,17 +171,32 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   );
 
   useEffect(
+    () => installMenuChecks({ playback: services.playback, platform: services.platform }),
+    [services],
+  );
+
+  useEffect(
     () => installPracticeLog(services, libraryOf(services).db.practiceSessions),
     [services],
   );
 
   useEffect(
     () =>
-      onMenuCommand?.((id) => {
+      onMenuCommand?.((id, viaAccelerator) => {
         const command = registry.get(id);
-        if (command && menuCommandAllowed(id)) runCommand(command);
+        if (!command || !menuCommandAllowed(id)) return;
+        // The renderer leaves a key without Cmd or Ctrl to a focused field; the menu's own
+        // accelerator (Option+C is a character on a Mac) must do the same, while a click on the
+        // item runs it from anywhere.
+        if (
+          viaAccelerator &&
+          menuKeyYieldsToField(shortcutOn(registry.shortcutOf(command), keyboard))
+        ) {
+          return;
+        }
+        runCommand(command);
       }),
-    [registry, onMenuCommand],
+    [registry, keyboard, onMenuCommand],
   );
 
   const keyOf = (id: string) => {

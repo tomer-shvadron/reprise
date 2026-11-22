@@ -30,6 +30,7 @@ function fakeBridge() {
     onMenuCommand: vi.fn(() => () => undefined),
     setHistoryLabels: vi.fn(() => Promise.resolve(undefined)),
     setMenuKeys: vi.fn(() => Promise.resolve(undefined)),
+    setMenuChecks: vi.fn(() => Promise.resolve(undefined)),
     onOpenRecent: vi.fn(() => () => undefined),
     setDocumentEdited: vi.fn(() => Promise.resolve(undefined)),
     confirmClose: vi.fn(() => Promise.resolve(undefined)),
@@ -85,6 +86,19 @@ describe('the Electron platform', () => {
     await expect(platform.setMenuKeys?.({})).resolves.toBe(false);
 
     expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('sends the menu checks over the bridge, resolving false when main refuses them', async () => {
+    const { bridge } = fakeBridge();
+    const platform = createElectronPlatform(bridge);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await expect(platform.setMenuChecks?.({ 'transport.toggleLoop': true })).resolves.toBe(true);
+    expect(bridge.setMenuChecks).toHaveBeenCalledWith({ 'transport.toggleLoop': true });
+
+    vi.mocked(bridge.setMenuChecks).mockRejectedValueOnce(new Error('gone'));
+    await expect(platform.setMenuChecks?.({})).resolves.toBe(false);
     error.mockRestore();
   });
 

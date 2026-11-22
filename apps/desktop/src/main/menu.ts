@@ -1,6 +1,13 @@
 import type { MenuItemConstructorOptions } from 'electron';
 
-import type { HistoryMenuLabels, MenuCommandId, MenuKey, MenuKeys, RecentSong } from '@reprise/web';
+import type {
+  HistoryMenuLabels,
+  MenuChecks,
+  MenuCommandId,
+  MenuKey,
+  MenuKeys,
+  RecentSong,
+} from '@reprise/web';
 
 interface MenuCommand {
   label: string;
@@ -31,7 +38,30 @@ export const MENU_COMMANDS = {
   'view.toggleSidebar': { label: 'Toggle Tracks' },
   'view.togglePanel': { label: 'Toggle Mixer' },
   'view.toggleViewMode': { label: 'Toggle Page and Continuous View' },
+  'transport.playPause': { label: 'Play/Pause' },
+  'transport.stop': { label: 'Stop' },
+  'transport.playFromStart': { label: 'Play from Start' },
+  'transport.playFromSelection': { label: 'Play from Selection' },
+  // The four checkbox items; their state comes from the renderer (`menu:set-checked`).
+  'transport.toggleLoop': { label: 'Loop' },
+  'transport.loopSelection': { label: 'Loop Selection' },
+  'transport.toggleCountIn': { label: 'Count-in' },
+  'transport.toggleMetronome': { label: 'Metronome' },
+  'transport.metronomeVolume': { label: 'Metronome Volume…' },
+  'transport.setTempo': { label: 'Set Tempo…' },
+  // The steps name the unit of the mode (see `FIXED_STEP_LABELS`).
+  'transport.slowDown': { label: 'Slow Down 5%' },
+  'transport.speedUp': { label: 'Speed Up 5%' },
+  'transport.toggleSpeed': { label: 'Toggle Relative Speed' },
+  'transport.toggleFixedTempo': { label: 'Fixed Tempo' },
+  'transport.masterVolume': { label: 'Master Volume…' },
 } satisfies Record<MenuCommandId, MenuCommand>;
+
+/** The step items' labels while Fixed Tempo is on: the keys then step the BPM, not the percent. */
+const FIXED_STEP_LABELS: Partial<Record<MenuCommandId, string>> = {
+  'transport.slowDown': 'Slow Down 5 BPM',
+  'transport.speedUp': 'Speed Up 5 BPM',
+};
 
 const ACCELERATOR_KEYS: Readonly<Record<string, string>> = {
   ' ': 'Space',
@@ -68,7 +98,8 @@ export interface MenuOptions {
   isMac: boolean;
   isPackaged: boolean;
   docsUrl: string;
-  sendCommand: (id: MenuCommandId) => void;
+  /** `viaAccelerator` is passed (true) only when the item's key ran it, not a click. */
+  sendCommand: (id: MenuCommandId, viaAccelerator?: boolean) => void;
   openExternal: (url: string) => void;
   /** Shows the About box; macOS has its own entry in the application menu. */
   showAbout?: () => void;
@@ -81,6 +112,8 @@ export interface MenuOptions {
   history?: HistoryMenuLabels;
   /** The key of each command, from the renderer; an item has none until it sends them. */
   keys?: MenuKeys;
+  /** The state of the checkbox items, from the renderer; an item is unchecked until it sends it. */
+  checked?: MenuChecks;
 }
 
 const acceleratorProp = (key: MenuKey | null | undefined) =>
@@ -97,13 +130,27 @@ export function menuTemplate({
   openRecent = () => undefined,
   history,
   keys = {},
+  checked = {},
 }: MenuOptions): MenuItemConstructorOptions[] {
   const command = (id: MenuCommandId): MenuItemConstructorOptions => ({
     label: MENU_COMMANDS[id].label,
     ...acceleratorProp(keys[id]),
-    click: () => {
-      sendCommand(id);
+    // Electron says whether the key or a click ran the item; a test may press it with no event.
+    click: (_item, _window, event?: { triggeredByAccelerator?: boolean }) => {
+      if (event?.triggeredByAccelerator) sendCommand(id, true);
+      else sendCommand(id);
     },
+  });
+  // The native item flips itself on a click; the renderer's push right after sets the truth.
+  const checkbox = (id: MenuCommandId): MenuItemConstructorOptions => ({
+    ...command(id),
+    type: 'checkbox',
+    checked: checked[id] === true,
+  });
+  const fixed = checked['transport.toggleFixedTempo'] === true;
+  const step = (id: 'transport.slowDown' | 'transport.speedUp'): MenuItemConstructorOptions => ({
+    ...command(id),
+    ...(fixed && { label: FIXED_STEP_LABELS[id] ?? MENU_COMMANDS[id].label }),
   });
   // Never disabled: a disabled item stops the accelerator reaching a focused text field's own
   // undo (macOS), so an empty stack shows the plain name.
@@ -200,6 +247,30 @@ export function menuTemplate({
         command('view.toggleSidebar'),
         command('view.togglePanel'),
         ...(isPackaged ? [] : [separator, { role: 'toggleDevTools' } as const]),
+      ],
+    },
+    {
+      label: 'Playback',
+      submenu: [
+        command('transport.playPause'),
+        command('transport.stop'),
+        command('transport.playFromStart'),
+        command('transport.playFromSelection'),
+        separator,
+        checkbox('transport.toggleLoop'),
+        command('transport.loopSelection'),
+        separator,
+        checkbox('transport.toggleCountIn'),
+        checkbox('transport.toggleMetronome'),
+        command('transport.metronomeVolume'),
+        separator,
+        command('transport.setTempo'),
+        step('transport.slowDown'),
+        step('transport.speedUp'),
+        command('transport.toggleSpeed'),
+        checkbox('transport.toggleFixedTempo'),
+        separator,
+        command('transport.masterVolume'),
       ],
     },
     { role: 'windowMenu' },

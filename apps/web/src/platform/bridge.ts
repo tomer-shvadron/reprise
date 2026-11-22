@@ -147,6 +147,7 @@ export interface InvokeChannels {
   'menu:set-recent': { args: [items: readonly RecentSong[]]; result: undefined };
   'menu:set-history': { args: [labels: HistoryMenuLabels]; result: undefined };
   'menu:set-keys': { args: [keys: MenuKeys]; result: undefined };
+  'menu:set-checked': { args: [checked: MenuChecks]; result: undefined };
   'app:library-dir': { args: []; result: string };
   'app:data-dir': { args: []; result: string };
   'app:print': { args: [options?: PrintOptions]; result: undefined };
@@ -194,6 +195,21 @@ export const MENU_COMMAND_IDS = [
   'view.toggleSidebar',
   'view.togglePanel',
   'view.toggleViewMode',
+  'transport.playPause',
+  'transport.stop',
+  'transport.playFromStart',
+  'transport.playFromSelection',
+  'transport.toggleLoop',
+  'transport.loopSelection',
+  'transport.toggleCountIn',
+  'transport.toggleMetronome',
+  'transport.metronomeVolume',
+  'transport.setTempo',
+  'transport.slowDown',
+  'transport.speedUp',
+  'transport.toggleSpeed',
+  'transport.toggleFixedTempo',
+  'transport.masterVolume',
 ] as const;
 
 export type MenuCommandId = (typeof MENU_COMMAND_IDS)[number];
@@ -212,9 +228,16 @@ export interface MenuKey {
 /** The key of each menu command; `null` or absent leaves the item without one. */
 export type MenuKeys = Partial<Record<MenuCommandId, MenuKey | null>>;
 
+/** The state of each checkbox item in the native menu; an id the menu has no checkbox for is refused. */
+export type MenuChecks = Partial<Record<MenuCommandId, boolean>>;
+
 /** Main-to-renderer event channels and their payloads. */
 export interface EventChannels {
-  'menu:command': [id: MenuCommandId];
+  /**
+   * `viaAccelerator` is true when the item's key, not a click, ran it: the renderer then leaves
+   * a key that has no Cmd or Ctrl to a focused text field, as it does for its own keys.
+   */
+  'menu:command': [id: MenuCommandId, viaAccelerator?: boolean];
   'menu:open-recent': [id: string];
   /** The user asked to close the window while the document is edited; answer with `window:close`. */
   'window:close-requested': [];
@@ -246,6 +269,9 @@ export interface RepriseBridge {
     ...args: InvokeArgs<'menu:set-history'>
   ) => Promise<InvokeResult<'menu:set-history'>>;
   setMenuKeys: (...args: InvokeArgs<'menu:set-keys'>) => Promise<InvokeResult<'menu:set-keys'>>;
+  setMenuChecks: (
+    ...args: InvokeArgs<'menu:set-checked'>
+  ) => Promise<InvokeResult<'menu:set-checked'>>;
   libraryDir: () => Promise<InvokeResult<'app:library-dir'>>;
   dataDir: () => Promise<InvokeResult<'app:data-dir'>>;
   print: (...args: InvokeArgs<'app:print'>) => Promise<InvokeResult<'app:print'>>;

@@ -21,6 +21,7 @@ import type {
   FileFilter,
   HistoryMenuLabels,
   MenuCommandId,
+  MenuChecks,
   MenuKeys,
   RecentSong,
 } from '@reprise/web';
@@ -96,6 +97,7 @@ let recentSongs: readonly RecentSong[] = [];
 let historyLabels: HistoryMenuLabels | undefined;
 // App-wide preferences, so unlike the history labels they outlive the window.
 let menuKeys: MenuKeys | undefined;
+let menuChecks: MenuChecks | undefined;
 const closeGuards = new Map<BrowserWindow, CloseGuard>();
 
 const dialogFilters = (filters: readonly FileFilter[]): DialogFilter[] =>
@@ -207,6 +209,11 @@ registerInvokeHandlers(
       applyMenu();
       return Promise.resolve(undefined);
     },
+    'menu:set-checked': (_event, checked) => {
+      menuChecks = checked;
+      applyMenu();
+      return Promise.resolve(undefined);
+    },
     'download:start': async (event, id, url, to, sha256, maxBytes) => {
       const contents = event.sender;
       const owner = contents.id;
@@ -264,9 +271,13 @@ registerInvokeHandlers(
   isTrusted,
 );
 
-function sendMenuCommand(id: MenuCommandId): void {
+function sendMenuCommand(id: MenuCommandId, viaAccelerator = false): void {
   const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-  if (window) sendEvent(window.webContents, 'menu:command', id);
+  if (window) {
+    // The flag is left off a click, so the common message stays the bare id.
+    if (viaAccelerator) sendEvent(window.webContents, 'menu:command', id, true);
+    else sendEvent(window.webContents, 'menu:command', id);
+  }
 }
 
 function sendOpenRecent(id: string): void {
@@ -299,6 +310,7 @@ function applyMenu(): void {
         recent: recentSongs,
         ...(historyLabels && { history: historyLabels }),
         ...(menuKeys && { keys: menuKeys }),
+        ...(menuChecks && { checked: menuChecks }),
         openRecent: sendOpenRecent,
       }),
     ),
