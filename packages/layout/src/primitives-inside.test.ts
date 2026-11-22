@@ -1,8 +1,8 @@
 import { note, score } from '@reprise/model/testing';
-import { assert, constantFrom, integer, property } from 'fast-check';
+import { assert, constant, constantFrom, integer, oneof, property, tuple } from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import type { Notation, Score } from '@reprise/model';
+import type { Bend, Notation, Score } from '@reprise/model';
 
 import {
   DEFAULT_MARGINS,
@@ -55,6 +55,43 @@ function options(built: Score, width: number, notation: Notation): LayoutOptions
   };
 }
 
+type NoteSpec = NonNullable<Parameters<typeof note>[2]>;
+
+const PREBEND: Bend = {
+  kind: 'prebend',
+  points: [
+    { position: 0, value: 4 },
+    { position: 60, value: 4 },
+  ],
+};
+const BEND: Bend = {
+  kind: 'bend',
+  points: [
+    { position: 0, value: 0 },
+    { position: 60, value: 4 },
+  ],
+};
+
+/** Twelve bars of `count` beats of `duration`, each ending on a note made from `last`. */
+function endingOn(duration: '8' | '16', count: number, last: NoteSpec, fret = 5): Score {
+  const built = score().track('guitar');
+  for (let bar = 0; bar < 12; bar++) {
+    built.bar();
+    for (let i = 0; i < count - 1; i++) built.beat(duration, [note(2, (i % 5) + 1)]);
+    built.beat(duration, [note(3, fret, last)]);
+  }
+  return built.build({ ids: 'sequential' });
+}
+
+/** The widths from `from` to `to` px, every 20, at which `built` draws past a system's edge. */
+function overflowing(built: Score, notation: Notation, from: number, to: number): number[] {
+  const found: number[] = [];
+  for (let width = from; width <= to; width += 20) {
+    if (outside(layout(built, options(built, width, notation))).length > 0) found.push(width);
+  }
+  return found;
+}
+
 describe('primitives stay inside their system', () => {
   it('in a squeezed bar whose last beat has a second voice moved right of it', () => {
     const first = score().track('guitar').bar();
@@ -78,10 +115,44 @@ describe('primitives stay inside their system', () => {
     // rigid parts against 61.7 px of room at 320 px.
     const built = randomScore(399, { diagrams: true });
     const result = layout(built, options(built, 320, 'standard'));
-    // Its heads cannot all fit, so some stay past the bar's end (anchors collapse onto it), but
+    // Its heads cannot all fit, so some stay past the bar\'s end (anchors collapse onto it), but
     // the system keeps to its line.
     expectValid(result);
     expect(lineOverflow(result, 320)).toEqual([]);
+  });
+
+  it("keeps a harmonic's slide-out inside the bar, room counted from past its brackets", () => {
+    const built = endingOn('8', 8, {
+      harmonic: { kind: 'artificial', value: 12 },
+      slide: ['outDown'],
+    });
+    expect(overflowing(built, 'tab', 300, 1200)).toEqual([]);
+  });
+
+  it("keeps a harmonic's bend inside the bar, room counted from past its brackets", () => {
+    const built = endingOn('8', 8, { harmonic: { kind: 'artificial', value: 12 }, bend: BEND });
+    expect(overflowing(built, 'tab', 300, 1200)).toEqual([]);
+  });
+
+  it("stops a pre-bend's hold at the bar's end in standard notation", () => {
+    const built = endingOn('16', 16, { bend: PREBEND }, 12);
+    expect(overflowing(built, 'standard', 300, 440)).toEqual([]);
+  });
+
+  it("keeps the sl. letter of a legato arc cut by the bar's end inside the system", () => {
+    for (const seed of [53, 377]) {
+      const built = randomScore(seed, { diagrams: true });
+      expect(outside(layout(built, options(built, 320, 'tab'))), `seed ${String(seed)}`).toEqual(
+        [],
+      );
+    }
+  });
+
+  it('draws bends in the dense standard bars at 320 px with a frame that ends after it starts', () => {
+    for (const seed of [16, 399]) {
+      const built = randomScore(seed, { diagrams: true });
+      expectValid(layout(built, options(built, 320, 'standard')));
+    }
   });
 
   it('holds for random scores in paged mode at narrow and wide lines', () => {
@@ -92,10 +163,11 @@ describe('primitives stay inside their system', () => {
     assert(
       property(
         integer({ min: 0, max: 400 }),
-        constantFrom(320, 500, 700, 1200),
-        constantFrom('tab', 'standard', 'both'),
-        (seed, width, notation) => {
-          if (width === 320 && notation !== 'tab') return;
+        oneof(
+          tuple(constant(320), constant<Notation>('tab')),
+          tuple(constantFrom(500, 700, 1200), constantFrom<Notation>('tab', 'standard', 'both')),
+        ),
+        (seed, [width, notation]) => {
           const built = randomScore(seed, { diagrams: true });
           const result = layout(built, options(built, width, notation));
           const label = `seed ${String(seed)} ${String(width)} ${notation}`;
@@ -105,5 +177,5 @@ describe('primitives stay inside their system', () => {
       ),
       { numRuns: 240 },
     );
-  }, 30_000);
+  }, 60_000);
 });

@@ -225,8 +225,9 @@ function drawBendGroup(
   const [top] = bent;
   if (!band || !top) return;
   const x0 = at + Math.max(...bent.map((label) => rightEdge(label, size))) + BEND.gap * space;
-  // The shortest length must not pass the bar's end where the room is squeezed.
-  const xEnd = Math.max(at, Math.min(Math.max(stop, x0 + min * space), contentEnd(context)));
+  // The shortest length must not pass the bar's end where the room is squeezed, and the frame
+  // never ends left of where it starts, which would invert it.
+  const xEnd = Math.max(x0, Math.min(Math.max(stop, x0 + min * space), contentEnd(context)));
   const releaseTop = lineY(context, top.note.string) - labelHalfHeight(size);
   drawn.columns = bendColumns(bent.map((label) => label.note.bend));
   for (const label of bent) {
@@ -278,6 +279,7 @@ function drawScrape(context: TabContext, label: NoteLabel, x: number, next: numb
   if (!note.pickScrape) return;
   const size = TAB.fretSize * space;
   const start = x + rightEdge(label, size) + SCRAPE.gap * space;
+  // A guard like the slide-out's: it only bites where the rigid parts alone overflow the line.
   const end = Math.min(
     Math.max(next - SCRAPE.stop * space, start + SCRAPE.min * space),
     contentEnd(context),
@@ -295,7 +297,8 @@ function drawLooseSlides(context: TabContext, label: NoteLabel, x: number): void
   const { note } = label;
   const before = x - leftEdge(label, size) - SLIDE.clear * space;
   const after = x + rightEdge(label, size) + SLIDE.clear * space;
-  // Where the bar's room is squeezed below what the slide reserved, the stub stops at its end.
+  // A guard: the room reserved in `rigid` covers the stub, so this only bites where the rigid
+  // parts alone overflow the line (tab never squeezes them), and then it stops at the bar's end.
   const out = Math.min(after + SLIDE.length * space, contentEnd(context));
   const length = SLIDE.length * space;
   for (const kind of note.slide ?? []) {

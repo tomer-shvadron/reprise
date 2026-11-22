@@ -353,9 +353,9 @@ function analyseBeat(
   for (const label of labels) {
     if (label.suffix) {
       edge = Math.max(edge, labelHalf(label, size) + suffixRoom(label, size));
-      right = Math.max(right, labelHalf(label, size) + suffixRoom(label, size));
     }
   }
+  right = Math.max(right, edge);
   if (slideOut) right = Math.max(right, edge + TAB.slideRoom * space);
   if (bent) right = Math.max(right, edge + TAB.bendRoom * space);
   const played = !beat.rest && beat.notes.length > 0;
