@@ -150,7 +150,10 @@ describe.skipIf(!font)('GeneralUser GS', () => {
     );
     expect(banks.has(8 << 7)).toBe(false);
     expect(font?.preset(8, 25)).toBeDefined();
-    expect(font?.preset(8, 25)?.id).not.toBe(font?.preset(0, 25)?.id);
+    const nameOf = (bank: number) =>
+      font?.presets.find((p) => p.bank === bank && p.program === 25)?.name;
+    expect(nameOf(8)).toBe('12-String Guitar');
+    expect(nameOf(0)).not.toBe(nameOf(8));
   });
 
   it('resolves every GM program in bank 0 to a non-empty region map', () => {

@@ -349,7 +349,7 @@ function projectBar(
   return { clef: named(CLEFS, first?.clef ?? 0), voices: normaliseVoices(voices) };
 }
 
-function projectTrack(track: AtTrack, kind: TrackKind): TrackProjection {
+function projectTrack(track: AtTrack, kind: TrackKind, bankIsByte: boolean): TrackProjection {
   const staff = track.staves[0];
   const slots = slotsOf(track);
   const tuning = [...(staff?.tuning ?? [])].reverse();
@@ -361,7 +361,8 @@ function projectTrack(track: AtTrack, kind: TrackKind): TrackProjection {
     capo: staff?.capo ?? 0,
     percussion: staff?.isPercussion ?? false,
     program: playbackInfo.program,
-    bank: playbackInfo.bank,
+    // alphaTab keeps a gp3 to gp5 bank as the raw MSB byte and a gpif one as 14-bit; ours is 14-bit.
+    bank: bankIsByte ? (playbackInfo.bank & 127) << 7 : playbackInfo.bank,
     volume: playbackInfo.volume,
     pan: playbackInfo.balance,
     mute: playbackInfo.isMute,
@@ -416,6 +417,7 @@ function projectMasterBar(masterBar: AtMasterBar, opening: number | null): Maste
 export function projectAlphaTab(
   score: alphaTab.model.Score,
   kinds: readonly TrackKind[],
+  options: { bankIsByte?: boolean } = {},
 ): ScoreProjection {
   return {
     meta: {
@@ -430,7 +432,9 @@ export function projectAlphaTab(
       instructions: score.instructions,
       notices: score.notices,
     },
-    tracks: score.tracks.map((track, index) => projectTrack(track, kinds[index] ?? 'fretted')),
+    tracks: score.tracks.map((track, index) =>
+      projectTrack(track, kinds[index] ?? 'fretted', options.bankIsByte ?? false),
+    ),
     masterBars: score.masterBars.map((masterBar, index) =>
       projectMasterBar(masterBar, index === 0 ? score.tempo : null),
     ),

@@ -24,29 +24,24 @@ function bankOf(track: TrackKey, program: number): number {
   if (
     track.kind === 'fretted' &&
     program === MANDOLIN_PROGRAM &&
-    track.bank === 0 &&
+    soundfontBankOf(track.bank) === 0 &&
     track.tuning &&
     stringInstrumentOf({ ...track, tuning: track.tuning, program }) === 'mandolin'
   ) {
     return MANDOLIN_BANK;
   }
-  return track.bank;
+  return soundfontBankOf(track.bank);
 }
 
-/** The highest bank number a one-byte (gp5) bank or a 7-bit MSB can carry. */
-const MAX_BANK_BYTE = 127;
-
 /**
- * The SF2 `wBank` for a track's bank. `Track.bank` is a 14-bit MIDI bank (`(msb << 7) | lsb`,
- * as the gpif reader fills it), while a GP5 file stores one byte, which is an MSB value on its
- * own. SF2 banks are numbered by the MSB (GeneralUser GS keeps its variations at wBank 1 to 127,
- * the percussion kits at 128), so a value above 127 is read as 14-bit and its MSB is the bank.
- * The chain is: the exact bank (a value of 127 or less), then the MSB alone, then bank 0, which
- * `Sf2Soundfont.resolve` supplies when the returned bank holds no such program. A melodic
- * value of 128 or more never asks for the percussion bank by accident.
+ * The SF2 `wBank` for a track's bank. `Track.bank` is 14-bit MIDI, `(msb << 7) | lsb`, and SF2
+ * banks are numbered by the MSB (GeneralUser GS keeps its variations at wBank 1 to 127, percussion
+ * at 128), so the LSB is dropped, as a GS synth does. A bank the font lacks falls back to bank 0
+ * in `Sf2Soundfont.resolve`. The result is at most 127, so a melodic track never asks for the
+ * percussion bank.
  */
 export function soundfontBankOf(bank: number): number {
-  return bank <= MAX_BANK_BYTE ? bank : Math.min(MAX_BANK_BYTE, bank >> 7);
+  return bank >> 7;
 }
 
 interface Entry {
@@ -80,7 +75,7 @@ export class GmBank {
     this.#entry(track, program).instrument;
 
   #entry(track: TrackKey, program: number): Entry {
-    const bank = track.kind === 'drums' ? PERCUSSION_BANK : soundfontBankOf(bankOf(track, program));
+    const bank = track.kind === 'drums' ? PERCUSSION_BANK : bankOf(track, program);
     const key = `${String(bank)}:${String(program)}`;
     const cached = this.#entries.get(key);
     if (cached) return cached;

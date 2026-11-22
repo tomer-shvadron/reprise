@@ -14,6 +14,8 @@ export function guitarTrack(
     program = 25,
     pitches = '40 45 50 55 59 64',
     fretCount = 24,
+    msb = 0,
+    lsb = 0,
   } = {},
 ): string {
   return `<Track id="${id}">
@@ -23,7 +25,7 @@ export function guitarTrack(
 <InstrumentSet><Name>Guitar</Name><Type>steelGuitar</Type><LineCount>5</LineCount></InstrumentSet>
 <Transpose><Chromatic>0</Chromatic><Octave>-1</Octave></Transpose>
 <Sounds><Sound><Name>Steel</Name><Path>Guitars/Steel</Path><Role>Factory</Role>
-<MIDI><LSB>0</LSB><MSB>0</MSB><Program>${String(program)}</Program></MIDI></Sound></Sounds>
+<MIDI><LSB>${String(lsb)}</LSB><MSB>${String(msb)}</MSB><Program>${String(program)}</Program></MIDI></Sound></Sounds>
 <PlaybackState>Default</PlaybackState>
 <Staves><Staff><Properties>
 ${property('CapoFret', '<Fret>0</Fret>')}
