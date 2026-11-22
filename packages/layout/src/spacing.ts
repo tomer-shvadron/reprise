@@ -45,6 +45,12 @@ export interface Spring {
    * for its line draws scaled by `rigidScale`. It shrinks before the fixed part does.
    */
   movable?: number;
+  /**
+   * The fingering clearance: room, beyond the rigid and movable parts, that keeps the marks of
+   * this onset and the next marked one apart. `squeeze` leaves it whole; `markScale` shrinks it
+   * once the line cannot hold it, before the voice shifts do (#523).
+   */
+  marks?: number;
 }
 
 /**
@@ -54,14 +60,18 @@ export interface Spring {
  * when the rigid parts alone overflow it.
  */
 export function squeezedMin(
-  { min, rigid = 0, movable = 0 }: Spring,
+  { min, rigid = 0, movable = 0, marks = 0 }: Spring,
   squeeze: number,
   rigidScale = 1,
   fixedScale = 1,
+  markScale = 1,
 ): number {
   return squeeze >= 1
     ? min
-    : rigid * fixedScale + movable * rigidScale + Math.max(0, min - rigid - movable) * squeeze;
+    : rigid * fixedScale +
+        movable * rigidScale +
+        marks * markScale +
+        Math.max(0, min - rigid - movable - marks) * squeeze;
 }
 
 /**
@@ -74,9 +84,13 @@ export function stretch(
   squeeze = 1,
   rigidScale = 1,
   fixedScale = 1,
+  markScale = 1,
 ): number[] {
   return springs.map((spring) =>
-    Math.max(squeezedMin(spring, squeeze, rigidScale, fixedScale), spring.natural * factor),
+    Math.max(
+      squeezedMin(spring, squeeze, rigidScale, fixedScale, markScale),
+      spring.natural * factor,
+    ),
   );
 }
 

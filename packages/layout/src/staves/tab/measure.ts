@@ -1,9 +1,9 @@
-import { glyphMetrics } from '../../metrics';
+import { glyphMetrics, textWidth } from '../../metrics';
 import type { OnsetExtent, StaffBar, StaffBarMeasure } from '../staff-module';
 import { DYNAMICS_GLYPHS, beatDynamics } from '../dynamics';
 import { analyseEffects } from '../effects';
 import { wordsExtent } from '../words';
-import { TAB, analyseBar, type TabBeat, type TabOptions } from './analysis';
+import { TAB, analyseBar, fingering, type TabBeat, type TabOptions } from './analysis';
 import { TICK_EPSILON } from '../../ticks';
 
 /** Where a chord name or beat text starts: at the left edge of the beat's fret numbers. */
@@ -43,6 +43,20 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
     const left = Math.max(beat.left, wordsLeft(beat, space, input.chordDiagrams));
     const right = Math.max(beat.right, wordsRight(beat, space, input.chordDiagrams));
     const last = onsets.at(-1);
+    let half = 0;
+    if (analysed.rhythm)
+      for (const label of beat.labels) {
+        const t = fingering(label.note);
+        if (t !== undefined) half = Math.max(half, textWidth(t, TAB.fingerSize * space) / 2);
+      }
+    if (half > 0) {
+      const target = last && beat.tick - last.tick < TICK_EPSILON ? last : undefined;
+      if (target)
+        target.marks = {
+          left: Math.max(target.marks?.left ?? 0, half),
+          right: Math.max(target.marks?.right ?? 0, half),
+        };
+    }
     if (last && beat.tick - last.tick < TICK_EPSILON) {
       last.left = Math.max(last.left, left);
       last.right = Math.max(last.right, right);
@@ -55,6 +69,7 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
         right,
         rigid: beat.right,
         ...(beat.labelRight && { ideal: beat.labelRight }),
+        ...(half > 0 && { marks: { left: half, right: half } }),
       });
     }
   }

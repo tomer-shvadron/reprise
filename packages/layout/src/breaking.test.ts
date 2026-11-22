@@ -46,16 +46,30 @@ describe('fitSprings', () => {
   it('shrinks the movable parts before the fixed ones', () => {
     const springs = [[{ natural: 30, min: 30, rigid: 10, movable: 10 }]];
     // Room 15: the fixed 10 stays, the movable 10 gets 5.
-    expect(fitSprings(springs, 30, 15)).toEqual({ factor: 0, squeeze: 0, rigidScale: 0.5 });
+    expect(fitSprings(springs, 30, 15)).toEqual({
+      factor: 0,
+      squeeze: 0,
+      markScale: 0,
+      rigidScale: 0.5,
+    });
     // Room 25: the minimum's own 10 above rigid and movable gets half.
     expect(fitSprings(springs, 30, 25)).toEqual({ factor: 0, squeeze: 0.5 });
     // Room 5: only now do the fixed parts shrink.
     expect(fitSprings(springs, 30, 5)).toEqual({
       factor: 0,
       squeeze: 0,
+      markScale: 0,
       rigidScale: 0,
       fixedScale: 0.5,
     });
+  });
+
+  it('gives the fingering clearance up after the squeeze and before the voice shifts', () => {
+    const springs = [[{ natural: 40, min: 40, rigid: 10, movable: 10, marks: 10 }]];
+    // Room 35: the 10 above the three parts gets half, the clearance stays whole.
+    expect(fitSprings(springs, 40, 35)).toEqual({ factor: 0, squeeze: 0.5 });
+    // Room 25: the squeezable part is gone and the clearance gets half.
+    expect(fitSprings(springs, 40, 25)).toEqual({ factor: 0, squeeze: 0, markScale: 0.5 });
   });
 
   it("keeps the voice shifts whole when the onsets' total extents fit, as before the split (#484)", () => {

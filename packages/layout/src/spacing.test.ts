@@ -93,4 +93,12 @@ describe('rigidShares', () => {
     expect(squeezedMin(spring, 0, 0)).toBe(20);
     expect(squeezedMin(spring, 0, 0, 0.5)).toBe(10);
   });
+
+  it('scales the fingering clearance on its own, ahead of the movable part', () => {
+    const spring = { natural: 50, min: 40, rigid: 20, movable: 10, marks: 6 };
+    expect(squeezedMin(spring, 0)).toBe(20 + 10 + 6);
+    expect(squeezedMin(spring, 0, 1, 1, 0.5)).toBe(33);
+    expect(squeezedMin(spring, 0, 1, 1, 0)).toBe(30);
+    expect(squeezedMin(spring, 1, 1, 1, 0)).toBe(40);
+  });
 });

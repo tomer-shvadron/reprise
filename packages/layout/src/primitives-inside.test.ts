@@ -23,6 +23,7 @@ import { describePrimitive } from './test/describe';
 import { expectValid, overlappingMarks } from './test/check-result';
 import { fingering } from './staves/tab/analysis';
 import { randomScore } from './test/random-score';
+import { TICK_EPSILON } from './ticks';
 
 const EPSILON = 0.02;
 
@@ -235,12 +236,10 @@ describe('primitives stay inside their system', () => {
 
   it('draws no two fingering marks of one onset on one baseline, in any notation (#511)', () => {
     // Seeds 116, 215, 218 and 384 stacked the fingering of two voices at one onset in one row.
-    // Every width and notation guards the same-onset case, on the seeds that have one. On the tab
-    // at 480 px and A4 no two fingering marks overlap at all, neighbouring onsets included, except
-    // seeds 298, 363 and 364 at 480 px (#523). Elsewhere neighbouring onsets may touch: in a bar
-    // squeezed far below its minimum (notation.md, Tab staff, Words), and on the standard staff
-    // (#523).
-    const openAt480 = new Set([298, 363, 364]);
+    // Every width and notation guards the same-onset case, on the seeds that have one. At 480 px
+    // and A4 no two fingering marks overlap at all, neighbouring onsets included, in any notation
+    // (#523). At 320 px neighbouring onsets may touch: a bar too dense for its line gives the
+    // clearance up (`markScale`, notation.md, Bars wider than the line).
     for (let seed = 0; seed <= 400; seed++) {
       const built = randomScore(seed, { diagrams: true });
       const notes = new Map<string, { note: Note; onset: string }>();
@@ -250,7 +249,8 @@ describe('primitives stay inside their system', () => {
           for (const voice of bar.voices) {
             let tick = 0;
             for (const beat of voice.beats) {
-              const onset = `${track.id} ${String(index)} ${String(tick)}`;
+              // Keyed as the layout groups onsets: seed 100 has ticks 3240 and 3240.0000000000014.
+              const onset = `${track.id} ${String(index)} ${String(Math.round(tick / TICK_EPSILON))}`;
               for (const note of beat.notes) {
                 notes.set(note.id, { note, onset });
                 if (fingering(note) !== undefined)
@@ -261,8 +261,8 @@ describe('primitives stay inside their system', () => {
           }
         }
       }
-      // Most seeds never have two fingered notes at one onset, so only the tab neighbour check
-      // lays them out.
+      // Most seeds never have two fingered notes at one onset, so only the neighbour check lays
+      // those out at 320 px.
       const shared = [...fingered.values()].some((count) => count > 1);
       const onsetOf = (p: Primitive): string | undefined => {
         const entry = p.node === undefined ? undefined : notes.get(p.node);
@@ -276,7 +276,8 @@ describe('primitives stay inside their system', () => {
           .filter(([a, b]) => {
             const onset = onsetOf(a);
             if (onset === undefined || onsetOf(b) === undefined) return false;
-            if (!sameOnset) return true;
+            // Marks stacked at one onset are #526's: neighbours are the marks of two onsets.
+            if (!sameOnset) return onset !== onsetOf(b);
             return (
               onset === onsetOf(b) &&
               (a.kind === 'glyph' || a.kind === 'text') &&
@@ -288,16 +289,15 @@ describe('primitives stay inside their system', () => {
       for (const notation of ['tab', 'standard', 'both'] as const) {
         for (const width of [320, 480, PAGE_SIZES.a4.width]) {
           const label = `seed ${String(seed)} ${String(width)} ${notation}`;
-          if (shared) {
-            expect(pairs(layout(built, options(built, width, notation)), true), label).toEqual([]);
-          }
-          if (notation === 'tab' && width !== 320 && !(width === 480 && openAt480.has(seed))) {
-            expect(pairs(layout(built, options(built, width, notation)), false), label).toEqual([]);
-          }
+          const neighbours = width !== 320;
+          if (!shared && !neighbours) continue;
+          const result = layout(built, options(built, width, notation));
+          if (shared) expect(pairs(result, true), label).toEqual([]);
+          if (neighbours) expect(pairs(result, false), label).toEqual([]);
         }
       }
     }
-  }, 60_000);
+  }, 120_000);
 
   it('holds for random scores in paged mode at narrow and wide lines', () => {
     // Paged only: continuous mode never squeezes (`finish` squeezes only paged lines), so it

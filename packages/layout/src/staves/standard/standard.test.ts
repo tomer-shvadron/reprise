@@ -475,6 +475,32 @@ describe('standard staff', () => {
     expect(content(result)).toMatchSnapshot();
   });
 
+  it('keeps the fingering of neighbouring onsets apart in a squeezed bar (#523)', () => {
+    const fingers = ['thumb', 'index', 'middle', 'ring'] as const;
+    const finger = (i: number) => fingers[i % 4] ?? 'thumb';
+    for (const notation of ['standard', 'both'] as const) {
+      const bar = score()
+        .track('guitar', { display: { notation, octaveShift: 0 } })
+        .bar();
+      for (let i = 0; i < 16; i++) {
+        bar.beat('16', [
+          note(1 + (i % 4), 3, { leftHandFinger: finger(i), rightHandFinger: 'middle' }),
+        ]);
+      }
+      const built = bar.build({ ids: 'sequential' });
+      const result = laid(built, { width: 420 });
+      const marks = result.primitives.filter(
+        (p) => (p.kind === 'glyph' && p.glyph.startsWith('fingering')) || p.kind === 'text',
+      );
+      const fingering = overlappingMarks(result).filter(
+        ([a, b]) => marks.includes(a) && marks.includes(b),
+      );
+      expect(fingering.map(([a, b]) => `${describePrimitive(a)} ${describePrimitive(b)}`)).toEqual(
+        [],
+      );
+    }
+  });
+
   it('stacks the fingering of voices that start together, the higher head on top (#511)', () => {
     for (const notation of ['standard', 'both'] as const) {
       const built = score()
@@ -903,7 +929,7 @@ describe('room for everything the five-line staves draw', () => {
       ['both', 2],
     ] as const) {
       const built = originHalves(notation);
-      const result = laid(built, { width: 300 });
+      const result = laid(built, { width: 420 });
       expect(result.systems, notation).toHaveLength(4);
       const origin = beatOf(built, 0, 0, 0).notes[0]?.id;
       const system = result.systems[0];
