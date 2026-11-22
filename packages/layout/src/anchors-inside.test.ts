@@ -3,26 +3,9 @@ import { note, score } from '@reprise/model/testing';
 import { assert, constantFrom, integer, property } from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { PAGE_SIZES, layout, type LayoutOptions, type LayoutResult } from './index';
+import { PAGE_SIZES, layout, type LayoutOptions } from './index';
 import { expectValid } from './test/check-result';
 import { randomScore } from './test/random-score';
-
-const EPSILON = 0.02;
-
-/** Anchors, as `kind id`, that are not wholly inside the frame of the system they belong to. */
-function outside(result: LayoutResult): string[] {
-  const found: string[] = [];
-  for (const system of result.systems) {
-    const left = system.bbox.x - (system.offsetX ?? 0);
-    const right = left + system.bbox.width;
-    for (const anchor of result.anchors.slice(system.anchors.start, system.anchors.end)) {
-      const { x, width } = anchor.bbox;
-      if (x < left - EPSILON || x + width > right + EPSILON)
-        found.push(`${anchor.kind} ${anchor.id}`);
-    }
-  }
-  return found;
-}
 
 function options(built: Score, width: number, mode: LayoutOptions['mode']): LayoutOptions {
   return {
@@ -45,7 +28,7 @@ describe('anchors stay inside their system', () => {
     first.voice(1);
     for (let i = 0; i < 16; i++) first.beat('16', [note(1, 1), note(2, 1)]);
     const built = first.build({ ids: 'sequential' });
-    // `expectValid` checks every anchor against its system's frame; `outside` is for the property.
+    // `expectValid` checks every anchor against its system's frame.
     expectValid(layout(built, options(built, 200, 'paged')));
   });
 
@@ -65,18 +48,49 @@ describe('anchors stay inside their system', () => {
     expectValid(layout(built, options(built, PAGE_SIZES.a4.width, 'paged')));
   });
 
+  it.each([
+    ['identical', 5],
+    ['a third apart', 9],
+    ['a fourth apart', 10],
+  ])('keeps two voices apart when their grace notes are %s', (_name, fret) => {
+    // The main chords sit far apart, so only the graces meet (#465): a third or fourth apart,
+    // their heads clear each other but their stems and flags cross.
+    const grace = (at: number) => ({
+      grace: [{ duration: 16 as const, before: true, notes: [note(3, at)] }],
+    });
+    const first = score().track('guitar').bar();
+    first.beat('4', [note(1, 0)], grace(5)).beat('4', [note(1, 0)]);
+    first
+      .voice(1)
+      .beat('4', [note(6, 3)], grace(fret))
+      .beat('4', [note(6, 3)]);
+    const built = first.build({ ids: 'sequential' });
+    const result = layout(built, options(built, PAGE_SIZES.a4.width, 'paged'));
+    expectValid(result);
+    // The anchors alone clear each other here; the later voice moves right of the graces' extent.
+    const [high, low] = [0, 1].map((voice) =>
+      result.anchors.find((a) => a.kind === 'note' && a.voice === voice),
+    );
+    expect(low?.bbox.x).toBeGreaterThan((high?.bbox.x ?? 0) + 5);
+  });
+
+  it('holds for the random scores #465 found, at every width in both modes', () => {
+    for (const seed of [37, 97, 293, 323, 358, 373]) {
+      const built = randomScore(seed, { diagrams: true });
+      for (const width of [320, 500, 700, 1200]) {
+        for (const mode of ['paged', 'continuous'] as const) {
+          expectValid(layout(built, options(built, width, mode)));
+        }
+      }
+    }
+  }, 30_000);
+
   it('holds for random scores with chord diagrams, in both modes at narrow and wide lines', () => {
-    // Only `outside`, not `expectValid`: two voices' grace notes on identical positions still
-    // overlap (seeds 37, 97, 293, 358 and 373 at 1200 px paged, #465). Widen this check to
-    // `expectValid` when that is fixed.
     assert(
       property(integer({ min: 0, max: 400 }), constantFrom(320, 500, 700, 1200), (seed, width) => {
         const built = randomScore(seed, { diagrams: true });
         for (const mode of ['paged', 'continuous'] as const) {
-          expect(
-            outside(layout(built, options(built, width, mode))),
-            `seed ${String(seed)}`,
-          ).toEqual([]);
+          expectValid(layout(built, options(built, width, mode)));
         }
       }),
       { numRuns: 60 },

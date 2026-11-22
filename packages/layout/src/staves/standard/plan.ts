@@ -630,20 +630,77 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   };
 }
 
+interface Box {
+  position: number;
+  left: number;
+  right: number;
+}
+
+/** A beat's main heads, as boxes from its onset. */
+function headBoxes(beat: BeatPlan): Box[] {
+  const shift = beat.shift ?? 0;
+  return (beat.chord?.heads ?? []).map((h) => ({
+    position: h.position,
+    left: shift + h.left,
+    right: shift + h.left + h.width,
+  }));
+}
+
+const overlap = (p: Box, q: Box): boolean =>
+  Math.abs(p.position - q.position) <= 1 &&
+  Math.min(p.right, q.right) - Math.max(p.left, q.left) > 1e-6;
+
 /** Whether a head of each chord is a unison or second from one of the other's, overlapping it. */
 function collide(a: BeatPlan, b: BeatPlan): boolean {
   if (!a.chord || !b.chord) return false;
-  const shiftA = a.shift ?? 0;
-  const shiftB = b.shift ?? 0;
-  return a.chord.heads.some((p) =>
-    (b.chord?.heads ?? []).some(
-      (q) =>
-        Math.abs(p.position - q.position) <= 1 &&
-        Math.min(shiftA + p.left + p.width, shiftB + q.left + q.width) -
-          Math.max(shiftA + p.left, shiftB + q.left) >
-          1e-6,
-    ),
-  );
+  const right = headBoxes(b);
+  return headBoxes(a).some((p) => right.some((q) => overlap(p, q)));
+}
+
+/** From the onset, the span the beat's grace notes fill (heads, accidentals, stems, flags). */
+function graceSpan(beat: BeatPlan): { left: number; right: number } | undefined {
+  if (beat.graces.length === 0) return undefined;
+  const shift = beat.shift ?? 0;
+  return {
+    left: shift + Math.min(...beat.graces.map(({ offset, chord }) => offset + chord.left)),
+    right: shift + Math.max(...beat.graces.map(({ offset, chord }) => offset + chord.right)),
+  };
+}
+
+/**
+ * Whether one beat's grace notes meet the other's, or a head of the other's chord: any overlap of
+ * their groups' extents counts, whatever the pitches, since a third or fourth apart their stems
+ * and flags still cross; against a chord, only a head a unison or second from a grace's.
+ */
+function collideGraces(a: BeatPlan, b: BeatPlan): boolean {
+  if (!a.chord || !b.chord) return false;
+  const spanA = graceSpan(a);
+  const spanB = graceSpan(b);
+  if (
+    spanA &&
+    spanB &&
+    Math.min(spanA.right, spanB.right) - Math.max(spanA.left, spanB.left) > 1e-6
+  )
+    return true;
+  const meets = (x: BeatPlan, y: BeatPlan): boolean => {
+    const heads = headBoxes(y);
+    const shift = x.shift ?? 0;
+    return x.graces.some(({ offset, chord }) =>
+      chord.heads.some((h) =>
+        heads.some((q) =>
+          overlap(
+            {
+              position: h.position,
+              left: shift + offset + h.left,
+              right: shift + offset + h.left + h.width,
+            },
+            q,
+          ),
+        ),
+      ),
+    );
+  };
+  return meets(a, b) || meets(b, a);
 }
 
 /**
@@ -732,8 +789,9 @@ function separateVoices(
         for (let e = 0; e < i; e++) {
           const earlier = onset[e];
           if (!earlier) continue;
-          if (!collide(earlier, later)) continue;
-          const shared = (later.shift ?? 0) > 0 ? undefined : sharedHeads(earlier, later);
+          const graces = collideGraces(earlier, later);
+          if (!graces && !collide(earlier, later)) continue;
+          const shared = graces || (later.shift ?? 0) > 0 ? undefined : sharedHeads(earlier, later);
           if (shared) {
             shares.push(shared);
             continue;
