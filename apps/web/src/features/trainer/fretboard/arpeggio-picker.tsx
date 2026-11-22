@@ -32,6 +32,17 @@ const DEFAULT_SUFFIX = 'm';
 
 const intervalsOf = (name: string): string | undefined => arpeggioOf(name)?.intervals.join(',');
 
+/** The button a chord's intervals belong to, built once: a quality with no button has no entry. */
+const SUFFIX_OF = new Map(
+  QUALITIES.flatMap(({ suffix }) => {
+    const key = intervalsOf(`C${suffix}`);
+    return key === undefined ? [] : [[key, suffix] as const];
+  }),
+);
+
+/** Picks are held in the chord library's own spelling (`F#m7b5`, `Bb7`); the buttons show ♭ and ♯. */
+const asciiRoot = (name: string): string => name.replace('♯', '#').replace('♭', 'b');
+
 /**
  * The arpeggio tool: whether the chord follows the song, the labels, and a root and quality to
  * hold. It lives in the fretboard's header beside the scale's, so no other view is needed.
@@ -50,21 +61,18 @@ export function ArpeggioPicker({
   const labels = useStore(store, (state) => state.labels);
   const shown = useStore(store, (state) => state.shown);
   const on = useStore(store, (state) => state.on);
-  // What is on the neck wins, as in the scale picker: the buttons show the chord drawn and the
-  // next pick changes it; the last pick only fills in while no chord is shown.
+  // Only the chord on the neck is pressed, and only as far as a button stands for it: a power
+  // chord presses its root and no quality, and no chord presses nothing. The last pick is kept
+  // apart, as what the next click starts from.
   const current = on && shown.kind === 'chord' ? arpeggioOf(shown.name) : undefined;
-  const shownRoot = current?.root ?? root ?? DEFAULT_ROOT;
-  const shownSuffix =
-    (current
-      ? QUALITIES.find((entry) => intervalsOf(`C${entry.suffix}`) === current.intervals.join(','))
-          ?.suffix
-      : undefined) ??
-    suffix ??
-    DEFAULT_SUFFIX;
+  const pressedRoot = current?.root;
+  const pressedSuffix = current ? SUFFIX_OF.get(current.intervals.join(',')) : undefined;
+  const fillRoot = pressedRoot ?? root ?? DEFAULT_ROOT;
+  const fillSuffix = pressedSuffix ?? suffix ?? DEFAULT_SUFFIX;
   const pick = (nextRoot: number, nextSuffix: string) => {
     setRoot(nextRoot);
     setSuffix(nextSuffix);
-    store.getState().hold(`${TONICS[nextRoot] ?? 'A'}${nextSuffix}`);
+    store.getState().hold(`${asciiRoot(TONICS[nextRoot] ?? 'A')}${nextSuffix}`);
   };
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -110,11 +118,11 @@ export function ArpeggioPicker({
           {TONICS.map((name, pitchClass) => (
             <Button
               key={name}
-              variant={shownRoot === pitchClass ? 'default' : 'outline'}
+              variant={pressedRoot === pitchClass ? 'default' : 'outline'}
               size="xs"
-              aria-pressed={shownRoot === pitchClass}
+              aria-pressed={pressedRoot === pitchClass}
               onClick={() => {
-                pick(pitchClass, shownSuffix);
+                pick(pitchClass, fillSuffix);
               }}
             >
               {name}
@@ -125,11 +133,11 @@ export function ArpeggioPicker({
           {QUALITIES.map((entry) => (
             <Button
               key={entry.label}
-              variant={shownSuffix === entry.suffix ? 'default' : 'outline'}
+              variant={pressedSuffix === entry.suffix ? 'default' : 'outline'}
               size="xs"
-              aria-pressed={shownSuffix === entry.suffix}
+              aria-pressed={pressedSuffix === entry.suffix}
               onClick={() => {
-                pick(shownRoot, entry.suffix);
+                pick(fillRoot, entry.suffix);
               }}
             >
               {entry.label}
