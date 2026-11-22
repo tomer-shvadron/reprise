@@ -126,6 +126,98 @@ describe('keyboard', () => {
       { layout: 'Russian dot key', event: e('.', 'Slash'), runs: 'editor.toggleDot' },
       { layout: 'Greek Q key', event: e(';', 'KeyQ'), runs: 'editor.effect.accent' },
       { layout: 'US-International dead quote', event: e('Dead', 'Quote'), runs: undefined },
+      {
+        layout: 'US-International shift+dead quote',
+        event: e('Dead', 'Quote', { shiftKey: true }),
+        runs: 'editor.effect.tremoloPicking',
+      },
+      {
+        layout: 'Spanish shift+dead ´',
+        event: e('Dead', 'Quote', { shiftKey: true }),
+        runs: 'editor.effect.tremoloPicking',
+      },
+      {
+        layout: 'Brazilian shift+dead ~',
+        event: e('Dead', 'Quote', { shiftKey: true }),
+        runs: 'editor.effect.tremoloPicking',
+      },
+      {
+        layout: 'German / (Shift+7)',
+        event: e('/', 'Digit7', { shiftKey: true }),
+        runs: 'editor.toggleTriplet',
+      },
+      { layout: 'Dvorak / key', event: e('/', 'BracketLeft'), runs: 'editor.toggleTriplet' },
+      { layout: 'Dvorak = key', event: e('=', 'BracketRight'), runs: 'editor.durationShorter' },
+      {
+        layout: 'Mac German Cmd+Shift+ü key',
+        event: e('Ü', 'BracketLeft', { metaKey: true, shiftKey: true }),
+        mac: true,
+        runs: 'editor.toggleRepeatStartAlt',
+      },
+      {
+        layout: 'Mac German Cmd+Shift++ key',
+        event: e('*', 'BracketRight', { metaKey: true, shiftKey: true }),
+        mac: true,
+        runs: 'editor.toggleRepeatEndAlt',
+      },
+      {
+        layout: 'Mac Nordic Cmd+Shift+å key',
+        event: e('Å', 'BracketLeft', { metaKey: true, shiftKey: true }),
+        mac: true,
+        runs: 'editor.toggleRepeatStartAlt',
+      },
+      {
+        layout: 'German Windows Ctrl+Shift++ key',
+        event: e('*', 'BracketRight', { ctrlKey: true, shiftKey: true }),
+        runs: 'editor.toggleRepeatEndAlt',
+      },
+      {
+        layout: 'Mac German Cmd+Option+Up',
+        event: e('ArrowUp', 'ArrowUp', { metaKey: true, altKey: true }),
+        mac: true,
+        runs: 'view.zoomInAlt',
+      },
+      {
+        layout: 'Dvorak Ctrl++ key',
+        event: e('+', 'BracketRight', { ctrlKey: true, shiftKey: true }),
+        runs: undefined,
+      },
+      {
+        layout: 'Mac Dvorak Cmd++ key',
+        event: e('+', 'BracketRight', { metaKey: true, shiftKey: true }),
+        mac: true,
+        runs: 'editor.insertBarBeforeMacShift',
+      },
+      { layout: 'Dvorak [', event: e('[', 'Minus'), runs: 'editor.toggleRepeatStart' },
+      { layout: 'Dvorak ]', event: e(']', 'Equal'), runs: 'editor.toggleRepeatEnd' },
+      {
+        layout: 'Mac Spanish Option+] key',
+        event: e(']', 'BracketRight', { altKey: true }),
+        mac: true,
+        runs: 'editor.toggleRepeatEnd',
+      },
+      {
+        layout: 'German = (Shift+0)',
+        event: e('=', 'Digit0', { shiftKey: true }),
+        runs: 'editor.durationShorter',
+      },
+      {
+        layout: 'Swedish ; (Shift+comma)',
+        event: e(';', 'Comma', { shiftKey: true }),
+        runs: 'editor.effect.accent',
+      },
+      {
+        layout: 'German Ctrl+= (Shift+0)',
+        event: e('=', 'Digit0', { ctrlKey: true, shiftKey: true }),
+        runs: 'view.zoomIn',
+      },
+      {
+        // Still insert bar: on a Mac the same press is the shifted binding's own (see the doc).
+        layout: 'Mac German Cmd+= (Shift+0)',
+        event: e('=', 'Digit0', { metaKey: true, shiftKey: true }),
+        mac: true,
+        runs: 'editor.insertBarBeforeMacEquals',
+      },
       { layout: 'IME first key', event: e('Process', 'Comma'), runs: undefined },
       {
         layout: 'Mac US Option+L',
@@ -169,6 +261,41 @@ describe('keyboard', () => {
       expect(runs(event, mac ? 'mac' : 'other')).toBe(expected);
     });
 
+    it('prints the Shift of a bracket alias, which matches by position', () => {
+      const alias = { key: '[', mod: true, shift: true };
+      expect(formatShortcut(alias, 'mac')).toBe('⇧⌘[');
+      expect(formatShortcut(alias, 'other')).toBe('Ctrl+Shift+[');
+      expect(ariaKeyShortcuts({ key: ']', mod: true, shift: true }, 'other')).toBe(
+        'Control+Shift+]',
+      );
+      expect(formatShortcut({ key: '[' }, 'other')).toBe('[');
+    });
+
+    it('keeps the relaxed pass off a binding that names the other modifier', () => {
+      expect(
+        matchesShortcut(
+          e('=', 'Digit0', { shiftKey: true }),
+          { key: '=', alt: true },
+          'other',
+          'relaxed',
+        ),
+      ).toBe(false);
+      expect(
+        matchesShortcut(e('=', 'Digit0', { shiftKey: true }), { key: '=' }, 'other', 'relaxed'),
+      ).toBe(true);
+      expect(
+        matchesShortcut(
+          e(']', 'BracketRight', { altKey: true }),
+          { key: ']', shift: true },
+          'mac',
+          'relaxed',
+        ),
+      ).toBe(false);
+      expect(
+        matchesShortcut(e(']', 'BracketRight', { altKey: true }), { key: ']' }, 'mac', 'relaxed'),
+      ).toBe(true);
+    });
+
     it('does not run a shifted spelling from the key that prints a letter in its place', () => {
       expect(matchesShortcut(e('ת', 'Comma'), { key: '<' }, 'other')).toBe(false);
       expect(matchesShortcut(e('ף', 'Semicolon'), { key: ':' }, 'other')).toBe(false);
@@ -185,7 +312,14 @@ describe('keyboard', () => {
       readKeyEvent({ ...event, repeat: false, isComposing: false }, platform);
 
     it('records a key the dispatcher then fires from the same press', () => {
-      const unrecordable = ['IME first key', 'QWERTZ dead acute', 'US-International dead quote'];
+      const unrecordable = [
+        'IME first key',
+        'QWERTZ dead acute',
+        'US-International dead quote',
+        'US-International shift+dead quote',
+        'Spanish shift+dead ´',
+        'Brazilian shift+dead ~',
+      ];
       for (const { layout, event, mac } of SAMPLES) {
         const platform: KeyboardPlatform = mac ? 'mac' : 'other';
         const read = record(event, platform);
@@ -236,10 +370,16 @@ describe('keyboard', () => {
       });
     });
 
-    it('refuses a bracket character off the bracket keys, which no shortcut can fire', () => {
+    it('records a bracket typed off the bracket keys as printed', () => {
       // Dvorak puts `[` and `]` on Minus and Equal.
-      expect(record(e('[', 'Minus'), 'other')).toEqual({ kind: 'refuse', reason: 'unsupported' });
-      expect(record(e(']', 'Equal'), 'other')).toEqual({ kind: 'refuse', reason: 'unsupported' });
+      expect(record(e('[', 'Minus'), 'other')).toMatchObject({
+        kind: 'key',
+        binding: { key: '[' },
+      });
+      expect(record(e(']', 'Equal'), 'other')).toMatchObject({
+        kind: 'key',
+        binding: { key: ']' },
+      });
       // Windows German AltGr+8 prints `[` on the 8 key, which records as the digit.
       expect(record(e('[', 'Digit8', { ctrlKey: true, altKey: true }), 'other')).toMatchObject({
         kind: 'key',
