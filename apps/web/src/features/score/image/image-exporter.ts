@@ -15,6 +15,7 @@ import type { UiStore } from '@/state/ui';
 
 import {
   exportImages,
+  pageOfBar,
   prepareImages,
   ExportCancelled,
   type ImageExportDeps,
@@ -72,6 +73,8 @@ export interface ImageExporterDeps {
    * undefined when nothing is selected.
    */
   selectionScope: (useTarget: boolean) => ImageSelection | undefined;
+  /** The master bar (0-based) at the top of the score on screen; the page field starts there. */
+  barInView?: () => number | undefined;
   /** Whether chord diagrams are drawn, read when the image is made so it follows the screen. */
   chordDiagrams?: () => boolean;
   /** Whether the chord strip is on, read the same way; the whole score and a page draw it. */
@@ -168,19 +171,24 @@ export function createImageExporter(deps: ImageExporterDeps): ImageExporter {
     open() {
       if (!document.getState().score || store.getState().dialog) return;
       const bars = selectionScope(false)?.bars;
-      store.setState({
-        dialog: {
-          scope: bars ? 'bars' : 'score',
-          pageText: '1',
-          selectedBars: bars && { first: bars.start + 1, last: bars.end },
-          format: remembered?.format ?? 'png',
-          scale: remembered?.scale ?? 2,
-          background: remembered?.background ?? 'white',
-          paper: remembered?.paper ?? ui.getState().view.paper,
-          progress: undefined,
-          error: undefined,
-        },
-      });
+      const dialog: ImageDialog = {
+        scope: bars ? 'bars' : 'score',
+        pageText: '1',
+        selectedBars: bars && { first: bars.start + 1, last: bars.end },
+        format: remembered?.format ?? 'png',
+        scale: remembered?.scale ?? 2,
+        background: remembered?.background ?? 'white',
+        paper: remembered?.paper ?? ui.getState().view.paper,
+        progress: undefined,
+        error: undefined,
+      };
+      // The page the reader is on, by the layout this dialog's paper would print.
+      const bar = deps.barInView?.();
+      if (bar !== undefined && bar > 0) {
+        const request = requestOf(dialog, undefined);
+        if (request) dialog.pageText = String(pageOfBar(request, bar));
+      }
+      store.setState({ dialog });
     },
     update(change) {
       if (running) return;

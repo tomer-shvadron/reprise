@@ -2,6 +2,7 @@ import type { LayoutResult, Page, Rect, System } from '@reprise/layout';
 import { describe, expect, it } from 'vitest';
 
 import {
+  firstBarInView,
   canvasOffset,
   centreFromScroll,
   contentSize,
@@ -144,5 +145,19 @@ describe('revealScroll', () => {
 describe('toLayoutPoint', () => {
   it('undoes the canvas position and the zoom', () => {
     expect(toLayoutPoint({ x: 300, y: 500 }, { x: 100, y: 100 }, 2)).toEqual({ x: 100, y: 200 });
+  });
+});
+
+describe('firstBarInView', () => {
+  const system = (start: number, end: number, y: number) =>
+    ({ bars: { start, end }, bbox: { x: 0, y, width: 100, height: 50 } }) as never;
+  const systems = [system(0, 4, 0), system(4, 8, 100), system(8, 12, 200)];
+
+  it('names the first bar of the first system on screen', () => {
+    expect(firstBarInView(systems, { x: 0, y: 120, width: 100, height: 200 })).toBe(4);
+  });
+
+  it('is undefined with nothing on screen', () => {
+    expect(firstBarInView(systems, { x: 0, y: 900, width: 100, height: 50 })).toBeUndefined();
   });
 });

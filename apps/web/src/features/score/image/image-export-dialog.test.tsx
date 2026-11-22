@@ -12,10 +12,10 @@ import bravuraJson from './outlines/bravura.json';
 import geistJson from './outlines/geist.json';
 import { parseOutlines } from './outlines';
 
-function setup(selected = false) {
+function setup(selected = false, view: { bars?: number; barInView?: number } = {}) {
   const services = createTestServices();
   const builder = score().title('Demo').track('guitar', { name: 'Lead' });
-  for (let bar = 0; bar < 3; bar++) builder.bar().beat('4', [note(1, bar)]);
+  for (let bar = 0; bar < (view.bars ?? 3); bar++) builder.bar().beat('4', [note(1, bar % 20)]);
   const built = builder.build({ ids: 'sequential' });
   services.document.setState({ score: built });
   const saveFile = vi.fn<(name: string, bytes: Uint8Array) => Promise<string | undefined>>(() =>
@@ -29,6 +29,7 @@ function setup(selected = false) {
       selected
         ? { tracks: built.tracks.map(({ id }) => id), bars: { start: 0, end: 2 } }
         : undefined,
+    ...(view.barInView !== undefined && { barInView: () => view.barInView }),
     notify: () => undefined,
     render: {
       outlines: () => Promise.resolve(parseOutlines(bravuraJson, geistJson)),
@@ -72,6 +73,20 @@ describe('ImageExportDialog', () => {
     expect(saveFile).toHaveBeenCalledTimes(1);
     expect(saveFile.mock.calls[0]?.[0]).toBe('Demo p1.svg');
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('starts the page field on the page in view, and on 1 at the top', async () => {
+    const { exporter } = setup(false, { bars: 120, barInView: 100 });
+    exporter.open();
+    const field = await screen.findByRole('spinbutton', { name: 'Page number' });
+    expect(Number((field as HTMLInputElement).value)).toBeGreaterThan(1);
+  });
+
+  it('keeps page 1 when the view is at the first bar', async () => {
+    const { exporter } = setup(false, { bars: 120, barInView: 0 });
+    exporter.open();
+    const field = await screen.findByRole('spinbutton', { name: 'Page number' });
+    expect((field as HTMLInputElement).value).toBe('1');
   });
 
   it('Cancel closes it', async () => {

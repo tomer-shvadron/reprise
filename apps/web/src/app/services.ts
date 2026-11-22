@@ -60,7 +60,29 @@ export interface AppServices {
   menuTarget: MenuTargetStore;
   /** The open context menu and where it sits; the host in `App` shows it. */
   contextMenu: ContextMenuStore;
+  /**
+   * What the mounted score view reports on demand (#421). Read when something asks, never pushed,
+   * so scrolling renders nothing. Empty while no view is mounted.
+   */
+  viewProbe: ScoreViewProbe;
   dispose(): void;
+}
+
+export interface ScoreViewProbe {
+  /** The master-bar index at the top of what is on screen; undefined with no view mounted. */
+  barInView(): number | undefined;
+  /** The mounted view registers how to read it, and clears it on unmount. */
+  attach(read: (() => number | undefined) | undefined): void;
+}
+
+function createViewProbe(): ScoreViewProbe {
+  let read: (() => number | undefined) | undefined;
+  return {
+    barInView: () => read?.(),
+    attach(next) {
+      read = next;
+    },
+  };
 }
 
 export interface AppServicesOptions {
@@ -219,6 +241,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     settings,
     menuTarget,
     contextMenu: createContextMenuStore({ menuTarget }),
+    viewProbe: createViewProbe(),
     dispose() {
       unsubscribeChordPick();
       uninstallClipboard();
