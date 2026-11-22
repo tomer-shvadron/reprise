@@ -48,11 +48,17 @@ const BENDS: readonly NonNullable<Note['bend']>[] = [
  * bends and lane effects, clef and key changes, and dynamics, lyrics and chord names in half the
  * scores: the other half write no dynamic, so nothing hides what reaches below the staff.
  */
-export function randomScore(seed: number, options: { diagrams?: boolean } = {}): Score {
+export function randomScore(
+  seed: number,
+  options: { diagrams?: boolean; techniques?: boolean } = {},
+): Score {
   const random = generator(seed);
   // Diagrams draw from a second stream, so a score without them is the same for a seed as ever and
   // the pinned regression seeds (#141) keep building what exposed their bugs.
   const diagramRandom = generator(seed ^ 0x9e3779b9);
+  // Golpe and pick scrape (#354) are opt-in, off for the pinned #141 seeds whose spacing they would
+  // change, and draw from a third stream, so turning them on moves nothing else.
+  const effectRandom = generator(seed ^ 0x5bd1e995);
   const chance = (p: number): boolean => random() < p;
   const pick = <T>(items: readonly T[]): T => {
     const item = items[Math.floor(random() * items.length)];
@@ -96,6 +102,10 @@ export function randomScore(seed: number, options: { diagrams?: boolean } = {}):
       ...(chance(0.04) && { vibrato: pick(['slight', 'wide'] as const) }),
       ...(chance(0.05) && { palmMute: true }),
       ...(chance(0.05) && { letRing: true }),
+      ...(options.techniques === true &&
+        effectRandom() < 0.03 && {
+          pickScrape: effectRandom() < 0.5 ? ('down' as const) : ('up' as const),
+        }),
       ...(chance(0.03) && { trill: { fret: 3, speed: 16 as const } }),
     });
   const otherNote = (): Note =>
@@ -140,6 +150,10 @@ export function randomScore(seed: number, options: { diagrams?: boolean } = {}):
       ...(chance(0.04) && { arpeggio: { direction: pick(['up', 'down'] as const) } }),
       ...(chance(0.03) && { brush: { direction: pick(['up', 'down'] as const) } }),
       ...(chance(0.03) && { pickStroke: pick(['up', 'down'] as const) }),
+      ...(options.techniques === true &&
+        effectRandom() < 0.03 && {
+          golpe: effectRandom() < 0.5 ? ('thumb' as const) : ('finger' as const),
+        }),
       ...(chance(0.02) && { fadeIn: true }),
       ...(chance(0.02) && { tapping: true }),
     };

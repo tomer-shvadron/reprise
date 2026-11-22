@@ -33,6 +33,7 @@ import {
   naturalHarmonicText,
   suffixText,
   tremoloGlyph,
+  SCRAPE,
 } from '../effects';
 import { hiddenVoices } from '../hidden-voices';
 import type { StaffBar } from '../staff-module';
@@ -336,6 +337,10 @@ function analyseBeat(
       if (kind === 'intoFromBelow' || kind === 'intoFromAbove') slideIn = true;
       if (kind === 'outDown' || kind === 'outUp') slideOut = true;
     }
+    if (note.pickScrape) {
+      slideOut = true;
+      drawn = true;
+    }
     if (note.bend && note.bend.kind !== 'prebend') bent = true;
     if (note.bend || note.slide || note.hammerPull) drawn = true;
   }
@@ -439,6 +444,9 @@ function arcRoom(
         if (note.hammerPull || note.slide?.includes('legato'))
           keep(note.string, side, lettered(side));
         if (side === 'down' || tieSide === 'down') keep(note.string, 'down', bare);
+        if (note.pickScrape) {
+          keep(note.string, note.pickScrape === 'down' ? 'down' : 'up', SCRAPE.reach * space);
+        }
       }
       for (const grace of beat.grace ?? []) {
         for (const note of grace.notes) {

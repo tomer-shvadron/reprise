@@ -4,6 +4,7 @@ import type { LaneBand } from '../lanes';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import {
   EFFECT_TEXT,
+  GOLPE_HANG,
   WHAMMY_TEXT,
   barRuns,
   runLabel,
@@ -79,6 +80,16 @@ function drawItem(context: LaneDraw, item: LaneItem, band: LaneBand): void {
   if (item.text !== undefined) {
     const y = band.bottom - TEXT_LIFT * space;
     sink.primitives.push(text(item.text, x, y, EFFECT_TEXT * space, { anchor: 'middle', node }));
+    return;
+  }
+  if (item.lane === 'golpeThumb') {
+    // Below the staff the glyph hangs from the lane's top, nearest the strings.
+    for (const name of item.glyphs) {
+      const { bbox } = glyphMetrics(name);
+      const left = x - ((bbox.left + bbox.right) / 2) * space;
+      const top = band.top + GOLPE_HANG * space;
+      sink.primitives.push(glyph(name, left, top + bbox.top * space, space, { node }));
+    }
     return;
   }
   let bottom = band.bottom - GLYPH_LIFT * space;
@@ -214,6 +225,7 @@ export function drawLanes(context: LaneDraw): void {
     switch (run.lane) {
       case 'palmMute':
       case 'letRing':
+      case 'pickScrape':
       case 'harmonic':
         drawDashedRun(context, run, band, labelled);
         break;
