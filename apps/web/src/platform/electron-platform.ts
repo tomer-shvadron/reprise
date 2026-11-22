@@ -84,6 +84,14 @@ export function createElectronPlatform(bridge: RepriseBridge, win: Window = wind
         console.error('Could not update the Edit menu', error);
       });
     },
+    setMenuChecks: (checked) =>
+      bridge.setMenuChecks(checked).then(
+        () => true,
+        (error: unknown) => {
+          console.error('Could not update the menu checks', error);
+          return false;
+        },
+      ),
     setMenuKeys: (keys) =>
       bridge.setMenuKeys(keys).then(
         () => true,
