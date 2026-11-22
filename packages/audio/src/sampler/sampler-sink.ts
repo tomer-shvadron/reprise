@@ -260,7 +260,7 @@ export function createSamplerSink(
         .some((region) => region.trigger === 'legato');
     // A dead note or a scrape is one noise burst and a ghost note one light stroke, not a strummed pair.
     const course =
-      plan.dead || plan.scrape || fixed || input.note.ghost
+      plan.dead || plan.scrape || input.note.dead || input.note.ghost
         ? null
         : courseOffset(input.track, input.note.string);
     return sampler.noteOn(trackId, {
