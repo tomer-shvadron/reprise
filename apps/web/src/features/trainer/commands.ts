@@ -100,9 +100,14 @@ export function trainerCommands(
       shortcut: { key: 'b', alt: true },
       repeat: false,
       run: () => {
+        // Stopping shows no panel: the status bar's indicator runs this from any screen, and
+        // stopping from there must not pull the metronome panel up.
+        if (services.playback.getState().click.running) {
+          services.audio.stopClick();
+          return;
+        }
         showUnlessPractising('metronome');
-        if (services.playback.getState().click.running) services.audio.stopClick();
-        else services.audio.startClick();
+        services.audio.startClick();
       },
     },
     {

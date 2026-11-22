@@ -7,7 +7,8 @@ import type { PanelView } from './ui';
 export type HeaderElement = 'crumb' | 'mode' | 'view' | 'search' | 'band';
 
 /** The status bar's segments, each with its own menu. */
-export type StatusSegmentName = 'saved' | 'sound' | 'library' | 'edit' | 'notation' | 'zoom';
+export type StatusSegmentName =
+  'saved' | 'sound' | 'metronome' | 'library' | 'edit' | 'notation' | 'zoom';
 
 /**
  * What a context menu was opened on: ids and names only, never the data itself. A command reads
