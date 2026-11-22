@@ -388,11 +388,14 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
   on the string and is left for the editor to re-derive, while an artificial harmonic's `value`
   is an offset and travels with the note.
 - **`STANDARD_TUNINGS`** names the presets (guitar in 6, 7 and 8 strings, bass in 4, 5 and 6,
-  ukulele, 12-string, 5-string and tenor banjo, mandolin), each in `Track.tuning` order. The
+  ukulele (also low G and baritone), 12-string, 5-string and tenor banjo, mandolin, mandola,
+  octave mandolin, violin, viola, cello, double bass, shamisen), each in `Track.tuning` order. The
   ukulele and the 5-string banjos are re-entrant, so their arrays are in string order, not pitch
-  order. A preset may carry `courses` and `drone`. **`findTuningName(tuning, { courses, drone })`**
-  matches exactly, string count, courses and drone included, so a 12-string's E standard is
-  "12-string standard".
+  order. A preset may carry `courses` and `drone`. **`findTuningName(tuning, { courses, drone,
+program })`** matches exactly, string count, courses and drone included, so a 12-string's E
+  standard is "12-string standard". Equal strings on different instruments (viola and tenor banjo
+  CGDA, double bass and bass EADG) are told apart by the optional `program`; without it the first
+  row wins. `stringInstrumentOf` also returns `'ukulele'` (four single strings on program 24).
 - **Courses and the drone (#348).** `Track.courses` is one offset per string in `tuning` order
   (`null` single, 0 unison, 12 octave); `Track.drone` is `{ string, fret }`, a short string that
   starts at a neck fret. Frets on the drone string are stored from its own nut, so `midiNote` is

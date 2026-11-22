@@ -168,7 +168,10 @@ export function shownNotation(track: Pick<Track, 'kind' | 'tuning'>, wanted: Not
   return track.kind === 'drums' || canShowTab(track) ? wanted : 'standard';
 }
 
-export type StringInstrument = 'twelveString' | 'mandolin' | 'banjo';
+export type StringInstrument = 'twelveString' | 'mandolin' | 'banjo' | 'ukulele';
+
+/** General MIDI nylon guitar, the program Guitar Pro gives a ukulele. */
+const UKULELE_PROGRAM = 24;
 
 /** General MIDI banjo. */
 const BANJO_PROGRAM = 105;
@@ -177,7 +180,9 @@ const BANJO_PROGRAM = 105;
  * What kind of string instrument a fretted track is, derived and never stored, so the sound
  * family, the gp writer and the track dialog ask one place. `banjo`: a drone, or a fretted track
  * on program 105. `twelveString`: any course an octave away. `mandolin`: four strings, every one a
- * unison course. `undefined` for every other track (#348).
+ * unison course. `ukulele`: four single strings on program 24, whatever their pitch, since Guitar
+ * Pro 5's own ukulele presets store them two octaves low (#432). `undefined` for every other track
+ * (#348).
  */
 export function stringInstrumentOf(
   track: Pick<Track, 'kind' | 'program' | 'tuning' | 'courses' | 'drone'>,
@@ -192,6 +197,13 @@ export function stringInstrumentOf(
     courses.every((offset) => offset === 0)
   ) {
     return 'mandolin';
+  }
+  if (
+    track.tuning.length === 4 &&
+    track.program === UKULELE_PROGRAM &&
+    (courses === undefined || courses.every((offset) => offset === null))
+  ) {
+    return 'ukulele';
   }
   return undefined;
 }

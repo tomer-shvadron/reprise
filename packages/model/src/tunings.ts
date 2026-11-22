@@ -1,7 +1,19 @@
 import type { Drone } from './track';
 
 export type TuningInstrument =
-  'guitar' | 'bass' | 'ukulele' | 'banjo' | 'mandolin' | 'twelveString';
+  | 'guitar'
+  | 'bass'
+  | 'ukulele'
+  | 'banjo'
+  | 'mandolin'
+  | 'twelveString'
+  | 'violin'
+  | 'viola'
+  | 'cello'
+  | 'doubleBass'
+  | 'shamisen'
+  | 'mandola'
+  | 'octaveMandolin';
 
 export interface NamedTuning {
   name: string;
@@ -58,7 +70,45 @@ export const STANDARD_TUNINGS: readonly NamedTuning[] = [
     strings: [55, 62, 69, 76],
     courses: [0, 0, 0, 0],
   },
+  // Appended after the older rows: with no program hint, an equal tuning keeps the older name
+  // (CGDA is "Tenor banjo CGDA", EADG "Bass standard"); see `findTuningName`'s `program`.
+  { name: 'Violin GDAE', instrument: 'violin', strings: [55, 62, 69, 76] },
+  { name: 'Viola CGDA', instrument: 'viola', strings: [48, 55, 62, 69] },
+  { name: 'Cello CGDA', instrument: 'cello', strings: [36, 43, 50, 57] },
+  { name: 'Double bass EADG', instrument: 'doubleBass', strings: [28, 33, 38, 43] },
+  // C3 reference; the tuning is relative to the singer, so players retune anyway.
+  { name: 'Shamisen honchoshi', instrument: 'shamisen', strings: [48, 53, 60] },
+  { name: 'Shamisen niagari', instrument: 'shamisen', strings: [48, 55, 60] },
+  { name: 'Shamisen sansagari', instrument: 'shamisen', strings: [48, 53, 58] },
+  {
+    name: 'Mandola CGDA',
+    instrument: 'mandola',
+    strings: [48, 55, 62, 69],
+    courses: [0, 0, 0, 0],
+  },
+  {
+    name: 'Octave mandolin GDAE',
+    instrument: 'octaveMandolin',
+    strings: [43, 50, 57, 64],
+    courses: [0, 0, 0, 0],
+  },
+  { name: 'Ukulele low G', instrument: 'ukulele', strings: [55, 60, 64, 69] },
+  { name: 'Baritone ukulele DGBE', instrument: 'ukulele', strings: [50, 55, 59, 64] },
 ];
+
+/** The instrument a General MIDI program points at, to pick between presets of equal strings. */
+const INSTRUMENT_OF_PROGRAM: ReadonlyMap<number, TuningInstrument> = new Map([
+  [40, 'violin'],
+  [41, 'viola'],
+  [42, 'cello'],
+  [43, 'doubleBass'],
+  [105, 'banjo'],
+  [106, 'shamisen'],
+  ...[32, 33, 34, 35, 36, 37, 38, 39].map((program): [number, TuningInstrument] => [
+    program,
+    'bass',
+  ]),
+]);
 
 function sameCourses(
   preset: readonly (number | null)[] | undefined,
@@ -79,14 +129,21 @@ function sameCourses(
  */
 export function findTuningName(
   tuning: readonly number[],
-  extras: { courses?: readonly (number | null)[] | undefined; drone?: Drone | undefined } = {},
+  extras: {
+    courses?: readonly (number | null)[] | undefined;
+    drone?: Drone | undefined;
+    /** Breaks a tie between presets of equal strings, courses and drone (viola against tenor banjo). */
+    program?: number | undefined;
+  } = {},
 ): string | undefined {
-  return STANDARD_TUNINGS.find(
+  const matches = STANDARD_TUNINGS.filter(
     ({ strings, courses, drone }) =>
       strings.length === tuning.length &&
       strings.every((pitch, index) => pitch === tuning[index]) &&
       sameCourses(courses, extras.courses) &&
       drone?.string === extras.drone?.string &&
       drone?.fret === extras.drone?.fret,
-  )?.name;
+  );
+  const hint = extras.program === undefined ? undefined : INSTRUMENT_OF_PROGRAM.get(extras.program);
+  return (matches.find(({ instrument }) => instrument === hint) ?? matches[0])?.name;
 }
