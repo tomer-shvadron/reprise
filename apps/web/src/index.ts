@@ -10,6 +10,8 @@ export type {
   InvokeChannels,
   InvokeResult,
   MenuCommandId,
+  MenuCheckboxId,
+  MenuChecks,
   MenuKey,
   MenuKeys,
   OpenedFile,

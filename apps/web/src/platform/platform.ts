@@ -4,6 +4,7 @@ import type {
   FileFilter,
   FileHandle,
   HistoryMenuLabels,
+  MenuChecks,
   MenuKeys,
   OpenedFile,
   PickedFile,
@@ -20,6 +21,7 @@ export type {
   FileHandle,
   HistoryMenuLabels,
   MenuKey,
+  MenuChecks,
   MenuKeys,
   OpenedFile,
   PickedFile,
@@ -93,6 +95,11 @@ export interface Platform {
    * `false`, never rejects, when main refused or could not apply them.
    */
   setMenuKeys?(keys: MenuKeys): Promise<boolean>;
+  /**
+   * Desktop only: the state of the native menu's checkbox items (Loop, Count-in, Metronome, Fixed
+   * Tempo), which also names the step of Slow Down and Speed Up. Same contract as `setMenuKeys`.
+   */
+  setMenuChecks?(checked: MenuChecks): Promise<boolean>;
   /** Desktop only: a pick from Open Recent. Returns an unsubscribe function. */
   onOpenRecent?(listener: (id: string) => void): () => void;
   /**

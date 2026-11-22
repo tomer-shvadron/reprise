@@ -37,6 +37,7 @@ describe('the preload script', () => {
 
   it('exposes setMenuKeys as a plain invoke of menu:set-keys, and nothing wider', () => {
     expect(source).toContain("setMenuKeys: (keys) => invoke('menu:set-keys', keys),");
+    expect(source).toContain("setMenuChecks: (checked) => invoke('menu:set-checked', checked),");
     // One generic channel in, no raw ipcRenderer handed to the page.
     expect(source).not.toMatch(/exposeInMainWorld\('[^']+',\s*ipcRenderer/);
   });
