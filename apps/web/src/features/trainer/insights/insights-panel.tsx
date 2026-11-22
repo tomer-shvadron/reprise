@@ -3,10 +3,13 @@ import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
 
+import { ChordsCard } from './cards/chords-card';
 import { KeyCard } from './cards/key-card';
 import { KeyChangesCard } from './cards/key-changes-card';
 import { ScaleCard } from './cards/scale-card';
+import { SectionsCard } from './cards/sections-card';
 import { ShapeCard } from './cards/shape-card';
+import { TracksCard } from './cards/tracks-card';
 import { insightsFor } from './insights-for';
 
 function Note({ children }: { children: string }) {
@@ -21,7 +24,9 @@ export function InsightsPanel() {
   const services = useAppServices();
   const store = insightsFor(services);
   const score = useStore(services.document, (state) => state.score);
-  const { status, insights, slow, error } = useStore(store);
+  const { status, insights, slow, error, focus } = useStore(store);
+  const currentTrackId = useStore(services.selection, (state) => state.currentTrack);
+  const currentTrack = score?.tracks.findIndex((track) => track.id === currentTrackId);
 
   useEffect(() => {
     const { retain, release } = store.getState();
@@ -52,9 +57,18 @@ export function InsightsPanel() {
                 <KeyCard songKey={insights.key} />
                 <ScaleCard songKey={insights.key} />
                 <KeyChangesCard changes={insights.keyChanges} />
+                <SectionsCard
+                  insights={insights}
+                  currentTrack={
+                    currentTrack !== undefined && currentTrack >= 0 ? currentTrack : undefined
+                  }
+                  focus={focus}
+                />
+                <ChordsCard chords={insights.chords} />
               </>
             )}
             <ShapeCard shape={insights.shape} />
+            <TracksCard insights={insights} />
           </>
         ) : status === 'error' ? (
           <Note>{`The song could not be analysed${error ? `: ${error}` : '.'}`}</Note>

@@ -104,4 +104,8 @@ export const trainerMenus: readonly MenuContribution[] = [
       { command: 'trainer.chordShapesFor', group: 'practice' },
     ],
   },
+  {
+    surface: 'score.section',
+    items: [{ command: 'trainer.sectionInsights', group: 'practice' }],
+  },
 ];

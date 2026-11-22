@@ -1,5 +1,6 @@
 import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
+import { scoreIndex } from '@/lib/score-index';
 import { selectRunning } from '@/state/playback';
 
 import { applyLoop, seekToBar, targetBars, targetPlace } from '@/features/transport';
@@ -24,6 +25,7 @@ export type TrainerCommandId =
   | 'trainer.insights'
   | 'trainer.chords'
   | 'trainer.chordShapesFor'
+  | 'trainer.sectionInsights'
   | 'trainer.speedTrainerOnSelection'
   | 'trainer.showFretboard'
   | 'trainer.fretboardLeftHanded'
@@ -128,6 +130,23 @@ export function trainerCommands(
         const name = chordNameOfBeat(services, target?.kind === 'chord' ? target.beat : undefined);
         if (name) ui.getState().setChordsName(name);
         ui.getState().showPanelView('chords');
+      },
+    },
+    {
+      id: 'trainer.sectionInsights',
+      title: 'Section insights',
+      repeat: false,
+      enabled: () => services.document.getState().score !== undefined,
+      run: () => {
+        // The right-clicked section, read before the host clears the target.
+        const { score } = services.document.getState();
+        const target = services.menuTarget.getState().target;
+        const bar =
+          score && target?.kind === 'section'
+            ? scoreIndex(score).barIndex.get(target.masterBar)
+            : undefined;
+        ui.getState().showPanelView('insights');
+        if (bar !== undefined) insightsFor(services).getState().focusSection(bar);
       },
     },
     {
