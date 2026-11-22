@@ -12,6 +12,7 @@
     "palm-mute",
     "golpe",
     "pick-scrape",
+    "wah",
     "drums-track",
     "pitched-non-fretted-track",
     "time-signature-change",
@@ -106,7 +107,7 @@
     {
       "path": "gp5/effects.gp5",
       "format": "gp5",
-      "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics", "palm-mute"],
+      "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics", "palm-mute", "wah"],
       "tracks": 1,
       "bars": 32,
       "notes": 121
@@ -146,10 +147,18 @@
     {
       "path": "gp5/twelve-string.gp5",
       "format": "gp5",
-      "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics", "palm-mute"],
+      "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics", "palm-mute", "wah"],
       "tracks": 1,
       "bars": 32,
       "notes": 121
+    },
+    {
+      "path": "gp5/wah-wah.gp5",
+      "format": "gp5",
+      "features": ["wah"],
+      "tracks": 1,
+      "bars": 2,
+      "notes": 6
     },
     {
       "path": "gpx/chords.gpx",
@@ -162,7 +171,7 @@
     {
       "path": "gpx/effects.gpx",
       "format": "gpx",
-      "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics", "palm-mute"],
+      "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics", "palm-mute", "wah"],
       "tracks": 1,
       "bars": 32,
       "notes": 121

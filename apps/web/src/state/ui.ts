@@ -27,7 +27,7 @@ export type SheetId = 'library' | 'sounds';
  * palette (WP-082) and the history panel (WP-084) take turns with it.
  */
 export type PanelView =
-  'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history' | 'chords';
+  'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history' | 'insights' | 'chords';
 
 /**
  * The bottom dock's views in tab order, one shown at a time; the live fretboard (WP-074) is the

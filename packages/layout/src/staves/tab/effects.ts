@@ -9,6 +9,9 @@ import {
   newBendDrawn,
   drawLetter,
   drawStroke,
+  diagonalWave,
+  SCRAPE,
+  WAVES,
   hammerLetter,
   nextOnString,
   shifts,
@@ -258,6 +261,20 @@ function drawBends(context: TabContext, beat: TabBeat, x: number, next: number):
   }
 }
 
+/** The wave of a pick scrape: falling for down, rising for up, from just past the number. */
+function drawScrape(context: TabContext, label: NoteLabel, x: number, next: number): void {
+  const { sink, space } = context;
+  const { note } = label;
+  if (!note.pickScrape) return;
+  const size = TAB.fretSize * space;
+  const start = x + rightEdge(label, size) + SCRAPE.gap * space;
+  const end = Math.max(next - SCRAPE.stop * space, start + SCRAPE.min * space);
+  const y = lineY(context, note.string);
+  const drop = (note.pickScrape === 'down' ? 1 : -1) * SCRAPE.drop * space;
+  const wave = diagonalWave(start, y, end, y + drop, WAVES.slight, space, { node: note.id });
+  if (wave) sink.primitives.push(wave);
+}
+
 /** Slides into and out of a note from nowhere. */
 function drawLooseSlides(context: TabContext, label: NoteLabel, x: number): void {
   const { space } = context;
@@ -267,6 +284,8 @@ function drawLooseSlides(context: TabContext, label: NoteLabel, x: number): void
   const after = x + rightEdge(label, size) + SLIDE.clear * space;
   const length = SLIDE.length * space;
   for (const kind of note.slide ?? []) {
+    // A scrape replaces a slide-out, as in Guitar Pro, which keeps one of them.
+    if (note.pickScrape && (kind === 'outDown' || kind === 'outUp')) continue;
     if (kind === 'intoFromBelow')
       drawSlideLine(context, note, before - length, before, SLIDE.rise, -SLIDE.rise);
     if (kind === 'intoFromAbove')
@@ -308,6 +327,7 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
     for (const label of beat.labels) {
       const { note } = label;
       drawLooseSlides(context, label, x);
+      drawScrape(context, label, x, next);
       const grace = lastGrace?.labels.find((candidate) => candidate.note.string === note.string);
       if (grace && lastCentre !== undefined) {
         const origin = { note: grace.note, x: lastCentre, edge: rightEdge(grace, graceSize) };

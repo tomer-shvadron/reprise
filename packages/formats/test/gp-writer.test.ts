@@ -208,9 +208,6 @@ describe('the gp writer round trip', () => {
     delete beat.effects.arpeggio;
     const [bent, other] = beat.notes;
     if (!bent?.trill || !other) throw new Error('fullScore changed shape');
-    // Wah is lost without a report until #355, part 2 teaches the writer; part 5 (the editor)
-    // waits for part 2, so no user can make it first. Part 2 removes this delete.
-    delete beat.effects.wah;
     other.dynamics = bent.dynamics;
     bent.trill.speed = 16;
     expect(roundTripView(result.score)).toEqual(roundTripView(expected));
@@ -234,6 +231,7 @@ describe('a gp3, gp4, gp5 or gpx score exported to gp', () => {
     'bend-shape',
     'whammy-shape',
     'courses',
+    'mixer-change',
   ];
 
   /** The source with those losses applied, as the writer's dropped list announces them. */
@@ -251,6 +249,14 @@ describe('a gp3, gp4, gp5 or gpx score exported to gp', () => {
             if (empty(beat)) beat.rest = true;
             delete beat.effects.whammy;
             for (const played of beat.notes) delete played.bend;
+            // A beat's volume, pan and effect changes have no gp equivalent (gp5/wah-wah.gp5 has one).
+            if (beat.mix) {
+              beat.mix = {
+                ...(beat.mix.program !== undefined && { program: beat.mix.program }),
+                ...(beat.mix.tempo && { tempo: beat.mix.tempo }),
+              };
+              if (Object.keys(beat.mix).length === 0) delete beat.mix;
+            }
           }
         }
       }

@@ -241,7 +241,9 @@ export function readBeat(sink: WarningSink, element: XmlElement, path: string): 
         else unknownValue(sink, at, text);
         break;
       case 'Wah':
-        notModelled(sink, at, 'A wah pedal mark');
+        if (text === 'Open') beat.effects.wah = 'open';
+        else if (text === 'Closed') beat.effects.wah = 'closed';
+        else unknownValue(sink, at, text);
         break;
       case 'Timer':
         notModelled(sink, at, 'A timer');

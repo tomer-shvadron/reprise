@@ -25,7 +25,7 @@ import {
   type Manifest,
 } from './corpus.ts';
 
-const { AutomationType, BendType, GolpeType, HarmonicType, SlideInType, SlideOutType } =
+const { AutomationType, BendType, GolpeType, HarmonicType, SlideInType, SlideOutType, WahPedal } =
   alphaTab.model;
 
 type Score = alphaTab.model.Score;
@@ -133,6 +133,7 @@ export function describeScore(score: Score): Omit<FixtureEntry, 'path' | 'format
             }
 
             if (beat.golpe !== GolpeType.None) found.add('golpe');
+            if (beat.wahPedal !== WahPedal.None) found.add('wah');
             for (const note of beat.notes) {
               if (note.bendType !== BendType.None) found.add('bends');
               for (const feature of slideFeatures(note)) found.add(feature);

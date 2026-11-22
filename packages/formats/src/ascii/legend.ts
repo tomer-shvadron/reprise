@@ -19,6 +19,8 @@ export const LEGEND_ENTRIES = [
   ['tr', 'tr trill'],
   ['PM', 'PM palm mute'],
   ['LR', 'LR let ring'],
+  ['+', '+ wah closed'],
+  ['o', 'o wah open'],
   ['*', '* repeat'],
 ] as const;
 

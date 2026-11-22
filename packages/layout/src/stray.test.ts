@@ -114,7 +114,9 @@ describe('stray primitives', () => {
   it('none in random scores', () => {
     assert(
       property(integer({ min: 1, max: 0x7fffffff }), (seed) => {
-        expect(strays(randomScore(seed), NOTATIONS, ['paged', 'continuous'])).toEqual([]);
+        expect(
+          strays(randomScore(seed, { techniques: true }), NOTATIONS, ['paged', 'continuous']),
+        ).toEqual([]);
       }),
       { numRuns: RUNS },
     );

@@ -37,6 +37,7 @@ const {
   PickStroke,
   SlideInType,
   SlideOutType,
+  WahPedal,
 } = alphaTab.model;
 
 type AtNote = alphaTab.model.Note;
@@ -78,6 +79,11 @@ const PICK_SCRAPES = new Map<number, string>([
 const GOLPES = new Map<number, string>([
   [GolpeType.Thumb, 'thumb'],
   [GolpeType.Finger, 'finger'],
+]);
+
+const WAHS = new Map<number, string>([
+  [WahPedal.Open, 'open'],
+  [WahPedal.Closed, 'closed'],
 ]);
 
 const FADES = new Map<number, string>([
@@ -248,6 +254,7 @@ function projectBeat(
     arpeggio: strokeOf(beat, [BrushType.ArpeggioUp, BrushType.ArpeggioDown]),
     pickStroke: PICK_STROKES.get(beat.pickStroke) ?? null,
     golpe: GOLPES.get(beat.golpe) ?? null,
+    wah: WAHS.get(beat.wahPedal) ?? null,
     fade: FADES.get(beat.fade) ?? null,
     tapping: beat.tap,
     slapping: beat.slap,

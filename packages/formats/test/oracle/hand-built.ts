@@ -199,6 +199,16 @@ export const HAND_BUILT = {
         QUARTER,
       ),
     ),
+  /** A closed wah mark on a played beat and an open one on a rest: both sides agree on both. */
+  wahOnNoteAndRest: (): HandBuilt =>
+    compareGpif(
+      'wah closed on a note, open on a rest',
+      oneBar(
+        [beat('0', '0', '0', '<Wah>Closed</Wah>'), beat('1', '0', '', '<Wah>Open</Wah>')],
+        [note('0', 2, 5)],
+        QUARTER,
+      ),
+    ),
   /** A pick slide down beside a slide out (flags 64 + 4): we keep both, alphaTab keeps one. */
   pickScrapeWithSlideOut: (): HandBuilt =>
     compareGpif(

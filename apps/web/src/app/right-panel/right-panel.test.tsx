@@ -87,24 +87,46 @@ describe('the right panel tabs', () => {
     expect(screen.getByRole('tabpanel', { name: 'Tuner' })).toBeInTheDocument();
   });
 
+  it('holds Insights and Chords under the Song tab, keeping the view the user is on', async () => {
+    const { ui } = renderApp();
+    act(() => {
+      ui.getState().showPanelView('mixer');
+    });
+    await userEvent.click(tab('Song'));
+    expect(ui.getState().rightPanelView).toBe('insights');
+    expect(screen.getByRole('tablist', { name: 'Song views' })).toBeInTheDocument();
+    expect(tab('Insights')).toHaveAttribute('aria-selected', 'true');
+    await userEvent.click(tab('Chords'));
+    expect(ui.getState().rightPanelView).toBe('chords');
+    expect(tab('Song')).toHaveAttribute('aria-selected', 'true');
+    await userEvent.click(tab('Song'));
+    expect(ui.getState().rightPanelView).toBe('chords');
+    expect(screen.getByRole('tabpanel', { name: 'Chords' })).toBeInTheDocument();
+    act(() => {
+      tab('Chords').focus();
+    });
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(ui.getState().rightPanelView).toBe('insights');
+  });
+
   it('follows the WAI-ARIA keys: roving tab stop, arrows wrap, Home and End', async () => {
     const { ui } = renderApp();
     act(() => {
       ui.getState().showPanelView('mixer');
     });
     expect(tab('Mixer')).toHaveAttribute('tabindex', '0');
-    expect(tab('Chords')).toHaveAttribute('tabindex', '-1');
+    expect(tab('Song')).toHaveAttribute('tabindex', '-1');
 
     act(() => {
       tab('Mixer').focus();
     });
     await userEvent.keyboard('{ArrowLeft}');
-    expect(ui.getState().rightPanelView).toBe('chords');
-    expect(tab('Chords')).toHaveFocus();
+    expect(ui.getState().rightPanelView).toBe('insights');
+    expect(tab('Song')).toHaveFocus();
     await userEvent.keyboard('{ArrowRight}');
     expect(ui.getState().rightPanelView).toBe('mixer');
     await userEvent.keyboard('{End}');
-    expect(ui.getState().rightPanelView).toBe('chords');
+    expect(ui.getState().rightPanelView).toBe('insights');
     await userEvent.keyboard('{Home}');
     expect(ui.getState().rightPanelView).toBe('mixer');
     expect(tab('Mixer')).toHaveFocus();

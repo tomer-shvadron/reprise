@@ -136,6 +136,33 @@ describe('notes', () => {
     );
   });
 
+  it.each([
+    ['Open', 'open'],
+    ['Closed', 'closed'],
+  ] as const)('reads a %s wah mark, on a rest too', (text, wah) => {
+    const element = `<Wah>${text}</Wah>`;
+    const { score, warnings } = read(
+      oneBar(
+        [beat('0', '0', '0', element), beat('1', '0', '', element)],
+        [note('0', 2, 5)],
+        QUARTERS,
+      ),
+    );
+    expect(beatsOf(score).map((b) => b.effects.wah)).toEqual([wah, wah]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('reports an unknown wah value', () => {
+    const { score, warnings } = read(
+      oneBar([beat('0', '0', '0', '<Wah>Half</Wah>')], [note('0', 2, 5)], QUARTERS),
+    );
+    expect(beatsOf(score)[0]?.effects.wah).toBeUndefined();
+    expect(warnings).toContainEqual(
+      expect.objectContaining({ code: 'unknown-value', path: 'Beats/Beat[0]/Wah' }),
+    );
+    expect(warnings.some((w) => w.code === 'not-modelled')).toBe(false);
+  });
+
   it('reads bends as point lists in model units', () => {
     const properties = [
       property('Bended', '<Enable />'),
