@@ -282,4 +282,115 @@ describe('About Reprise', () => {
 
     expect(items.some((item) => item.label === 'About Reprise')).toBe(false);
   });
+
+  describe('the Playback menu', () => {
+    const playback = (overrides: Partial<MenuOptions> = {}) => {
+      const made = template(overrides);
+      const menu = menuTemplate(made.options).find((item) => item.label === 'Playback');
+      const entries = Array.isArray(menu?.submenu) ? menu.submenu : [];
+      return { ...made, menu, entries };
+    };
+    const shape = (entries: MenuItemConstructorOptions[]) =>
+      entries.map((item) => (item.type === 'separator' ? '-' : item.label));
+
+    it('sits between View and Window, in five groups', () => {
+      const top = menuTemplate(template().options).map((item) => item.label ?? item.role);
+      expect(top.indexOf('Playback')).toBe(top.indexOf('View') + 1);
+      expect(top[top.indexOf('Playback') + 1]).toBe('windowMenu');
+
+      expect(shape(playback().entries)).toEqual([
+        'Play/Pause',
+        'Stop',
+        'Play from Start',
+        'Play from Selection',
+        '-',
+        'Loop',
+        'Loop Selection',
+        '-',
+        'Count-in',
+        'Metronome',
+        'Metronome Volume…',
+        '-',
+        'Set Tempo…',
+        'Slow Down 5%',
+        'Speed Up 5%',
+        'Toggle Relative Speed',
+        'Fixed Tempo',
+        '-',
+        'Master Volume…',
+      ]);
+    });
+
+    it('shows the keys the renderer sent, Alt-only ones included', () => {
+      const { entries } = playback({
+        keys: {
+          'transport.toggleLoop': { key: 'F9' },
+          'transport.toggleSpeed': { key: 'F9', mod: true },
+          'transport.toggleCountIn': { key: 'c', alt: true },
+          'transport.metronomeVolume': { key: 'm', alt: true, shift: true },
+          'transport.playPause': null,
+        },
+      });
+      const accelerators: Record<string, string | undefined> = {};
+      for (const item of entries) {
+        if (item.label !== undefined) accelerators[item.label] = item.accelerator;
+      }
+      expect(accelerators['Loop']).toBe('F9');
+      expect(accelerators['Toggle Relative Speed']).toBe('CmdOrCtrl+F9');
+      expect(accelerators['Count-in']).toBe('Alt+C');
+      expect(accelerators['Metronome Volume…']).toBe('Alt+Shift+M');
+      expect(accelerators['Play/Pause']).toBeUndefined();
+    });
+
+    it('makes Loop, Count-in, Metronome and Fixed Tempo checkboxes that follow the option', () => {
+      const boxes = ['Loop', 'Count-in', 'Metronome', 'Fixed Tempo'];
+      const none = playback().entries.filter((item) => item.type === 'checkbox');
+      expect(none.map((item) => item.label)).toEqual(boxes);
+      expect(none.every((item) => item.checked === false)).toBe(true);
+
+      const some = playback({
+        checked: { 'transport.toggleLoop': true, 'transport.toggleMetronome': true },
+      }).entries.filter((item) => item.type === 'checkbox');
+      expect(some.map((item) => item.checked)).toEqual([true, false, true, false]);
+    });
+
+    it('names the steps in BPM while Fixed Tempo is on', () => {
+      const { entries } = playback({ checked: { 'transport.toggleFixedTempo': true } });
+      expect(shape(entries)).toContain('Slow Down 5 BPM');
+      expect(shape(entries)).toContain('Speed Up 5 BPM');
+      expect(shape(entries)).not.toContain('Slow Down 5%');
+    });
+
+    it('puts a checkbox back to the pushed state when Electron flips it', () => {
+      const { entries, options } = playback({ checked: { 'transport.toggleCountIn': true } });
+      const tick = (label: string) => {
+        const entry = entries.find((item) => item.label === label);
+        const item = { checked: label === 'Loop' };
+        const click = entry?.click as ((...args: unknown[]) => void) | undefined;
+        // Electron has flipped the tick by the time the handler runs.
+        item.checked = !item.checked;
+        click?.(item, undefined, {});
+        return item.checked;
+      };
+
+      // Loop with no song open: the renderer pushes nothing, so the tick stays off.
+      expect(tick('Loop')).toBe(false);
+      expect(options.sendCommand).toHaveBeenLastCalledWith('transport.toggleLoop');
+      expect(tick('Count-in')).toBe(true);
+    });
+
+    it('sends whether an Alt key or the menu ran an item', () => {
+      const { entries, options } = playback();
+      const loop = entries.find((item) => item.label === 'Loop');
+      const click = loop?.click as ((...args: unknown[]) => void) | undefined;
+      const item = { checked: false };
+      click?.(item, undefined, { triggeredByAccelerator: true, altKey: true });
+      expect(options.sendCommand).toHaveBeenLastCalledWith('transport.toggleLoop', true);
+      // Keyboard menu navigation and screen readers are "accelerator" activations without Alt.
+      click?.(item, undefined, { triggeredByAccelerator: true, altKey: false });
+      expect(options.sendCommand).toHaveBeenLastCalledWith('transport.toggleLoop');
+      click?.(item, undefined, { triggeredByAccelerator: false, altKey: true });
+      expect(options.sendCommand).toHaveBeenLastCalledWith('transport.toggleLoop');
+    });
+  });
 });

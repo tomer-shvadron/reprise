@@ -202,6 +202,19 @@ describe('primitives stay inside their system', () => {
     }
   }, 60_000);
 
+  it('keeps every seed inside its system at 320 px with both notations shown', () => {
+    // Seed 399 drew tab harmonic numbers and slide paths past the edge while the whole rigid
+    // extent was scaled; seeds 59 and 250 are the other dense ones.
+    const found: string[] = [];
+    for (let seed = 0; seed <= 400; seed++) {
+      const built = randomScore(seed, { diagrams: true });
+      const result = layout(built, options(built, 320, 'both'));
+      for (const entry of outside(result)) found.push(`seed ${String(seed)} ${entry}`);
+      expect(lineOverflow(result, 320), `seed ${String(seed)}`).toEqual([]);
+    }
+    expect(found).toEqual([]);
+  }, 60_000);
+
   it('prints no two overlapping bend labels in any tab seed at 320 px', () => {
     for (let seed = 0; seed <= 400; seed++) {
       const built = randomScore(seed, { diagrams: true });
@@ -212,13 +225,12 @@ describe('primitives stay inside their system', () => {
 
   it('holds for random scores in paged mode at narrow and wide lines', () => {
     // Paged only: continuous mode never squeezes (`finish` squeezes only paged lines), so it
-    // could not reach the squeezed cases this guards. At 320 px tab and standard are held to it,
-    // `both` is not: its rigid extent scales the tab's fixed glyphs along with the voice shifts.
+    // could not reach the squeezed cases this guards.
     assert(
       property(
         integer({ min: 0, max: 400 }),
         oneof(
-          tuple(constant(320), constantFrom<Notation>('tab', 'standard')),
+          tuple(constant(320), constantFrom<Notation>('tab', 'standard', 'both')),
           tuple(constantFrom(500, 700, 1200), constantFrom<Notation>('tab', 'standard', 'both')),
         ),
         (seed, [width, notation]) => {
@@ -233,7 +245,7 @@ describe('primitives stay inside their system', () => {
     );
   }, 60_000);
 
-  it('keeps every fixture inside its system at 320 px in tab and standard', () => {
+  it('keeps every fixture inside its system at 320 px in every notation', () => {
     // The random scores draw no whammy bar and few bends, so the corpus holds the labels the
     // sweep cannot reach (a whammy's `-½`, a bend's `1½`).
     const found: string[] = [];
@@ -241,7 +253,7 @@ describe('primitives stay inside their system', () => {
     expect(fixtures.length).toBeGreaterThan(0);
     for (const { path, native } of fixtures) {
       const built = parseNative(new TextEncoder().encode(native)).score;
-      for (const notation of ['tab', 'standard'] as const) {
+      for (const notation of ['tab', 'standard', 'both'] as const) {
         const result = layout(built, options(built, 320, notation));
         for (const entry of outside(result)) found.push(`${path} ${notation} ${entry}`);
       }

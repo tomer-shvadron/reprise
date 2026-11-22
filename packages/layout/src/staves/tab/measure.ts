@@ -64,6 +64,9 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
     if (!onset) continue;
     onset.left = Math.max(onset.left, reserved.left);
     onset.right = Math.max(onset.right, reserved.right);
+    // Run labels and the like are drawn at their natural width, so a squeezed bar keeps their
+    // room, as the standard staff does; a line whose minimums fit never squeezes.
+    onset.rigid = Math.max(onset.rigid ?? 0, reserved.right);
   }
 
   const { rows } = analysed;

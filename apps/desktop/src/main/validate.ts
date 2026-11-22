@@ -5,6 +5,8 @@ import type {
   HistoryMenuLabels,
   InvokeArgs,
   InvokeChannel,
+  MenuCheckboxId,
+  MenuChecks,
   MenuCommandId,
   MenuKey,
   MenuKeys,
@@ -13,7 +15,7 @@ import type {
   RecentSong,
 } from '@reprise/web';
 
-import { MENU_COMMANDS } from './menu';
+import { MENU_CHECKBOXES, MENU_COMMANDS } from './menu';
 import { isStoragePath, parseStoragePath, StoragePathError } from './storage-path';
 
 /** The path as sent once it has passed the syntax check; main resolves it against a root. */
@@ -266,6 +268,7 @@ const ROLE_KEYS: readonly (readonly [string, boolean, boolean, boolean])[] = [
   ['v', true, false, false],
 ];
 
+const isCheckboxId = (id: string): id is MenuCheckboxId => Object.hasOwn(MENU_CHECKBOXES, id);
 const isMenuCommandId = (id: string): id is MenuCommandId => Object.hasOwn(MENU_COMMANDS, id);
 
 function parseMenuKey(id: string, value: unknown): MenuKey | null {
@@ -317,6 +320,24 @@ export function parseMenuKeys(value: unknown): MenuKeys {
     keys[id] = parseMenuKey(id, raw);
   }
   return keys;
+}
+
+/**
+ * `{ <menu command id>: boolean }`; an id the menu does not have, or a non-boolean, refuses the
+ * map, and so does anything that is not an object.
+ */
+export function parseMenuChecks(value: unknown): MenuChecks {
+  if (!isRecord(value)) throw new PayloadError('Expected the menu checks');
+  const checks: MenuChecks = {};
+  for (const [id, raw] of Object.entries(value)) {
+    if (!isCheckboxId(id)) {
+      throw new PayloadError(`'${id}' is not a checkbox in the menu`);
+    }
+    if (raw === undefined) continue;
+    if (typeof raw !== 'boolean') throw new PayloadError(`Expected a boolean for '${id}'`);
+    checks[id] = raw;
+  }
+  return checks;
 }
 
 /** At most ten items; an id is opaque so an overlong one is refused, a title is cut. */
@@ -393,6 +414,10 @@ export const parsers: Parsers = {
   'menu:set-keys': (args) => {
     arity(args, 1, 'menu:set-keys');
     return [parseMenuKeys(args[0])];
+  },
+  'menu:set-checked': (args) => {
+    arity(args, 1, 'menu:set-checked');
+    return [parseMenuChecks(args[0])];
   },
   'app:library-dir': (args) => {
     arity(args, 0, 'app:library-dir');

@@ -15,7 +15,7 @@ import { App } from './app';
 
 function renderApp(platform: Platform = fakePlatform()) {
   const services = createTestServices({ platform });
-  let menu: ((id: MenuCommandId) => void) | undefined;
+  let menu: ((id: MenuCommandId, withAlt?: boolean) => void) | undefined;
   render(
     <App
       services={services}
@@ -26,9 +26,9 @@ function renderApp(platform: Platform = fakePlatform()) {
       }}
     />,
   );
-  const send = async (id: MenuCommandId) => {
+  const send = async (id: MenuCommandId, withAlt?: boolean) => {
     await act(async () => {
-      menu?.(id);
+      menu?.(id, withAlt);
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
   };
@@ -279,6 +279,30 @@ describe('App', () => {
     expect(print).toHaveBeenCalledOnce();
     expect(services.ui.getState().zoom).toBe(1.1);
     expect(services.ui.getState().panels.rightPanel).toBe(true);
+  });
+
+  it('runs a Playback menu command; its key yields to a focused text field, a click does not', async () => {
+    const { services, send } = renderApp();
+    const setCountIn = vi.spyOn(services.audio, 'setCountIn');
+    const field = document.createElement('input');
+    document.body.append(field);
+
+    // Settings applied at start-up may already have called it.
+    await services.settings.whenHydrated();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    setCountIn.mockClear();
+    await send('transport.toggleCountIn', true);
+    expect(setCountIn).toHaveBeenCalledTimes(1);
+
+    field.focus();
+    // Option+C types a character in a Mac field; Alt+C is a mnemonic on Windows.
+    await send('transport.toggleCountIn', true);
+    expect(setCountIn).toHaveBeenCalledTimes(1);
+    await send('transport.toggleCountIn');
+    expect(setCountIn).toHaveBeenCalledTimes(2);
+    field.remove();
   });
 
   it('asks before Close and Open replace a modified document, and Cancel keeps it', async () => {
