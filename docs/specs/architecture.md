@@ -505,13 +505,13 @@ type TransposeResult =
   | { ok: false; reason: 'belowOpenString' | 'aboveLastFret' | 'outOfMidiRange'; midi: number; alternatives: { string: number; fret: number }[] };
 const MIDI_MAX = 127;
 
-const STANDARD_TUNINGS: readonly NamedTuning[];   // Track.tuning order; NamedTuning = { name; instrument: 'guitar' | 'bass' | 'ukulele' | 'banjo' | 'mandolin' | 'twelveString'; strings; courses?; drone? }
-function findTuningName(tuning: readonly number[], extras?: { courses?: readonly (number | null)[]; drone?: Drone }): string | undefined;   // exact: string count, courses and drone included
+const STANDARD_TUNINGS: readonly NamedTuning[];   // Track.tuning order; NamedTuning = { name; instrument: 'guitar' | 'bass' | 'ukulele' | 'banjo' | 'mandolin' | 'twelveString' | 'violin' | 'viola' | 'cello' | 'doubleBass' | 'shamisen' | 'mandola' | 'octaveMandolin'; strings; courses?; drone? }
+function findTuningName(tuning: readonly number[], extras?: { courses?: readonly (number | null)[]; drone?: Drone; program?: number }): string | undefined;   // exact: string count, courses and drone included; `program` picks between equal presets and is the only way to match a violin, viola, cello, double bass or shamisen row
 function courseOffset(track, string: number): number | null;       // the second string's offset, null when single or absent
 function writtenFret(track, note): number;                          // the neck fret: stored + drone.fret on the drone string above 0
 function storedFret(track, string: number, written: number): number | undefined;   // inverse; undefined for neck frets 1..drone.fret
 function maxStoredFret(track, string: number): number;              // fretCount, less drone.fret on the drone string
-function stringInstrumentOf(track): 'twelveString' | 'mandolin' | 'banjo' | undefined;   // derived, never stored
+function stringInstrumentOf(track): 'twelveString' | 'mandolin' | 'banjo' | 'ukulele' | undefined;   // derived, never stored
 
 interface Spelling { letter: 'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B'; octave: number; alter: -2 | -1 | 0 | 1 | 2; accidental?: Accidental }   // octave scientific, C4 = 60, B#3 = 60
 const LETTERS: readonly Letter[];                      // C D E F G A B
@@ -540,7 +540,7 @@ class ScoreBuildError extends Error { violations: readonly Violation[] }
 function note(string: number, fret: number, spec?: NoteSpec): Note;   // NoteSpec = Partial<Omit<Note, 'string' | 'fret'>>
 function midi(value: number, spec?: NoteSpec): Note;                  // string 0, fret = the MIDI note
 function parseDuration(spec: DurationSpec): Pick<Beat, 'duration' | 'dots' | 'tuplet'>;   // '8' | '4.' | '2..' | '8t'
-type Instrument = 'guitar' | 'bass' | 'drums' | 'piano' | 'banjo' | 'mandolin' | 'twelveString';
+type Instrument = 'guitar' | 'bass' | 'drums' | 'piano' | 'banjo' | 'mandolin' | 'twelveString' | 'violin' | 'shamisen' | 'ukulele';
 type TrackSpec = Omit<TrackOptions, 'bars' | 'barCount'> & { id?: Id };
 type BeatSpec = Partial<Omit<Beat, 'duration' | 'dots' | 'notes' | 'rest'>>;
 function fullScore(): Score;                                            // every node type and optional field
@@ -754,4 +754,4 @@ Changed by #208, part 2 (2026-11-22), audio, lead-approved: `setTempo('bpm', b)`
 
 Changed by #286 (2026-11-22), audio, additive, lead-approved: `PackAssignment.entries.dead` may end in `#key:<keys>` (a comma list of MIDI keys and ranges, lowest string first, at most 10): the set is then that file's muted-string noise at one fixed key per string, strings past the last key taking the last. A malformed value, an unmapped key, or `#key:` on another set drops the set (the burst plays). `SetVoicing.keys` and `PlanVoicing.keys` (`readonly number[]`) carry it, and the root export `splitEntry(value): { path: string; keys?: readonly number[] } | undefined` lets the web strip the suffix where it reads a value as a file. A sampled `dead` set also carries the palm mute, so it drops the synthesized palm-mute decay. The curated Swagbass and Emilyguitar lists declare their noise keys. No change to the model, the `AudioEngine` interface, `LoadResult`, `pack.json` or the manifest schema.
 
-Changed by #432, part 1 (2026-11-23), model, additive, lead-approved: `TuningInstrument` gains `violin`, `viola`, `cello`, `doubleBass`, `shamisen`, `mandola` and `octaveMandolin`, and `STANDARD_TUNINGS` gains their presets (shamisen in three tunings) plus Ukulele low G and Baritone ukulele DGBE, appended after the older rows. `findTuningName` takes an optional `program` that picks the preset whose instrument it names when several share strings, courses and drone; a call without it answers as before. `StringInstrument` gains `'ukulele'`: a fretted track of four single strings on program 24, with no drone. No schema change, no `SCORE_VERSION` bump.
+Changed by #432, part 1 (2026-11-23), model, additive, lead-approved: `TuningInstrument` gains `violin`, `viola`, `cello`, `doubleBass`, `shamisen`, `mandola` and `octaveMandolin`, and `STANDARD_TUNINGS` gains their presets (shamisen in three tunings) plus Ukulele low G and Baritone ukulele DGBE, appended after the older rows. `findTuningName` takes an optional `program` that picks the preset whose instrument it names when several share strings, courses and drone. The violin, viola, cello, double bass and shamisen rows match only on their own program (40, 41, 42, 43, 106), so a mandolin read from a gp file (single GDAE strings on 25) stays Custom; a call without `program` answers as before. The builder's `Instrument` gains `violin`, `shamisen` and `ukulele`. The tuner passes the track's program. `StringInstrument` gains `'ukulele'`: a fretted track of four single strings on program 24, with no drone. No schema change, no `SCORE_VERSION` bump.
