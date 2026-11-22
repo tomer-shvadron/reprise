@@ -14,6 +14,7 @@ import {
   withLoop,
 } from './scheduler';
 import type { Anchor, Run } from './scheduler';
+import { PREVIEW_MIN_SECONDS } from './sink';
 import type { InstrumentSink, MetronomeSink } from './sink';
 import { frameTicker, workerTicker } from './ticker';
 import type { Ticker } from './ticker';
@@ -65,8 +66,8 @@ export interface Transport {
    * Sounds one beat as playback would, effects and all, now: stopped or playing, through the
    * sink's preview path (`NoteEvent.preview`), so it neither touches the run, the mixer, the
    * sink's round robins and legato chains nor a song voice. Does nothing for a rest with no
-   * golpe or a beat the loaded timeline lacks. The beat's pedal change is sent only when no run
-   * is playing, and undone after its longest note.
+   * golpe or a beat the loaded timeline lacks. The beat's pedal change goes to the preview's own
+   * pedal, undone after its longest note, and never moves the song's.
    */
   previewBeat(trackId: Id, beatId: Id): void;
   setTempo(mode: TempoMode, value: number): void;
@@ -318,14 +319,16 @@ export function createTransport(options: TransportOptions): Transport {
       if (!timeline) return;
       const when = context.currentTime + startLatency;
       const { notes, hits, wahs } = previewBeatEvents(timeline, trackId, beatId, when);
-      // Only when stopped: the pedal is state, and a running song keeps its own.
-      const pedal = isRunning() ? [] : wahs;
-      for (const wah of pedal) sink.wah?.(wah);
+      // The preview's own pedal: the song's, which a run restores, is never moved.
+      for (const wah of wahs) sink.wah?.(wah);
       for (const hit of hits) sink.hit?.(hit);
       for (const note of notes) sink.noteOn(note);
-      const first = pedal[0];
+      const first = wahs[0];
       if (first) {
-        const end = Math.max(when, ...notes.map((note) => note.when + note.duration));
+        const end = Math.max(
+          when,
+          ...notes.map((note) => note.when + Math.max(note.duration, PREVIEW_MIN_SECONDS)),
+        );
         sink.wah?.({ ...first, state: 'off', when: end, restore: true });
       }
     },

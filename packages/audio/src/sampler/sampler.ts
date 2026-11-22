@@ -360,8 +360,8 @@ export class Sampler {
   }
 
   /** A wah pedal change on the track's strip at `at`; see `ChannelStrip.setWah`. */
-  setWah(id: Id, state: WahState, at: number, restore = false): void {
-    this.#state(id).strip.setWah(state, at, restore);
+  setWah(id: Id, state: WahState, at: number, restore = false, preview = false): void {
+    this.#state(id).strip.setWah(state, at, restore, preview);
   }
 
   /**

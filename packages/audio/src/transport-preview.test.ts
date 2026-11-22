@@ -18,7 +18,7 @@ const bend = {
   ],
 };
 
-/** Half notes at 120 BPM (1 s each), so no preview is stretched to its minimum length. */
+/** Half notes at 120 BPM (1 s each). */
 function effects(): Score {
   return score()
     .tempo(120)
@@ -31,6 +31,22 @@ function effects(): Score {
     .bar()
     .beat('2', [note(3, 7, { hammerPull: true })])
     .rest('2', { effects: { golpe: 'finger' } })
+    .build();
+}
+
+/** A grace before a beat, one on it, and a tie chain that crosses the barline. */
+function gracesAndTies(): Score {
+  return score()
+    .tempo(120)
+    .track('guitar')
+    .bar()
+    .beat('4', [note(1, 0)])
+    .beat('4', [note(1, 2)], { grace: [{ duration: 16, before: true, notes: [note(1, 1)] }] })
+    .beat('4', [note(1, 3)], { grace: [{ duration: 16, before: false, notes: [note(1, 2)] }] })
+    .beat('4', [note(2, 5)])
+    .bar()
+    .beat('2', [note(2, 5, { tie: true })])
+    .rest('2')
     .build();
 }
 
@@ -136,19 +152,20 @@ describe('Transport.previewBeat', () => {
     expect(h.sink.hits.map((hit) => hit.golpe)).toEqual(['finger']);
   });
 
-  it('lets a short beat ring for the minimum length', async () => {
+  it("keeps a short beat at its written timing: the minimum length is the sink's sustain", async () => {
     const song = score()
       .tempo(240)
       .track('guitar')
       .bar()
-      .beat('8', [note(1, 3)])
+      .beat('8', [note(1, 3, { bend })])
       .build();
     const beat = beatsOf(song)[0];
     const trackId = song.tracks[0]?.id;
     if (!beat || !trackId) throw new Error('fixture');
     const h = await harness(song, 3);
     h.transport.previewBeat(trackId, beat.id);
-    expect(h.sink.notes[0]?.duration).toBeCloseTo(0.6, 9);
+    // An eighth at 240 BPM is 125 ms, and the bend's timing follows from it, not from 0.6 s.
+    expect(h.sink.notes[0]?.duration).toBeCloseTo(0.125, 9);
     expect(h.sink.notes[0]?.durationTicks).toBe(PPQ / 2);
   });
 
@@ -166,13 +183,13 @@ describe('Transport.previewBeat', () => {
     if (!beat || !trackId) throw new Error('fixture');
     const h = await harness(song, 3);
     h.transport.previewBeat(trackId, beat.id);
-    expect(h.sink.wahs.map((w) => [w.state, w.restore])).toEqual([
-      ['closed', false],
-      ['off', true],
+    expect(h.sink.wahs.map((w) => [w.state, w.restore, w.preview])).toEqual([
+      ['closed', false, true],
+      ['off', true, true],
     ]);
   });
 
-  it('leaves a running song alone: no pedal change, no cut, its notes still come', async () => {
+  it('leaves a running song alone: its own pedal, no cut, its notes still come', async () => {
     const song = effects();
     const beat = beatsOf(song)[1];
     const trackId = song.tracks[0]?.id;
@@ -184,7 +201,54 @@ describe('Transport.previewBeat', () => {
     const previewed = h.sink.notes.filter((n) => n.preview);
     expect(previewed.map((n) => n.beat.id)).toEqual([beat.id]);
     expect(h.sink.notes.filter((n) => !n.preview)).toHaveLength(4);
-    expect(h.sink.wahs.filter((w) => w.state === 'closed')).toHaveLength(1);
+    // The song's pedal is moved by the song alone: the preview's change is its own.
+    expect(h.sink.wahs.filter((w) => w.state === 'closed' && !w.preview)).toHaveLength(1);
+    expect(h.sink.wahs.filter((w) => w.preview)).not.toHaveLength(0);
     expect(h.sink.cuts).toHaveLength(0);
+  });
+
+  describe('against playback', () => {
+    async function compare(song: Score, index: number) {
+      const beat = beatsOf(song)[index];
+      const trackId = song.tracks[0]?.id;
+      if (!beat || !trackId) throw new Error('fixture');
+      const played = await harness(song, 8);
+      played.transport.play();
+      await played.render();
+      const previewed = await harness(song, 8);
+      previewed.transport.previewBeat(trackId, beat.id);
+      return {
+        previewed: previewed.sink.notes,
+        played: played.sink.notes.filter((n) => n.beat.id === beat.id),
+      };
+    }
+
+    it('places the grace notes of a beat before it, and the main note after their lead', async () => {
+      const { previewed, played } = await compare(gracesAndTies(), 1);
+      expect(previewed.map(shape)).toEqual(played.map(shape));
+      // A 16th grace at 120 BPM is 125 ms: the main note sounds that long after the start.
+      expect(previewed[0]?.when).toBeCloseTo(LATENCY + 0.125, 6);
+    });
+
+    it('plays a beat with an on-beat grace note as playback does', async () => {
+      const { previewed, played } = await compare(gracesAndTies(), 2);
+      expect(previewed.map(shape)).toEqual(played.map(shape));
+      expect(previewed[0]?.when).toBeCloseTo(LATENCY, 6);
+    });
+
+    it('plays a tie chain across the barline as its origin, whole', async () => {
+      const { previewed, played } = await compare(gracesAndTies(), 3);
+      expect(played[0]?.continuations).toHaveLength(1);
+      expect(previewed.map(shape)).toEqual(played.map(shape));
+      expect(previewed[0]?.durationTicks).toBe(PPQ + 2 * PPQ);
+    });
+
+    it('sounds a tie destination previewed on its own as an onset', async () => {
+      const { previewed, played } = await compare(gracesAndTies(), 4);
+      expect(played).toHaveLength(0);
+      expect(
+        previewed.map((n) => [n.note.string, n.durationTicks, n.continuations.length]),
+      ).toEqual([[2, 2 * PPQ, 0]]);
+    });
   });
 });

@@ -422,9 +422,6 @@ export function wahEventOf(wah: ScheduledWah): WahEvent {
   };
 }
 
-/** The shortest a previewed note rings: a beat at a fast tempo would otherwise be a click. */
-export const PREVIEW_MIN_SECONDS = 0.6;
-
 /** What sounds one beat: the sink's calls, in the order playback makes them. */
 export interface BeatPreview {
   notes: NoteEvent[];
@@ -438,7 +435,7 @@ export interface BeatPreview {
  * that starts at the beat's grace-note lead and stops at its end, so bends,
  * slides, ties, golpes and the rest follow from one code path. Starts at `when`, at the beat's
  * own tempo and the written speed. Other beats in the lead window (a tie's origin) are dropped,
- * and a note shorter than `PREVIEW_MIN_SECONDS` rings that long. Empty for a rest with no golpe,
+ * the timing is exactly playback's (the sink lets the last strike sound at least `PREVIEW_MIN_SECONDS`). Empty for a rest with no golpe,
  * or for a track or beat the score lacks. No mixer change is sent: a preview never moves the mixer.
  */
 export function previewBeatEvents(
@@ -469,16 +466,14 @@ export function previewBeatEvents(
   });
   const own = (event: { track: { id: Id }; beat: { id: Id } }): boolean =>
     event.track.id === trackId && event.beat.id === beatId;
-  preview.notes = advanced.notes.filter(own).map((note) => ({
-    ...noteEventOf(note),
-    duration: Math.max(note.duration, PREVIEW_MIN_SECONDS),
-    preview: true,
-  }));
+  preview.notes = advanced.notes
+    .filter(own)
+    .map((note) => ({ ...noteEventOf(note), preview: true }));
   preview.hits = advanced.hits.filter(own).map((hit) => ({ ...hitEventOf(hit), preview: true }));
   preview.wahs = advanced.wahs
     .filter(
       (wah) => !wah.restore && wah.track.id === trackId && Math.abs(wah.tick - span.tick) < EPSILON,
     )
-    .map(wahEventOf);
+    .map((wah) => ({ ...wahEventOf(wah), preview: true }));
   return preview;
 }

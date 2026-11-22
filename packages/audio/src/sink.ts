@@ -2,6 +2,11 @@ import type { Beat, Golpe, MixerChange, Note, Track } from '@reprise/model';
 
 import type { WahState } from './wah-lane';
 
+/** How long the last strike of a previewed note sounds at least, whatever its written length. */
+export const PREVIEW_MIN_SECONDS = 0.6;
+/** The longest a previewed let-ring note rings. */
+export const PREVIEW_LET_RING_SECONDS = 2;
+
 /** One note the scheduler wants sounded, with everything a sampler needs to voice it. */
 export interface NoteEvent {
   track: Track;
@@ -106,6 +111,8 @@ export interface WahEvent {
   passIndex: number;
   /** The state at a run's start, set at once with no glide or fade. */
   restore: boolean;
+  /** An editor preview's pedal: the track's second one, so the song's is never moved. */
+  preview?: boolean;
 }
 
 /**

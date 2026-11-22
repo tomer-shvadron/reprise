@@ -13,6 +13,7 @@ import { scrapeInstrument } from '../articulations/scrape';
 import { levelAt } from '../articulations/tie-chain';
 import { noteVelocity } from '../articulations/velocity';
 import type { FilterSettings } from './voice';
+import { PREVIEW_LET_RING_SECONDS, PREVIEW_MIN_SECONDS } from '../sink';
 import type { HitEvent, InstrumentSink, MixEvent, NoteEvent, WahEvent } from '../sink';
 import type { RegionMap, RegionSelection } from './region-map';
 import type { Instrument, Sampler, TrackParams, VoiceHandle } from './sampler';
@@ -287,8 +288,9 @@ export function createSamplerSink(
   function play(trackId: Id, input: PlanInput, pass: Pass, final: boolean): void {
     const chainKey = `${trackId}:${String(input.note.string)}`;
     const chain = input.note.string > 0 && !pass.preview ? chains.get(chainKey) : undefined;
-    const handover = handovers.get(chainKey);
-    handovers.delete(chainKey);
+    // A preview neither takes nor leaves a hammer-on handover: the song's are its own.
+    const handover = pass.preview ? undefined : handovers.get(chainKey);
+    if (!pass.preview) handovers.delete(chainKey);
     // A hammer-on or tap from silence (after a rest, a let-go string) is struck, not legato.
     const handedOver = handover !== undefined && Math.abs(handover - input.when) <= CHAIN_TOLERANCE;
     let carried: VoiceHandle | undefined;
@@ -320,6 +322,7 @@ export function createSamplerSink(
     const lastIndex = plan.strikes.length - 1;
     const lastStrike = plan.strikes[lastIndex];
     if (
+      !pass.preview &&
       final &&
       lastStrike &&
       input.next &&
@@ -347,8 +350,14 @@ export function createSamplerSink(
       shapeGain(voice, plan.gain, strike.when, until);
       shapePitch(voice, plan, strike, until, isCarried);
       if (pass.preview) {
-        // A preview never carries a voice into a note: the voice ends with the strike.
-        voice.release(plan.legatoInto !== undefined && last ? plan.legatoInto : strike.end);
+        // A preview never carries a voice into a note: the voice ends with the strike, the last
+        // one let ring (up to a cap) and sounding at least the preview's minimum.
+        let end = strike.end;
+        if (last && plan.legatoInto !== undefined) end = plan.legatoInto;
+        else if (last && plan.letRingUntil !== undefined) {
+          end = Math.min(plan.letRingUntil, input.when + PREVIEW_LET_RING_SECONDS);
+        }
+        voice.release(final && last ? Math.max(end, input.when + PREVIEW_MIN_SECONDS) : end);
       } else if (last && plan.legatoInto !== undefined) {
         chains.set(chainKey, {
           voice,
@@ -406,7 +415,7 @@ export function createSamplerSink(
   /** The wah pedal on the track's strip; the lane already holds only fretted tracks. */
   function wah(event: WahEvent): void {
     if (event.track.kind !== 'fretted') return;
-    sampler.setWah(event.track.id, event.state, event.when, event.restore);
+    sampler.setWah(event.track.id, event.state, event.when, event.restore, event.preview === true);
   }
 
   return {

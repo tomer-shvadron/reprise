@@ -144,10 +144,12 @@ export interface AudioEngine {
    * One beat of the song as it is written, effects included (bends, slides, vibrato, palm mute,
    * golpe, wah, harmonics, grace notes, ties), planned by the scheduler that plans playback and
    * sounded now through the track's strip, past mute and solo, while stopped or playing. It
-   * takes no options: the beat's own dynamics, tempo and notes, each ringing at least 0.6 s.
-   * Previews choke only previews and never touch the song's voices, mixer or round robins. A
-   * rest is silent; a sample not yet decoded is requested and misses this once, as in playback.
-   * Throws a `RangeError` for a track or beat the song lacks, and unlocks the context.
+   * takes no options: the beat's own dynamics, tempo and notes, the last strike sounding at least
+   * 0.6 s and a let-ring note ringing to its end, capped at 2 s. Previews choke only previews and
+   * never touch the song's voices, mixer, round robins or pedal (the wah has a preview pedal). A
+   * rest is silent, as is a beat in a bar playback never reaches; a sample not yet decoded is
+   * requested and misses this once, as in playback. Throws a plain `Error` with no song loaded
+   * and a `RangeError` for a track or beat the song lacks, and unlocks the context.
    */
   previewBeat(track: Id, beat: Id): void;
   on<K extends keyof AudioEngineEvents>(

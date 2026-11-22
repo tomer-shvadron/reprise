@@ -266,4 +266,75 @@ describe('createSamplerSink preview events', () => {
     // The preview did not advance the counter: the song's first strike is still the cycle's first.
     expect(played?.select?.sequence).toBe(0);
   });
+
+  it('sounds a previewed note at least the minimum length, however short it is written', async () => {
+    const context = offline(2);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitar, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    const frequency = midiToFrequency(midiNote(guitar, firstNote));
+
+    sink.noteOn({
+      ...event({ note: firstNote, beat: first, when: 0.1, duration: 0.1, durationTicks: 1 }),
+      preview: true,
+    });
+    const data = (await context.startRendering()).getChannelData(0);
+
+    expect(toneLevel(data, frequency, 0.3, 0.6)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, frequency, 1, 1.5)).toBeLessThan(0.001);
+  });
+
+  it('lets a previewed let-ring note ring past its beat, up to a cap', async () => {
+    const context = offline(3.5);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitar, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    const frequency = midiToFrequency(midiNote(guitar, ringingNote));
+
+    sink.noteOn({
+      ...event({ note: ringingNote, beat: ringing, when: 0.1, duration: 0.2, barEnd: 30 }),
+      preview: true,
+    });
+    const data = (await context.startRendering()).getChannelData(0);
+
+    expect(toneLevel(data, frequency, 1.2, 1.8)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, frequency, 2.6, 3.4)).toBeLessThan(0.001);
+  });
+
+  it('gives a previewed beat a wah of its own: heard in the preview, the song pedal untouched', async () => {
+    const levelOf = async (closed: boolean): Promise<number> => {
+      const context = offline(2);
+      const sampler = new Sampler(context);
+      sampler.addTrack(guitar, sineInstrument());
+      const sink = createSamplerSink(sampler);
+      const high = note(1, 24);
+      if (closed) {
+        sink.wah?.({
+          track: guitarTrack,
+          trackIndex: 0,
+          state: 'closed',
+          when: 0,
+          playbackTick: 0,
+          sequenceIndex: 0,
+          masterBarIndex: 0,
+          passIndex: 0,
+          restore: false,
+          preview: true,
+        });
+      }
+      sink.noteOn({
+        ...event({ note: high, beat: first, when: 0.1, duration: 1.5 }),
+        preview: true,
+      });
+      const data = (await context.startRendering()).getChannelData(0);
+      expect(sampler.strip(guitar.id)?.wah).toBeUndefined();
+      return toneLevel(data, midiToFrequency(midiNote(guitar, high)), 0.6, 1.2);
+    };
+
+    const plain = await levelOf(false);
+    const wah = await levelOf(true);
+    // A closed pedal is a band-pass around 400 Hz: the high note is far off its centre.
+    expect(plain).toBeGreaterThan(0.1);
+    expect(wah).toBeLessThan(plain * 0.6);
+  });
 });

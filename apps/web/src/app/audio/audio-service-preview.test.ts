@@ -258,6 +258,45 @@ describe('AudioService.previewBeat', () => {
     expect(engine.unlock).not.toHaveBeenCalled();
   });
 
+  it('waits for the rebuild an edit queued, so it sounds the edited beat, and a newer preview replaces it', async () => {
+    const queue: (() => void)[] = [];
+    const { audio } = await open((run) => {
+      queue.push(run);
+    });
+    const edited = structuredClone(song);
+    const beat = edited.tracks[0]?.bars[0]?.voices[0].beats[0];
+    if (beat) beat.effects = { ...beat.effects, golpe: 'thumb' };
+    audio.setDocument({ id: 'doc', score: edited });
+    audio.previewBeat(trackId, beatId);
+    audio.previewBeat(trackId, beatId);
+    expect(engine.previewBeat).not.toHaveBeenCalled();
+    for (const run of queue.splice(0)) run();
+    await audio.settled();
+    await vi.waitFor(() => {
+      expect(engine.previewBeat).toHaveBeenCalledTimes(1);
+    });
+    expect(engine.unlock).toHaveBeenCalled();
+  });
+
+  it('drops a preview that waited longer than the lateness bound', async () => {
+    const queue: (() => void)[] = [];
+    const { audio } = await open((run) => {
+      queue.push(run);
+    });
+    const edited = structuredClone(song);
+    const beat = edited.tracks[0]?.bars[0]?.voices[0].beats[0];
+    if (beat) beat.effects = { ...beat.effects, golpe: 'thumb' };
+    audio.setDocument({ id: 'doc', score: edited });
+    const clock = vi.spyOn(performance, 'now');
+    clock.mockReturnValue(1000);
+    audio.previewBeat(trackId, beatId);
+    clock.mockReturnValue(1500);
+    for (const run of queue.splice(0)) run();
+    await audio.settled();
+    clock.mockRestore();
+    expect(engine.previewBeat).not.toHaveBeenCalled();
+  });
+
   it('does nothing with no document', () => {
     const audio = createAudioService({
       playback: createPlaybackStore(),

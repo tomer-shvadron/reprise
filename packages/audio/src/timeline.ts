@@ -280,8 +280,8 @@ export interface BeatSpan {
 }
 
 /**
- * The first pass over `beatId` on `trackId`, or undefined for a track or beat the score lacks.
- * A repeated bar is located at its first play: a preview has no pass of its own.
+ * The first pass over `beatId` on `trackId`, or undefined for a track or beat the score lacks, or a
+ * beat in a bar playback never reaches (after a Fine, or skipped by a coda jump). A repeated bar is located at its first play: a preview has no pass of its own.
  */
 export function locateBeat(timeline: Timeline, trackId: Id, beatId: Id): BeatSpan | undefined {
   const track = timeline.score.tracks.find((entry) => entry.id === trackId);
