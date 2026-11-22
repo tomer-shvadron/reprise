@@ -133,6 +133,21 @@ describe('expectedAttacks', () => {
     expect(attacks.map((attack) => attack.event.beatIndex)).toEqual([0, 2]);
   });
 
+  it('leaves out a tapped note, played like a hammer-on', () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 12)], { effects: { tapping: true } })
+      .build();
+    const attacks = expectedAttacks(
+      song,
+      [0, 1].map((beat) => eventOf(song, 0, beat)),
+    );
+    expect(attacks.map((attack) => attack.event.beatIndex)).toEqual([0]);
+  });
+
   it('merges attacks within 30 ms and skips muted tracks, or the unsoloed ones', () => {
     const build = (channel: { mute?: boolean; solo?: boolean }): Score => {
       const song = score()
@@ -242,6 +257,20 @@ describe('strikeTiming', () => {
     const [a, , c] = events;
     if (!a || !c) throw new Error('three events');
     expect(timing(song, events, [[strikeOf(a)], [], [strikeOf(c)]])).toEqual([]);
+  });
+
+  it('accepts a tapped note not struck, as a legato destination', () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 12)], { effects: { tapping: true } })
+      .build();
+    const events = [0, 1].map((beat) => eventOf(song, 0, beat));
+    const [a] = events;
+    if (!a) throw new Error('two events');
+    expect(timing(song, events, [[strikeOf(a)], []])).toEqual([]);
   });
 
   it('fails a note the sampler never struck, as when a track is dropped', () => {

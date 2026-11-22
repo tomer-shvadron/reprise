@@ -5,7 +5,7 @@ import { DEAD_NOTE_KEY, deadNoteInstrument } from '../articulations/dead-note';
 import { GOLPE_KEY, golpeInstrument } from '../articulations/golpe';
 import { placeGraces } from '../articulations/grace';
 import { ARTICULATION } from '../articulations/parameters';
-import { planNote } from '../articulations/plan';
+import { isHammered, planNote } from '../articulations/plan';
 import { availableSets, voicingOf } from '../articulations/sets';
 import type { ArticulationSet, NoteVoicing, SetVoicing, Voicing } from '../articulations/sets';
 import type { GainPoint, NotePlan, PlanInput, Strike } from '../articulations/plan';
@@ -81,7 +81,10 @@ const CURVE_GAP = 2 * CHAIN_TOLERANCE;
 function handsOver(input: PlanInput, releaseAt: number, nextOnBeatGrace: boolean): boolean {
   const { next } = input;
   return (
-    next?.note.hammerPull === true && !nextOnBeatGrace && next.when <= releaseAt + CHAIN_TOLERANCE
+    next !== undefined &&
+    isHammered(next.note, next.effects ?? {}) &&
+    !nextOnBeatGrace &&
+    next.when <= releaseAt + CHAIN_TOLERANCE
   );
 }
 
@@ -167,6 +170,9 @@ export function createSamplerSink(
   let scrape: Instrument | undefined;
   let golpe: Instrument | undefined;
   const chains = new Map<string, Chain>();
+  // When the string was handed over to a hammer-on or tap, per string: only a note starting then
+  // starts over a sounding one, and so plays the `trigger=legato` regions.
+  const handovers = new Map<string, number>();
   // Notes struck so far per track, region map, layer and key, for the round robins; a stop starts over.
   let counters = new WeakMap<RegionMap, Map<string, number>>();
 
@@ -207,6 +213,7 @@ export function createSamplerSink(
     strikeIndex: number,
     final: boolean,
     set: SetVoicing | undefined,
+    handedOver: boolean,
   ): VoiceHandle | undefined {
     if (plan.dead) deadNote ??= deadNoteInstrument(sampler.context.sampleRate);
     if (plan.scrape) scrape ??= scrapeInstrument(sampler.context.sampleRate);
@@ -219,7 +226,8 @@ export function createSamplerSink(
     // The layer actually played decides, not any keyswitch layer of the pack.
     const legato =
       pass.voicing?.legatoTrigger === true &&
-      input.note.hammerPull &&
+      handedOver &&
+      isHammered(input.note, input.effects) &&
       instrument.regions.hasLegatoRegionsIn(layer);
     const selection = select(
       trackId,
@@ -268,6 +276,10 @@ export function createSamplerSink(
   function play(trackId: Id, input: PlanInput, pass: Pass, final: boolean): void {
     const chainKey = `${trackId}:${String(input.note.string)}`;
     const chain = input.note.string > 0 ? chains.get(chainKey) : undefined;
+    const handover = handovers.get(chainKey);
+    handovers.delete(chainKey);
+    // A hammer-on or tap from silence (after a rest, a let-go string) is struck, not legato.
+    const handedOver = handover !== undefined && Math.abs(handover - input.when) <= CHAIN_TOLERANCE;
     let carried: VoiceHandle | undefined;
     if (chain) {
       chains.delete(chainKey);
@@ -295,12 +307,22 @@ export function createSamplerSink(
       ...(sampled && { sampled }),
     });
     const lastIndex = plan.strikes.length - 1;
+    const lastStrike = plan.strikes[lastIndex];
+    if (
+      final &&
+      lastStrike &&
+      input.next &&
+      input.note.string > 0 &&
+      handsOver(input, plan.letRingUntil ?? lastStrike.end, pass.nextOnBeatGrace)
+    ) {
+      handovers.set(chainKey, input.next.when);
+    }
     for (const [index, strike] of plan.strikes.entries()) {
       const last = index === lastIndex;
       const voice =
         index === 0 && carried
           ? carried
-          : start(trackId, input, plan, strike, last, pass, index, final, set);
+          : start(trackId, input, plan, strike, last, pass, index, final, set, handedOver);
       if (!voice) continue;
       const isCarried = voice === carried;
       const until = last && plan.legatoInto !== undefined ? plan.legatoInto : strike.end;
@@ -409,7 +431,7 @@ export function createSamplerSink(
           })),
           secondsPerTick,
           barEnd: event.barEnd,
-          next: event.nextOnString,
+          next: next && { note: next.note, when: next.when, effects: next.beat.effects },
         },
         pass,
         true,
@@ -420,6 +442,7 @@ export function createSamplerSink(
     wah,
     allNotesOff(when: number): void {
       chains.clear();
+      handovers.clear();
       counters = new WeakMap();
       sampler.allNotesOff(when);
       sampler.resetWah(when);

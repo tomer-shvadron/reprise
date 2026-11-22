@@ -20,10 +20,11 @@ const song = score()
   .beat('4', [note(1, 5)], {
     grace: [{ duration: 16, before: true, notes: [note(1, 3)] }],
   })
+  .beat('4', [note(1, 7)], { effects: { tapping: true } })
   .build();
 const [guitar] = song.tracks;
-const [plain, tremolo, graced] = guitar?.bars[0]?.voices[0].beats ?? [];
-if (!guitar || !plain || !tremolo || !graced) throw new Error('the song has three beats');
+const [plain, tremolo, graced, tapped] = guitar?.bars[0]?.voices[0].beats ?? [];
+if (!guitar || !plain || !tremolo || !graced || !tapped) throw new Error('the song has four beats');
 const track: Track = guitar;
 
 type Next = { note: Note; when: number; beat?: Beat };
@@ -108,6 +109,12 @@ describe('the sampler sink and a hammer-on or pull-off chain', () => {
       false,
     ]);
     expect(requests(plain, { note: main, when: 1 }).map((r) => r.releaseTrigger)).toEqual([true]);
+  });
+
+  it('keeps the release sample of a note a tapped note follows, like a hammer-on', () => {
+    const next = { note: note(1, 7), when: 1, beat: tapped };
+    expect(requests(plain, next).map((r) => r.releaseTrigger)).toEqual([false]);
+    expect(requests(plain, { ...next, when: 1.2 }).map((r) => r.releaseTrigger)).toEqual([true]);
   });
 
   it('fires it when the string is let go before the hammer-on', () => {
