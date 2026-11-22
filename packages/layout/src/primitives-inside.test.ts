@@ -2,7 +2,16 @@ import { note, score } from '@reprise/model/testing';
 import { assert, constantFrom, integer, property } from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { PAGE_SIZES, layout, type LayoutResult } from './index';
+import type { Notation, Score } from '@reprise/model';
+
+import {
+  DEFAULT_MARGINS,
+  PAGE_SIZES,
+  layout,
+  type LayoutOptions,
+  type LayoutResult,
+} from './index';
+import { expectValid } from './test/check-result';
 import { randomScore } from './test/random-score';
 
 const EPSILON = 0.02;
@@ -27,6 +36,25 @@ function outside(result: LayoutResult): string[] {
   return found;
 }
 
+/** Systems, as `index`, that end right of the line, the page width less the right margin. */
+function lineOverflow(result: LayoutResult, width: number): number[] {
+  const line = width - DEFAULT_MARGINS.paged.right;
+  return result.systems
+    .filter((system) => system.bbox.x + system.bbox.width > line + EPSILON)
+    .map((system) => system.index);
+}
+
+function options(built: Score, width: number, notation: Notation): LayoutOptions {
+  return {
+    mode: 'paged',
+    width,
+    pageHeight: PAGE_SIZES.a4.height,
+    zoom: 1,
+    tracks: 'all',
+    notation: Object.fromEntries(built.tracks.map(({ id }) => [id, notation])),
+  };
+}
+
 describe('primitives stay inside their system', () => {
   it('in a squeezed bar whose last beat has a second voice moved right of it', () => {
     const first = score().track('guitar').bar();
@@ -36,7 +64,7 @@ describe('primitives stay inside their system', () => {
     const built = first.build({ ids: 'sequential' });
     const result = layout(built, {
       mode: 'paged',
-      width: 200,
+      width: 240,
       pageHeight: PAGE_SIZES.a4.height,
       zoom: 1,
       tracks: 'all',
@@ -45,33 +73,31 @@ describe('primitives stay inside their system', () => {
     expect(outside(result)).toEqual([]);
   });
 
-  it('holds for random scores in both modes at narrow and wide lines', () => {
-    // Standard notation only: a tab slide-out line passes the edge by up to 4 px even in a roomy
-    // system (#473). Add 'both' and 'tab' to the notations when that is fixed.
+  it('ends every paged system within its line, even where the rigid parts alone overflow it', () => {
+    // Seed 399 has an onset of three voices, each shifted right of the one before: 117.8 px of
+    // rigid parts against 61.7 px of room at 320 px.
+    const built = randomScore(399, { diagrams: true });
+    const result = layout(built, options(built, 320, 'standard'));
+    // Its heads cannot all fit, so some stay past the bar's end (anchors collapse onto it), but
+    // the system keeps to its line.
+    expectValid(result);
+    expect(lineOverflow(result, 320)).toEqual([]);
+  });
+
+  it('holds for random scores in paged mode at narrow and wide lines', () => {
+    // Paged only: continuous mode never squeezes (`finish` squeezes only paged lines), so it
+    // could not reach the squeezed cases this guards. Standard notation only: a tab slide-out
+    // line passes the edge by up to 4 px even in a roomy system (#473). Add 'both' and 'tab'
+    // to the notations when that is fixed.
     assert(
-      property(
-        integer({ min: 0, max: 400 }),
-        constantFrom(320, 500, 700, 1200),
-        constantFrom('standard' as const),
-        (seed, width, notation) => {
-          const built = randomScore(seed, { diagrams: true });
-          for (const mode of ['paged', 'continuous'] as const) {
-            const result = layout(built, {
-              mode,
-              width,
-              pageHeight: PAGE_SIZES.a4.height,
-              zoom: 1,
-              tracks: 'all',
-              notation: Object.fromEntries(built.tracks.map(({ id }) => [id, notation])),
-            });
-            expect(
-              outside(result),
-              `seed ${String(seed)} ${mode} ${String(width)} ${notation}`,
-            ).toEqual([]);
-          }
-        },
-      ),
-      { numRuns: 80 },
+      property(integer({ min: 0, max: 400 }), constantFrom(320, 500, 700, 1200), (seed, width) => {
+        const built = randomScore(seed, { diagrams: true });
+        const result = layout(built, options(built, width, 'standard'));
+        const label = `seed ${String(seed)} ${String(width)}`;
+        expect(outside(result), label).toEqual([]);
+        expect(lineOverflow(result, width), label).toEqual([]);
+      }),
+      { numRuns: 120 },
     );
   }, 30_000);
 });

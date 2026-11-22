@@ -34,22 +34,51 @@ export interface Spring {
   natural: number;
   min: number;
   /**
-   * The part of `min` that `squeeze` leaves alone: what a bar's last onset draws right of itself
-   * (a second voice shifted off a first one included), which squeezing the spring would push
-   * past the bar's end and the system's.
+   * The part of `min` that `squeeze` leaves alone, so what the onsets draw right of themselves
+   * (a second voice shifted off a first one included) stays inside the bar. The bar's springs
+   * share the widest such extent as suffix maxima: the springs from an onset to the bar's end
+   * always hold at least that onset's extent.
    */
   rigid?: number;
 }
 
-/** A spring's minimum width in a bar squeezed by `squeeze`: only the part above `rigid` shrinks. */
-export function squeezedMin({ min, rigid = 0 }: Spring, squeeze: number): number {
-  return squeeze >= 1 ? min : rigid + Math.max(0, min - rigid) * squeeze;
+/**
+ * A spring's minimum width in a bar squeezed by `squeeze`: only the part above `rigid` shrinks.
+ * `rigidScale` is below 1 only when the rigid parts alone overflow the line.
+ */
+export function squeezedMin({ min, rigid = 0 }: Spring, squeeze: number, rigidScale = 1): number {
+  return squeeze >= 1 ? min : rigid * rigidScale + Math.max(0, min - rigid) * squeeze;
 }
 
 /**
- * Each spring at `factor` times its natural width, never below its minimum scaled by `squeeze` (bar the rigid part),
- * which is below 1 only in a bar whose minimums alone overflow its line.
+ * Each spring at `factor` times its natural width, never below its minimum, which `squeeze` and
+ * `rigidScale` shrink only in a bar whose minimums alone overflow its line.
  */
-export function stretch(springs: readonly Spring[], factor: number, squeeze = 1): number[] {
-  return springs.map((spring) => Math.max(squeezedMin(spring, squeeze), spring.natural * factor));
+export function stretch(
+  springs: readonly Spring[],
+  factor: number,
+  squeeze = 1,
+  rigidScale = 1,
+): number[] {
+  return springs.map((spring) =>
+    Math.max(squeezedMin(spring, squeeze, rigidScale), spring.natural * factor),
+  );
+}
+
+/**
+ * Splits the widest of the onsets' rigid extents over the springs: with `reach[i]` the largest
+ * extent from onset `i` to the end, spring `i` gets `reach[i] - reach[i + 1]`. The springs from an
+ * onset to the bar's end then hold at least its extent, the parts add up to the widest, and no
+ * part exceeds its own onset's extent, so the room sits right after the onset that needs it
+ * rather than before the barline.
+ */
+export function rigidShares(extents: readonly number[]): number[] {
+  const shares: number[] = [];
+  let reach = 0;
+  for (let i = extents.length - 1; i >= 0; i--) {
+    const next = Math.max(reach, extents[i] ?? 0);
+    shares[i] = next - reach;
+    reach = next;
+  }
+  return shares;
 }
