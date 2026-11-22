@@ -1,4 +1,5 @@
 export * from './analyse';
+export * from './chord-timeline';
 export * from './chords-used';
 export * from './difficulty';
 export * from './histogram';
