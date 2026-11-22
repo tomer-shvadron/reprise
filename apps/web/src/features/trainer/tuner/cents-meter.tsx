@@ -33,7 +33,7 @@ export function CentsMeter({
       : inTune
         ? `${label}, in tune`
         : `${label}, ${String(Math.abs(Math.round(cents)))} cents ${cents < 0 ? 'flat' : 'sharp'}`;
-  const tone = inTune ? 'bg-emerald-500' : 'bg-foreground';
+  const tone = inTune ? 'bg-success' : 'bg-foreground';
   return (
     <div
       role="meter"
@@ -47,7 +47,7 @@ export function CentsMeter({
     >
       <div
         aria-hidden
-        className="absolute inset-y-0 rounded bg-emerald-500/20"
+        className="bg-success/20 absolute inset-y-0 rounded"
         style={{
           left: `${String(((METER_RANGE - IN_TUNE_CENTS) / (2 * METER_RANGE)) * 100)}%`,
           width: `${String(((2 * IN_TUNE_CENTS) / (2 * METER_RANGE)) * 100)}%`,

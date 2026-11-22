@@ -12,6 +12,8 @@ export const PALETTE = {
   /** The paper token, kept for tests; an export's white paper is pure white. */
   paper: '#fefcf7',
   white: '#ffffff',
+  /** The mask's alpha channel: white shows, black cuts a hole. Not a theme colour. */
+  maskHide: '#000000',
 } as const;
 
 /** The fill or stroke of a primitive's role: its `paper` role is a box that hides what is behind it. */
