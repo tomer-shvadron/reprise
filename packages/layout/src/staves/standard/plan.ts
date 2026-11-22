@@ -51,6 +51,7 @@ import {
   BEND_FRAME,
   BEND_ROOM,
   SCRAPE,
+  bendLabelNeed,
   connections,
   graceLinks,
   graceOrigin,
@@ -138,6 +139,8 @@ export interface BeatPlan {
   shift?: number;
   left: number;
   right: number;
+  /** The room right of the onset that the bend's labels would like, beyond `right`, in px. */
+  labelRight?: number;
   top: number;
   bottom: number;
 }
@@ -520,7 +523,13 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         heads.some(({ note }) => note.bend && note.bend.kind !== 'prebend')
       ) {
         const right = Math.max(...heads.map((head) => headEdges(planned, head).right));
+        const labels = bendLabelNeed(
+          heads.map(({ note }) => note.bend),
+          BEND_FRAME.stop,
+        );
+        const frame = Math.max(BEND_ROOM.main, BEND_FRAME.gap + labels + BEND_FRAME.stop);
         plan.right = Math.max(plan.right, right + BEND_ROOM.main * space);
+        if (frame > BEND_ROOM.main) plan.labelRight = right + frame * space;
       }
       if (lone && !percussion) planTargets(plan, planned);
       planGraces(plan, chordNotes, space, multiVoice, lone && !percussion);

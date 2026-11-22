@@ -2,9 +2,12 @@ export type KeyboardPlatform = 'mac' | 'other';
 
 export interface Shortcut {
   /**
-   * A letter or digit matches its printed character, or the physical key on a non-Latin layout;
-   * a bracket always matches its physical key. `' '` is Space; named keys (`Enter`, `F9`) are
-   * spelled as `KeyboardEvent.key` spells them.
+   * A key matches the character the layout prints. A digit and a bracket always match their
+   * physical key (AZERTY prints `&` where a 1 is, Hebrew swaps the brackets), and on macOS with
+   * Option held a letter does too, since Option rewrites the character. When nothing matches by
+   * character (see `KeyMatch`), a letter or a punctuation mark falls back to the physical key if
+   * the layout printed something else (a Hebrew letter). `' '` is Space; named keys (`Enter`,
+   * `F9`) are spelled as `KeyboardEvent.key` spells them.
    */
   key: string;
   /** Cmd on macOS, Ctrl elsewhere. */
@@ -25,26 +28,66 @@ export function detectKeyboardPlatform(): KeyboardPlatform {
 }
 
 const LATIN_KEY = /^[a-z\d]$/i;
-
-function physicalCode(key: string): string | undefined {
-  if (/^[a-z]$/i.test(key)) return `Key${key.toUpperCase()}`;
-  if (/^\d$/.test(key)) return `Digit${key}`;
-  return undefined;
-}
+// A letter of another script (Hebrew, Cyrillic, Greek). A Latin letter with a mark (ß, ù) is the
+// key's own character, and a symbol (§, £, ¡) is not a letter a layout swapped in for punctuation.
+const NON_LATIN_CHARACTER = /^(?![\p{Script=Latin}\p{ASCII}])\p{L}$/u;
 
 // On the Hebrew layout the physical `[` key types `]`, which would swap the pair by character.
 const BRACKETS: Record<string, string> = { '[': 'BracketLeft', ']': 'BracketRight' };
 
-function matchesKey(event: KeyEventLike, key: string): boolean {
-  const bracket = BRACKETS[key];
-  if (bracket !== undefined) return event.code === bracket;
-  // A Latin character is what the keycap shows (QWERTZ, Dvorak); only when the layout printed
-  // something else (Hebrew, an Option symbol on macOS) does the physical key stand in for it.
-  if (!LATIN_KEY.test(event.key)) {
-    const code = physicalCode(key);
-    if (code !== undefined) return event.code === code;
+// The US-layout key that types each punctuation character, split by Shift: a layout that prints
+// a letter on the key (Hebrew, Russian) must not run the shifted spelling's bare twin.
+const BASE_PUNCTUATION: Readonly<Record<string, string>> = {
+  ';': 'Semicolon',
+  "'": 'Quote',
+  ',': 'Comma',
+  '.': 'Period',
+  '/': 'Slash',
+  '-': 'Minus',
+  '=': 'Equal',
+};
+const SHIFTED_PUNCTUATION: Readonly<Record<string, string>> = {
+  ':': 'Semicolon',
+  '"': 'Quote',
+  '<': 'Comma',
+  '>': 'Period',
+  '?': 'Slash',
+  '+': 'Equal',
+};
+
+/**
+ * `character` is the pass that decides first: what the key prints. `physical` runs only when no
+ * command matched by character, so a printed `/` stays the triplet while a Hebrew W key, which
+ * prints `'` that nothing uses, still reaches W.
+ */
+export type KeyMatch = 'character' | 'physical';
+
+function matchesKey(
+  event: KeyEventLike,
+  key: string,
+  platform: KeyboardPlatform,
+  by: KeyMatch,
+): boolean {
+  if (by === 'character') {
+    const bracket = BRACKETS[key];
+    if (bracket !== undefined) return event.code === bracket;
+    // The printed digit still counts, for the numpad.
+    if (/^\d$/.test(key)) return event.code === `Digit${key}` || event.key === key;
+    // Option rewrites the character on a Mac, and types ASCII on German, Nordic and Spanish.
+    if (/^[a-z]$/i.test(key) && platform === 'mac' && event.altKey) {
+      return event.code === `Key${key.toUpperCase()}`;
+    }
+    return event.key.toLowerCase() === key.toLowerCase();
   }
-  return event.key.toLowerCase() === key.toLowerCase();
+  if (event.key === 'Process' || event.key === 'Unidentified') return false;
+  if (/^[a-z]$/i.test(key)) {
+    return !LATIN_KEY.test(event.key) && event.code === `Key${key.toUpperCase()}`;
+  }
+  // Only a single letter of another script: a named or dead key printed
+  // nothing to compare.
+  if (!NON_LATIN_CHARACTER.test(event.key)) return false;
+  const code = (event.shiftKey ? SHIFTED_PUNCTUATION : BASE_PUNCTUATION)[key];
+  return code !== undefined && event.code === code;
 }
 
 export function shortcutId(shortcut: Shortcut): string {
@@ -60,10 +103,15 @@ export function shortcutOn(
   return shortcut && (shortcut.only ?? platform) === platform ? shortcut : undefined;
 }
 
+/**
+ * Whether the event is the shortcut. Without `by`, either match counts, for the callers that match
+ * one key against one shortcut; the dispatcher runs the two passes apart.
+ */
 export function matchesShortcut(
   event: KeyEventLike,
   shortcut: Shortcut,
   platform: KeyboardPlatform,
+  by?: KeyMatch,
 ): boolean {
   if (!shortcutOn(shortcut, platform)) return false;
   const mod = platform === 'mac' ? event.metaKey : event.ctrlKey;
@@ -72,7 +120,11 @@ export function matchesShortcut(
   if (event.shiftKey !== Boolean(shortcut.shift) || event.altKey !== Boolean(shortcut.alt)) {
     return false;
   }
-  return matchesKey(event, shortcut.key);
+  if (by !== undefined) return matchesKey(event, shortcut.key, platform, by);
+  return (
+    matchesKey(event, shortcut.key, platform, 'character') ||
+    matchesKey(event, shortcut.key, platform, 'physical')
+  );
 }
 
 // As Guitar Pro prints them on macOS; elsewhere the key's own name without "Arrow".

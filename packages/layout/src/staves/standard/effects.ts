@@ -19,7 +19,7 @@ import {
   graceOrigin,
   lettersOfLinks,
   type BendDrawn,
-  bendColumns,
+  bendLifts,
   drawBend,
   newBendDrawn,
   drawLetter,
@@ -812,7 +812,7 @@ function bendFrame(
     (head) => placement.top + head.y - glyphMetrics(head.glyph).bbox.top * unit,
   );
   const releaseTop = Math.min(...tops);
-  drawn.columns = bendColumns(bent.map((head) => head.note.bend));
+  drawn.lifts = bendLifts(bent.map((head) => head.note.bend));
   for (const [j, head] of bent.entries()) {
     const { bend } = head.note;
     const spot = spots[j];

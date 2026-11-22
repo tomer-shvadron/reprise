@@ -1,8 +1,9 @@
 import { beatTicks, type Bar, type Beat, type Bend, type Note, type Vibrato } from '@reprise/model';
 
 import { glyphMetrics, textExtent, textWidth, type GlyphName } from '../../metrics';
+import { ARROW_LENGTH, ARROW_WIDTH } from '../../primitives';
 import { LANE_HEIGHT, type LaneRequests } from '../lanes';
-import { HARMONIC_LABELS } from './labels';
+import { HARMONIC_LABELS, bendLabel } from './labels';
 import { articulationMarks } from './marks';
 import { TICK_EPSILON } from '../../ticks';
 
@@ -281,37 +282,175 @@ export function bendRow(): number {
 }
 
 /**
- * The amounts labelled at each x of a beat's shared bend frame, ascending: its raised tips by
- * position, and `pre` for the pre-bend arrows. The notes of a chord share a frame, so tips at one
- * position stand at one x and their labels stack in one column.
+ * Tips of a beat's bends closer than this, in frame positions (a tenth of the frame), can have
+ * labels that meet whatever the frame's length: their labels are stacked where their levels would make them. Further apart,
+ * the frame is made long enough for conflicting labels to stand side by side. Both are worked
+ * out from positions and levels (`BEND_STEP` per quarter tone), which are known before spacing.
  */
-export function bendColumns(bends: readonly (Bend | undefined)[]): Map<string, number[]> {
-  const columns = new Map<string, Set<number>>();
-  const add = (key: string, value: number): void => {
-    const found = columns.get(key);
-    if (found) found.add(value);
-    else columns.set(key, new Set([value]));
+export const BEND_LABEL_SPREAD = 6;
+/** The same for amounts a quarter tone apart: a quarter of the frame. */
+const BEND_LABEL_PAIR = 15;
+/** The least gap between two labels standing side by side, in staff spaces. */
+const BEND_LABEL_SEP = 0.3;
+/** The gap between a raised tip and its label, in staff spaces. */
+export const BEND_LABEL_GAP = 0.3;
+/** A release label is centred on its tip, so it reaches this far below it, in staff spaces. */
+const RELEASE_LABEL_BELOW = 0.5;
+/** How far from the frame's end the last label may reach before the next onset, as a share of it. */
+const LAST_SHARE = 0.25;
+
+interface BendTip {
+  position: number;
+  value: number;
+  raised: boolean;
+  /** The key of a raised tip's label: its position, or `pre`. */
+  key: string;
+  /** The label's lowest edge above the lane's bottom before stacking, and what stacking lifts it. */
+  base: number;
+  lift: number;
+}
+
+/**
+ * How far apart in position two tips can be and still conflict: a quarter of the frame when a
+ * quarter tone or less separates them, whose labels sit at one level and would otherwise need a
+ * long frame; a tenth when the levels differ more, where only a short frame makes them meet.
+ */
+const reach = (a: BendTip, b: BendTip): number =>
+  Math.abs(a.value - b.value) <= 1 ? BEND_LABEL_PAIR : BEND_LABEL_SPREAD;
+
+/** The longest side-by-side frame the labels ask for, in staff spaces. */
+const BEND_LABEL_CAP = 6;
+
+/** A label's height, without the gap under the next one. */
+const labelHeight = (): number => BEND_LABEL_ROOM - BEND_LABEL_GAP;
+
+/** What a tip's arrowhead covers above the lane's bottom: [low, high]. */
+function arrowBox(tip: BendTip): [number, number] {
+  const level = BEND_STEP * tip.value;
+  return tip.raised ? [level - ARROW_LENGTH, level] : [level, level + ARROW_LENGTH];
+}
+
+const overlaps = (a: [number, number], b: [number, number]): boolean => a[0] < b[1] && b[0] < a[1];
+
+/**
+ * Every labelled tip of a beat's bends (the pre-bend, each raised value, each release above zero,
+ * over all its notes), with the lift that keeps its label clear of the labels and arrowheads of
+ * tips close to it in position. Equal amounts never conflict: an equal label is drawn once.
+ */
+function bendTips(bends: readonly (Bend | undefined)[]): BendTip[] {
+  const seen = new Set<string>();
+  const tips: BendTip[] = [];
+  const add = (position: number, value: number, raised: boolean, key: string): void => {
+    const id = `${raised ? 'r' : 'd'} ${String(position)} ${String(value)}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    const base = raised
+      ? BEND_STEP * value + BEND_LABEL_GAP
+      : BEND_STEP * value - RELEASE_LABEL_BELOW;
+    tips.push({ position, value, raised, key, base, lift: 0 });
   };
   for (const bend of bends) {
     const points = [...(bend?.points ?? [])].sort((a, b) => a.position - b.position);
     const [first] = points;
-    if (first && first.value > 0) add('pre', first.value);
+    if (first && first.value > 0) add(0, first.value, true, 'pre');
     for (const [i, q] of points.entries()) {
       const p = points[i - 1];
-      if (p && q.value > p.value) add(String(q.position), q.value);
+      if (!p) continue;
+      if (q.value > p.value) add(q.position, q.value, true, String(q.position));
+      else if (q.value < p.value && q.value > 0)
+        add(q.position, q.value, false, String(q.position));
     }
   }
-  return new Map([...columns].map(([key, values]) => [key, [...values].sort((a, b) => a - b)]));
+  // A release label stands right of its arrow, so only what lies right of it can be reached, and
+  // near the bar's end the label shifts left: then what lies left of it can be too.
+  const near = (a: BendTip, b: BendTip): boolean => {
+    if (a === b || a.value === b.value) return false;
+    const gap = b.position - a.position;
+    if (Math.abs(gap) >= reach(a, b)) return false;
+    return a.raised || gap >= 0 || a.position > 60 - BEND_LABEL_SPREAD;
+  };
+  const height = labelHeight();
+  const placed: BendTip[] = [];
+  for (const tip of [...tips].sort((a, b) => a.base - b.base || a.value - b.value)) {
+    let at = tip.base;
+    for (let pass = 0; pass < 8; pass++) {
+      const before = at;
+      for (const other of tips) {
+        if (!near(tip, other)) continue;
+        if (placed.includes(other)) {
+          const edge = other.base + other.lift;
+          if (at < edge + bendRow() && edge < at + bendRow()) at = edge + bendRow();
+        }
+        const arrow = arrowBox(other);
+        if (overlaps([at, at + height], arrow)) at = arrow[1] + BEND_LABEL_GAP;
+      }
+      if (at === before) break;
+    }
+    tip.lift = at - tip.base;
+    placed.push(tip);
+  }
+  return tips;
+}
+
+/**
+ * How far each raised label stands above its natural place, in staff spaces, by `key value` (the
+ * key a tip is drawn with: its position, or `pre`). The labels of tips close together read in the
+ * order of their amounts, each above the arrowheads of the tips next to it.
+ */
+export function bendLifts(bends: readonly (Bend | undefined)[]): Map<string, number> {
+  return new Map(
+    bendTips(bends)
+      .filter((tip) => tip.raised)
+      .map((tip) => [`${tip.key} ${String(tip.value)}`, tip.lift]),
+  );
+}
+
+/** The widest of a tip's label and its arrowhead, in staff spaces. */
+const tipWidth = (tip: BendTip): number =>
+  Math.max(textWidth(bendLabel(tip.value), EFFECT_TEXT), ARROW_WIDTH);
+
+/**
+ * How long a beat's bend frame must be, in staff spaces, for conflicting labels of tips a quarter
+ * of the frame or more apart to stand side by side, and for the last label to end before the
+ * frame's end plus its stop. Pairs whose labels and arrowheads cannot meet vertically, and equal
+ * amounts, need none, so it stays bounded by the distance that makes tips conflict.
+ */
+export function bendLabelNeed(bends: readonly (Bend | undefined)[], stop: number): number {
+  const tips = bendTips(bends);
+  const height = labelHeight();
+  const label = (tip: BendTip): [number, number] => [
+    tip.base + tip.lift,
+    tip.base + tip.lift + height,
+  ];
+  let need = 0;
+  for (const [i, a] of tips.entries()) {
+    for (const b of tips.slice(i + 1)) {
+      const apart = Math.abs(a.position - b.position);
+      if (a.value === b.value || apart < reach(a, b)) continue;
+      // Labels a row apart or a quarter tone apart (an arrowhead level with the other's label)
+      // are the ones that overlap in practice; further levels apart clear at any length the
+      // frame is given.
+      const meet = overlaps(label(a), label(b)) || Math.abs(a.value - b.value) <= 1;
+      if (meet)
+        need = Math.max(need, ((tipWidth(a) + tipWidth(b)) / 2 + BEND_LABEL_SEP) / (apart / 60));
+    }
+    const share = 1 - a.position / 60;
+    if (share >= LAST_SHARE) {
+      need = Math.max(need, (textWidth(bendLabel(a.value), EFFECT_TEXT) / 2 - stop) / share);
+    }
+  }
+  return Math.min(need, BEND_LABEL_CAP);
 }
 
 function bendLane(notes: readonly Note[]): number | undefined {
   const top = Math.max(0, ...notes.map(bendTop));
   if (top <= 0) return undefined;
-  const stack = Math.max(
-    1,
-    ...[...bendColumns(notes.map((note) => note.bend)).values()].map((amounts) => amounts.length),
+  // The highest label's top, which a lifted label may exceed only when it rises above the lane's.
+  const height = labelHeight();
+  const highest = Math.max(
+    ...bendTips(notes.map((note) => note.bend)).map((tip) => tip.base + tip.lift + height),
   );
-  return BEND_STEP * top + BEND_LABEL_ROOM + (stack - 1) * bendRow();
+  return Math.max(BEND_STEP * top + BEND_LABEL_ROOM, highest);
 }
 
 export function glyphHeight(name: GlyphName): number {
