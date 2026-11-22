@@ -190,7 +190,42 @@ describe('installPack: a custom pack', () => {
       expect(used).toHaveLength(names.length);
     });
 
+    it.each(['po', 'PO', 'pull off', 'pull-off', 'pull_offs', 'ho', 'ho po', 'hammer pull'])(
+      'makes guitar_%s the legato set of guitar',
+      async (tail) => {
+        expect(await install(['guitar.sfz', `guitar_${tail}.sfz`])).toEqual([
+          ['guitar', { default: 'guitar.sfz', legato: `guitar_${tail}.sfz` }],
+        ]);
+      },
+    );
+
     it.each([
+      [['guitar_po', 'guitar_ho'], 'guitar_ho', 'guitar_po'],
+      [['guitar_ho', 'guitar_po'], 'guitar_ho', 'guitar_po'],
+      [['guitar_po', 'guitar_legato'], 'guitar_legato', 'guitar_po'],
+      [['guitar_hammer on', 'guitar_legato'], 'guitar_legato', 'guitar_hammer on'],
+      [['guitar_po', 'guitar_hammer on', 'guitar_legato'], 'guitar_legato', 'guitar_po'],
+    ])(
+      'gives the legato set of %j to the best claim, %s, and keeps the rest as instruments',
+      async (claims, winner, loser) => {
+        const found = await install(['guitar.sfz', ...claims.map((name) => `${name}.sfz`)]);
+        expect(found[0]).toEqual(['guitar', { default: 'guitar.sfz', legato: `${winner}.sfz` }]);
+        const others = found
+          .slice(1)
+          .flatMap(([, entries]) => Object.values(entries as Record<string, string>));
+        expect(others).toContain(`${loser}.sfz`);
+        const used = found.flatMap(([, entries]) =>
+          Object.values(entries as Record<string, string>),
+        );
+        expect(used).toHaveLength(claims.length + 1);
+      },
+    );
+
+    it.each([
+      ['guitar', 'guitar_pool'],
+      ['guitar', 'guitar_pot'],
+      ['guitar', 'guitar_pulley'],
+      ['accordion', 'accordion_pull'],
       ['trumpet', 'trumpet_mute'],
       ['piano', 'piano_hammer'],
       ['piano', 'piano_tape'],
