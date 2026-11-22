@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { createSamplerSink } from './sampler-sink';
 import { Sampler } from './sampler';
 import type { SamplerTrack } from './sampler';
+import type { Score, Track } from '@reprise/model';
+import { score, note } from '@reprise/model/testing';
+
 import { offline, rms, sineInstrument } from './test/offline';
 
 const CHANNEL = { volume: 127, pan: 64, chorus: 0, reverb: 0, phaser: 0, tremolo: 0 };
@@ -66,7 +70,11 @@ describe('a strip with a wah pedal', () => {
       sampler.setWah(track.id, 'open', 0.1);
       sampler.setWah(track.id, 'off', 0.4);
     });
-    expect(rms(swept, 0.2, 0.35)).not.toBeCloseTo(rms(plain, 0.2, 0.35), 2);
+    // Open, 3.5 kHz sits off the 2.2 kHz centre: |H| is 0.25, so with the makeup gain of 3.5 the
+    // tone keeps about 85% of its level, plainly under the dry one.
+    const kept = rms(swept, 0.2, 0.35) / rms(plain, 0.2, 0.35);
+    expect(kept).toBeGreaterThan(0.6);
+    expect(kept).toBeLessThan(1);
     expectSame(swept, plain, 0.5, 1);
   });
 
@@ -89,5 +97,105 @@ describe('a strip with a wah pedal', () => {
       sampler.strip(track.id)?.cancelAfter(0.2);
     });
     expectSame(cancelled, plain, 0, 0.8);
+  });
+});
+
+/** The largest difference between neighbouring samples in `[from, to)`. */
+function largestStep(data: Float32Array, from: number, to: number): number {
+  let largest = 0;
+  for (let i = Math.round(from * 44_100) + 1; i < Math.round(to * 44_100); i += 1) {
+    largest = Math.max(largest, Math.abs((data[i] ?? 0) - (data[i - 1] ?? 0)));
+  }
+  return largest;
+}
+
+describe('a restore on a sounding note', () => {
+  /** A sustained 440 Hz sine from 0 through the pedal, which `before` sets up and `restore` hits at 0.5 s. */
+  async function restored(before: 'open' | 'closed' | 'off', after: 'open' | 'closed' | 'off') {
+    const context = offline(1);
+    const sampler = new Sampler(context);
+    sampler.addTrack(track, sineInstrument(undefined, 1));
+    sampler.setWah(track.id, before, 0, true);
+    sampler.setWah(track.id, after, 0.5, true);
+    sampler.noteOn(track.id, { key: 69, velocity: 100, when: 0 });
+    return (await context.startRendering()).getChannelData(0);
+  }
+
+  // Steps inside the settled sine are the sine's own; a loop wrap restores while the notes at
+  // the loop end still ring, and the change must not click on top of them.
+  it.each([
+    ['open', 'off'],
+    ['off', 'open'],
+    ['closed', 'open'],
+    ['open', 'closed'],
+  ] as const)('does not step going from %s to %s', async (before, after) => {
+    const data = await restored(before, after);
+    // The sine's own steps differ with the state (a closed pedal passes it, an open one cuts it),
+    // so the change is held to the larger of the two settled ones. A band-pass whose centre jumps
+    // rings a little (2.4 times at worst here); an instant restore stepped 6 to 8 times.
+    const settled = Math.max(largestStep(data, 0.3, 0.45), largestStep(data, 0.8, 0.95));
+    expect(largestStep(data, 0.5, 0.65)).toBeLessThan(3 * settled);
+  });
+});
+
+function firstTrack(built: Score): Track {
+  const first = built.tracks[0];
+  if (!first) throw new Error('fixture');
+  return first;
+}
+
+describe('the sink', () => {
+  const built = score()
+    .track('guitar')
+    .bar()
+    .beat('1', [note(1, 0)])
+    .build();
+  const guitar = firstTrack(built);
+
+  function wah(state: 'open' | 'closed' | 'off', when: number, restore = false) {
+    return {
+      track: guitar,
+      trackIndex: 0,
+      state,
+      when,
+      playbackTick: 0,
+      sequenceIndex: 0,
+      masterBarIndex: 0,
+      passIndex: 0,
+      restore,
+    };
+  }
+
+  async function rendered(script: (sink: ReturnType<typeof createSamplerSink>) => void) {
+    const context = offline(1);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitar, sineInstrument(undefined, 8));
+    const sink = createSamplerSink(sampler);
+    script(sink);
+    // A note struck after the stop, as the next run's would be.
+    sampler.noteOn(guitar.id, { key: HIGH_KEY, velocity: 100, when: 0.5 });
+    return (await context.startRendering()).getChannelData(0);
+  }
+
+  it('cancels a change already handed out when it stops', async () => {
+    const plain = await rendered((sink) => {
+      sink.allNotesOff(0.2);
+    });
+    const cancelled = await rendered((sink) => {
+      sink.wah?.(wah('closed', 0.6));
+      sink.allNotesOff(0.2);
+    });
+    expectSame(cancelled, plain, 0.3, 1);
+  });
+
+  it('turns a pedal left engaged off when it stops, so an edited-away passage cannot stay wah-filtered', async () => {
+    const plain = await rendered((sink) => {
+      sink.allNotesOff(0.2);
+    });
+    const stopped = await rendered((sink) => {
+      sink.wah?.(wah('closed', 0, true));
+      sink.allNotesOff(0.2);
+    });
+    expectSame(stopped, plain, 0.3, 1);
   });
 });

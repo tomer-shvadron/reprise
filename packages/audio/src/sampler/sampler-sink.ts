@@ -422,6 +422,7 @@ export function createSamplerSink(
       chains.clear();
       counters = new WeakMap();
       sampler.allNotesOff(when);
+      sampler.resetWah(when);
     },
   };
 }

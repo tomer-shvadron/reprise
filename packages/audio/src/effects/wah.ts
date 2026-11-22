@@ -2,7 +2,7 @@ import { ARTICULATION } from '../articulations/parameters';
 import type { WahState } from '../wah-lane';
 import { FADE_SECONDS } from './bypass-slot';
 
-const { closed, open, q, glide, makeup } = ARTICULATION.wah;
+const { closed, open, q, glide, makeup, restore: restoreSeconds } = ARTICULATION.wah;
 
 const CENTRE: Readonly<Record<'open' | 'closed', number>> = { open, closed };
 
@@ -44,15 +44,18 @@ export class WahPedal {
   }
 
   /**
-   * Moves the pedal to `state` at `when`. A `restore` sets the state at once, with no glide or
-   * fade, as a run starts in it; otherwise an engage fades in and a move glides.
+   * Moves the pedal to `state` at `when`. A `restore` settles into it over about
+   * `ARTICULATION.wah.restore` seconds, from wherever the parameters are, with no fade or glide
+   * of its own; otherwise an engage fades in and a move glides.
    */
   set(state: WahState, when: number, restore = false): void {
     const on = state !== 'off';
     if (restore) {
-      if (on) this.filter.frequency.setValueAtTime(CENTRE[state], when);
-      this.#dry.gain.setValueAtTime(on ? 0 : 1, when);
-      this.#wet.gain.setValueAtTime(on ? 1 : 0, when);
+      // Three time constants reach 95%: a step would click on a note still ringing.
+      const tc = restoreSeconds / 3;
+      if (on) this.filter.frequency.setTargetAtTime(CENTRE[state], when, tc);
+      this.#dry.gain.setTargetAtTime(on ? 0 : 1, when, tc);
+      this.#wet.gain.setTargetAtTime(on ? 1 : 0, when, tc);
     } else if (on && this.#engaged) {
       this.filter.frequency.setTargetAtTime(CENTRE[state], when, glide);
     } else if (on) {

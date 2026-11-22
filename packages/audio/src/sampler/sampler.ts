@@ -364,6 +364,15 @@ export class Sampler {
     this.#state(id).strip.setWah(state, at, restore);
   }
 
+  /**
+   * Turns every wah pedal that was ever built off at `when`, after `allNotesOff` cancelled the
+   * changes past it: a pedal stopped mid-passage holds its state, and a track whose marks were
+   * edited away has no restore to put it right. The next run's restore sets the lane's tracks.
+   */
+  resetWah(when: number): void {
+    for (const state of this.#tracks.values()) state.strip.setWah('off', when, true);
+  }
+
   /** Resolves when every sample these notes need is resident. */
   async preload(
     id: Id,

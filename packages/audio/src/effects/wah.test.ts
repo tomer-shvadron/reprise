@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ARTICULATION } from '../articulations/parameters';
-import { bandEnergy, rms, signalOf } from '../test/signal';
+import { bandEnergy, signalOf } from '../test/signal';
 import type { Signal } from '../test/signal';
 import { WahPedal } from './wah';
 
@@ -104,7 +104,7 @@ describe('WahPedal', () => {
     expect(near(loudestBand(signal, 0.8, 1.1), open)).toBe(true);
   });
 
-  it('applies a restore at once and fades an engage in over 20 ms', async () => {
+  it('settles a restore over about 10 ms and fades an engage in over 20 ms', async () => {
     const seconds = 0.2;
     const plain = await render(seconds, noiseSource(seconds));
     const restored = await render(seconds, noiseSource(seconds), (pedal) => {
@@ -113,11 +113,14 @@ describe('WahPedal', () => {
     const engaged = await render(seconds, noiseSource(seconds), (pedal) => {
       pedal.set('closed', 0);
     });
-    // The first 8 ms, above 4 kHz: a restore is the band-pass alone (about a tenth of the noise
-    // after the makeup gain), an engage is still mostly the dry noise (60% at 8 ms).
-    const above = (signal: Signal) => bandEnergy(signal, 4000, 8000, 0, 0.008);
-    expect(above(restored)).toBeLessThan(0.2 * above(plain));
-    expect(above(engaged)).toBeGreaterThan(0.4 * above(plain));
+    // Above 4 kHz a closed band-pass leaves well under a tenth of the noise, makeup gain included.
+    const above = (signal: Signal, from: number, to: number) =>
+      bandEnergy(signal, 4000, 8000, from, to);
+    // No step: the first 2 ms of a restore are still mostly the dry noise, and by 20 ms it is gone.
+    expect(above(restored, 0, 0.002)).toBeGreaterThan(0.5 * above(plain, 0, 0.002));
+    expect(above(restored, 0.02, 0.1)).toBeLessThan(0.5 * above(plain, 0.02, 0.1));
+    // An engage is slower still: 60% of the dry noise is left at 8 ms.
+    expect(above(engaged, 0, 0.008)).toBeGreaterThan(0.4 * above(plain, 0, 0.008));
   });
 
   it('drops a change scheduled after cancelAfter', async () => {
@@ -132,24 +135,5 @@ describe('WahPedal', () => {
       largest = Math.max(largest, Math.abs((cancelled.data[i] ?? 0) - (dry.data[i] ?? 0)));
     }
     expect(largest).toBeLessThan(1e-6);
-  });
-
-  it('keeps the level of a sawtooth swept to the middle of the sweep within 3 dB', async () => {
-    const seconds = 0.6;
-    const saw = (context: OfflineAudioContext): AudioScheduledSourceNode => {
-      const node = context.createOscillator();
-      node.type = 'sawtooth';
-      node.frequency.value = 110;
-      return node;
-    };
-    const dry = await render(seconds, saw);
-    const swept = await render(seconds, saw, (pedal) => {
-      pedal.set('closed', 0, true);
-      // The geometric middle of the sweep, 940 Hz.
-      pedal.filter.frequency.setValueAtTime(Math.sqrt(closed * open), 0);
-    });
-    const ratio = rms(swept, 0.2, 0.6) / rms(dry, 0.2, 0.6);
-    expect(20 * Math.log10(ratio)).toBeGreaterThan(-3);
-    expect(20 * Math.log10(ratio)).toBeLessThan(3);
   });
 });

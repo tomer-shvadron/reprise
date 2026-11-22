@@ -99,10 +99,17 @@ export const ARTICULATION = {
     /** Time constant of the glide between two marks, in seconds: 95% of the way in 3x this. */
     glide: 0.04,
     /**
-     * Gain after the band-pass, so a 110 Hz sawtooth swept to 940 Hz (the geometric middle of the
-     * sweep) keeps its level to within 1.6 dB: the filter alone leaves about -15.6 dB of it.
+     * Seconds a restore (the state at a run's start, or a reset after a stop) takes to settle:
+     * a loop wrap restores while the notes at the loop end still ring, so it must not step.
      */
-    makeup: 5,
+    restore: 0.02,
+    /**
+     * Gain after the band-pass. The filter has unity gain at its centre, so a partial there is
+     * boosted and the rest cut; chosen from GM steel, clean electric and overdrive notes (E2 to
+     * A5), where 3.5 puts the median of closed 1 to 2.5 dB over and of open 3 to 6 dB under the plain note
+     * (`engine-wah.test.ts`). 5 left a loud chord over 0 dBFS before the master limiter; 3.5 keeps it under.
+     */
+    makeup: 3.5,
   },
 
   staccatoFraction: 0.5,
