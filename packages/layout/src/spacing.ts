@@ -33,12 +33,23 @@ export function segmentWidth(gap: number, governing: number, space: number): num
 export interface Spring {
   natural: number;
   min: number;
+  /**
+   * The part of `min` that `squeeze` leaves alone: what a bar's last onset draws right of itself
+   * (a second voice shifted off a first one included), which squeezing the spring would push
+   * past the bar's end and the system's.
+   */
+  rigid?: number;
+}
+
+/** A spring's minimum width in a bar squeezed by `squeeze`: only the part above `rigid` shrinks. */
+export function squeezedMin({ min, rigid = 0 }: Spring, squeeze: number): number {
+  return squeeze >= 1 ? min : rigid + Math.max(0, min - rigid) * squeeze;
 }
 
 /**
- * Each spring at `factor` times its natural width, never below its minimum scaled by `squeeze`,
+ * Each spring at `factor` times its natural width, never below its minimum scaled by `squeeze` (bar the rigid part),
  * which is below 1 only in a bar whose minimums alone overflow its line.
  */
 export function stretch(springs: readonly Spring[], factor: number, squeeze = 1): number[] {
-  return springs.map(({ natural, min }) => Math.max(min * squeeze, natural * factor));
+  return springs.map((spring) => Math.max(squeezedMin(spring, squeeze), spring.natural * factor));
 }

@@ -13,7 +13,7 @@ import {
 } from './furniture';
 import { headerWidth } from './header';
 import { staffBar, trackBar, type StaffSlot } from './slots';
-import { durationWidth, segmentWidth, type Spring } from './spacing';
+import { durationWidth, segmentWidth, squeezedMin, type Spring } from './spacing';
 import { TICK_EPSILON } from './ticks';
 
 /** Room between neighbouring onsets' extents, and around a bar's content, in staff spaces. */
@@ -51,8 +51,8 @@ export function barWidth(
   squeeze = 1,
 ): number {
   let content = 0;
-  for (const { natural, min } of measure.springs) {
-    content += Math.max(min * squeeze, natural * factor);
+  for (const spring of measure.springs) {
+    content += Math.max(squeezedMin(spring, squeeze), spring.natural * factor);
   }
   return fixedWidth(measure, opensSystem) + content;
 }
@@ -148,6 +148,7 @@ export function measureBar(
   const ticks = onsets.map(({ tick }) => tick);
   const left = ticks.map(() => 0);
   const right = ticks.map(() => 0);
+  const rigid = ticks.map(() => 0);
 
   const extents = slots.map((slot) => {
     const bar = trackBar(slot, index);
@@ -157,6 +158,7 @@ export function measureBar(
       const i = onsetIndex(ticks, extent.tick);
       left[i] = Math.max(left[i] ?? 0, extent.left);
       right[i] = Math.max(right[i] ?? 0, extent.right);
+      rigid[i] = Math.max(rigid[i] ?? 0, extent.rigid ?? 0);
     }
     return { above: measured.above, below: measured.below };
   });
@@ -168,7 +170,13 @@ export function measureBar(
       (right[i] ?? 0) + (i + 1 < onsets.length ? (left[i + 1] ?? 0) : 0) + ONSET_GAP * space;
     // alphaTab fills an empty voice with one beat of its default duration, a quarter.
     const natural = empty ? durationWidth(PPQ, space) : segmentWidth(gap, governing, space);
-    return { natural: Math.max(min, natural), min };
+    // A squeezed bar piles its onsets up, so the widest right extent of any of them, a second
+    // voice shifted off the first included, must stay clear of the bar's end whatever the squeeze.
+    return {
+      natural: Math.max(min, natural),
+      min,
+      rigid: i + 1 < onsets.length ? 0 : Math.max(0, ...rigid),
+    };
   });
 
   const standardSlots = slots.filter((slot) => slot.type === 'standard');

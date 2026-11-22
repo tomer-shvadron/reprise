@@ -122,14 +122,23 @@ export function fitSprings(
   content: number,
 ): { factor: number; squeeze: number } {
   let mins = 0;
+  let rigids = 0;
+  let squeezable = 0;
   let tightest = 0;
   for (const springs of bars) {
-    for (const { natural: width, min } of springs) {
+    for (const { natural: width, min, rigid = 0 } of springs) {
       mins += min;
+      rigids += rigid;
+      squeezable += Math.max(0, min - rigid);
       tightest = Math.max(tightest, min / width);
     }
   }
-  if (content < mins) return { factor: 0, squeeze: mins > 0 ? Math.max(0, content / mins) : 1 };
+  if (content < mins) {
+    return {
+      factor: 0,
+      squeeze: squeezable > 0 ? Math.max(0, (content - rigids) / squeezable) : 1,
+    };
+  }
   const factor = content / natural;
   if (factor >= tightest) return { factor, squeeze: 1 };
   const sorted = bars.flat().sort((a, b) => b.min / b.natural - a.min / a.natural);

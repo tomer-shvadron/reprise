@@ -38,15 +38,8 @@ export function separateAnchors(
     if (anchor.kind !== 'note' && anchor.kind !== 'beat') continue;
     const span = anchor.masterBar === undefined ? undefined : spans.get(anchor.masterBar);
     if (span) {
-      // An anchor wholly outside its bar (a voice moved right of the last beat of a squeezed
-      // bar) collapses onto the nearest edge: clamping only the far side would leave its x
-      // beyond the bar, and beyond the system. A collapsed anchor has no width, so `overlaps()`
-      // (which subtracts EPSILON) cannot flag stacked ones; #466 draws the glyphs inside the
-      // bar and removes the collapse.
-      const spanLeft = round(span.left);
-      const spanRight = round(Math.max(span.left, span.right));
-      const left = Math.min(Math.max(anchor.bbox.x, spanLeft), spanRight);
-      const right = Math.min(anchor.bbox.x + anchor.bbox.width, spanRight);
+      const left = Math.max(anchor.bbox.x, round(span.left));
+      const right = Math.min(anchor.bbox.x + anchor.bbox.width, round(span.right));
       anchors[i] = {
         ...anchor,
         bbox: { ...anchor.bbox, x: left, width: round(Math.max(0, right - left)) },
