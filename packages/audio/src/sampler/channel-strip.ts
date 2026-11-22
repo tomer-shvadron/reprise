@@ -102,6 +102,7 @@ export class ChannelStrip {
   #send: GainNode | undefined;
   #sendLevel = 0;
   #wah: WahPedal | undefined;
+  #previewWah: WahPedal | undefined;
 
   constructor(context: BaseAudioContext, destination: AudioNode, effects?: StripEffects) {
     this.#context = context;
@@ -144,9 +145,14 @@ export class ChannelStrip {
    * The wah pedal's state from `at`. The pedal is spliced in between the mute gate and the
    * insert on the first call that needs it, before the effects, as a pedal sits before the amp,
    * and stays for the strip's life: off it is the dry signal exactly. A restore to `off` on a
-   * strip that never had one changes nothing. Notes previewed in the editor join after it.
+   * strip that never had one changes nothing. Notes previewed in the editor have a pedal of
+   * their own (`preview`).
    */
-  setWah(state: WahState, at: number, restore = false): void {
+  setWah(state: WahState, at: number, restore = false, preview = false): void {
+    if (preview) {
+      this.#setPreviewWah(state, at, restore);
+      return;
+    }
     if (!this.#wah) {
       if (state === 'off') return;
       const pedal = new WahPedal(this.#context);
@@ -156,6 +162,35 @@ export class ChannelStrip {
       this.#wah = pedal;
     }
     this.#wah.set(state, at, restore);
+  }
+
+  /**
+   * The pedal of previewed notes (`previewBeat`), a second one in front of the insert so a
+   * preview hears its own wah while the song's pedal, which a run restores, is never moved.
+   * `previewInput` joins it once built. A change cancels what an earlier preview scheduled
+   * after it (its undo), so two quick previews do not undo each other.
+   */
+  #setPreviewWah(state: WahState, at: number, restore: boolean): void {
+    if (!this.#previewWah) {
+      if (state === 'off') return;
+      const pedal = new WahPedal(this.#context);
+      this.previewInput.disconnect(this.insert.input);
+      this.previewInput.connect(pedal.input);
+      pedal.output.connect(this.insert.input);
+      this.#previewWah = pedal;
+    }
+    if (!restore) this.#previewWah.cancelAfter(at);
+    this.#previewWah.set(state, at, restore);
+  }
+
+  /**
+   * A new `previewNote` starts clean: the preview pedal, if a `previewBeat` built one, goes off at
+   * `at` and its pending undo is cancelled, so the note is not filtered by an earlier preview.
+   */
+  resetPreviewWah(at: number): void {
+    if (!this.#previewWah) return;
+    this.#previewWah.cancelAfter(at);
+    this.#previewWah.set('off', at, true);
   }
 
   /** The send into the reverb bus, while it is connected. */
@@ -314,6 +349,8 @@ export class ChannelStrip {
     this.#slot.dispose();
     this.#wah?.dispose();
     this.#wah = undefined;
+    this.#previewWah?.dispose();
+    this.#previewWah = undefined;
     for (const node of [
       this.input,
       this.previewInput,

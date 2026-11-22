@@ -13,6 +13,7 @@ import { scrapeInstrument } from '../articulations/scrape';
 import { levelAt } from '../articulations/tie-chain';
 import { noteVelocity } from '../articulations/velocity';
 import type { FilterSettings } from './voice';
+import { PREVIEW_LET_RING_SECONDS, PREVIEW_MIN_SECONDS } from '../sink';
 import type { HitEvent, InstrumentSink, MixEvent, NoteEvent, WahEvent } from '../sink';
 import type { RegionMap, RegionSelection } from './region-map';
 import type { Instrument, Sampler, TrackParams, VoiceHandle } from './sampler';
@@ -42,6 +43,8 @@ interface Pass {
   sequenceIndex: number;
   /** The next note on the string has grace notes on its beat, which strike before it does. */
   nextOnBeatGrace: boolean;
+  /** An editor preview: no counters advance and no chain is read or left. */
+  preview: boolean;
 }
 
 /** FNV-1a over the parts, mapped to [0, 1): no `Math.random`, so a render repeats exactly. */
@@ -187,6 +190,14 @@ export function createSamplerSink(
     layer?: string,
     legato = false,
   ): RegionSelection {
+    if (pass.preview) {
+      // A preview must not move the song's round robins: it draws from the start of the cycle.
+      return {
+        sequence: 0,
+        random: draw(input.note.id, pass.sequenceIndex, strikeIndex),
+        ...(legato && { legato: true }),
+      };
+    }
     let counts = counters.get(regions);
     if (!counts) {
       counts = new Map<string, number>();
@@ -258,6 +269,7 @@ export function createSamplerSink(
       when: strike.when,
       string: input.note.string,
       ...(layer !== undefined && { layer }),
+      ...(pass.preview && { preview: true }),
       select: selection,
       // Only a note's final release plays its release regions: not a tremolo stroke, a trill
       // alternation or a grace note, whose string is never let go, and not a note a hammer-on
@@ -275,9 +287,10 @@ export function createSamplerSink(
 
   function play(trackId: Id, input: PlanInput, pass: Pass, final: boolean): void {
     const chainKey = `${trackId}:${String(input.note.string)}`;
-    const chain = input.note.string > 0 ? chains.get(chainKey) : undefined;
-    const handover = handovers.get(chainKey);
-    handovers.delete(chainKey);
+    const chain = input.note.string > 0 && !pass.preview ? chains.get(chainKey) : undefined;
+    // A preview neither takes nor leaves a hammer-on handover: the song's are its own.
+    const handover = pass.preview ? undefined : handovers.get(chainKey);
+    if (!pass.preview) handovers.delete(chainKey);
     // A hammer-on or tap from silence (after a rest, a let-go string) is struck, not legato.
     const handedOver = handover !== undefined && Math.abs(handover - input.when) <= CHAIN_TOLERANCE;
     let carried: VoiceHandle | undefined;
@@ -309,6 +322,7 @@ export function createSamplerSink(
     const lastIndex = plan.strikes.length - 1;
     const lastStrike = plan.strikes[lastIndex];
     if (
+      !pass.preview &&
       final &&
       lastStrike &&
       input.next &&
@@ -335,7 +349,16 @@ export function createSamplerSink(
       );
       shapeGain(voice, plan.gain, strike.when, until);
       shapePitch(voice, plan, strike, until, isCarried);
-      if (last && plan.legatoInto !== undefined) {
+      if (pass.preview) {
+        // A preview never carries a voice into a note: the voice ends with the strike, the last
+        // one let ring (up to a cap) and sounding at least the preview's minimum.
+        let end = strike.end;
+        if (last && plan.legatoInto !== undefined) end = plan.legatoInto;
+        else if (last && plan.letRingUntil !== undefined) {
+          end = Math.min(plan.letRingUntil, input.when + PREVIEW_LET_RING_SECONDS);
+        }
+        voice.release(final && last ? Math.max(end, input.when + PREVIEW_MIN_SECONDS) : end);
+      } else if (last && plan.legatoInto !== undefined) {
         chains.set(chainKey, {
           voice,
           at: plan.legatoInto,
@@ -384,6 +407,7 @@ export function createSamplerSink(
       when: event.when,
       string: 0,
       instrument: golpe,
+      ...(event.preview && { preview: true }),
     });
     voice?.release(event.when + length);
   }
@@ -391,7 +415,7 @@ export function createSamplerSink(
   /** The wah pedal on the track's strip; the lane already holds only fretted tracks. */
   function wah(event: WahEvent): void {
     if (event.track.kind !== 'fretted') return;
-    sampler.setWah(event.track.id, event.state, event.when, event.restore);
+    sampler.setWah(event.track.id, event.state, event.when, event.restore, event.preview === true);
   }
 
   return {
@@ -405,6 +429,7 @@ export function createSamplerSink(
         voicing,
         available: voicing ? availableSets(voicing.sets) : NO_SETS,
         sequenceIndex: event.sequenceIndex,
+        preview: event.preview === true,
         // Only a grace note on the next note's own string takes the string before it.
         nextOnBeatGrace:
           next?.beat.grace?.some(

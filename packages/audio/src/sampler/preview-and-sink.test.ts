@@ -1,7 +1,7 @@
 import { PPQ, midiNote } from '@reprise/model';
 import type { Beat, Note, Track } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { NoteEvent } from '../sink';
 import { midiToFrequency } from './sample-source';
@@ -224,5 +224,147 @@ describe('createSamplerSink', () => {
     expect(toneLevel(data, midiToFrequency(midiNote(guitar, firstNote)), 0.5, 1)).toBeLessThan(
       0.001,
     );
+  });
+});
+
+describe('createSamplerSink preview events', () => {
+  it('sounds past a muted track, and neither chokes nor is choked by a song note on its string', async () => {
+    const context = offline(1.5);
+    const sampler = new Sampler(context);
+    sampler.addTrack({ ...guitar, channel: { ...guitar.channel, mute: true } }, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    const frequency = midiToFrequency(midiNote(guitar, firstNote));
+
+    sink.noteOn({
+      ...event({ note: firstNote, beat: first, when: 0.1, duration: 1, barEnd: 2 }),
+      preview: true,
+    });
+    // A song note on the same string, struck while the preview rings: muted, and chokes nothing.
+    sink.noteOn(event({ note: firstNote, beat: first, when: 0.4, duration: 0.5, barEnd: 2 }));
+    const data = (await context.startRendering()).getChannelData(0);
+
+    expect(toneLevel(data, frequency, 0.5, 0.9)).toBeGreaterThan(0.1);
+  });
+
+  it('leaves the round robins and the legato chains of playback alone', () => {
+    const context = offline(1);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitar, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    const noteOn = vi.spyOn(sampler, 'noteOn');
+
+    sink.noteOn({
+      ...event({ note: firstNote, beat: first, when: 0, duration: 0.2, barEnd: 1 }),
+      preview: true,
+    });
+    sink.noteOn(event({ note: firstNote, beat: first, when: 0.5, duration: 0.2, barEnd: 1 }));
+
+    const [previewed, played] = noteOn.mock.calls.map(([, request]) => request);
+    expect(previewed?.preview).toBe(true);
+    expect(previewed?.select?.sequence).toBe(0);
+    expect(played?.preview).toBeUndefined();
+    // The preview did not advance the counter: the song's first strike is still the cycle's first.
+    expect(played?.select?.sequence).toBe(0);
+  });
+
+  it('sounds a previewed note at least the minimum length, however short it is written', async () => {
+    const context = offline(2);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitar, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    const frequency = midiToFrequency(midiNote(guitar, firstNote));
+
+    sink.noteOn({
+      ...event({ note: firstNote, beat: first, when: 0.1, duration: 0.1, durationTicks: 1 }),
+      preview: true,
+    });
+    const data = (await context.startRendering()).getChannelData(0);
+
+    expect(toneLevel(data, frequency, 0.3, 0.6)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, frequency, 1, 1.5)).toBeLessThan(0.001);
+  });
+
+  it('lets a previewed let-ring note ring past its beat, up to a cap', async () => {
+    const context = offline(3.5);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitar, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    const frequency = midiToFrequency(midiNote(guitar, ringingNote));
+
+    sink.noteOn({
+      ...event({ note: ringingNote, beat: ringing, when: 0.1, duration: 0.2, barEnd: 30 }),
+      preview: true,
+    });
+    const data = (await context.startRendering()).getChannelData(0);
+
+    expect(toneLevel(data, frequency, 1.2, 1.8)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, frequency, 2.6, 3.4)).toBeLessThan(0.001);
+  });
+
+  it('gives a previewed beat a wah of its own: heard in the preview, the song pedal untouched', async () => {
+    const levelOf = async (closed: boolean): Promise<number> => {
+      const context = offline(2);
+      const sampler = new Sampler(context);
+      sampler.addTrack(guitar, sineInstrument());
+      const sink = createSamplerSink(sampler);
+      const high = note(1, 24);
+      if (closed) {
+        sink.wah?.({
+          track: guitarTrack,
+          trackIndex: 0,
+          state: 'closed',
+          when: 0,
+          playbackTick: 0,
+          sequenceIndex: 0,
+          masterBarIndex: 0,
+          passIndex: 0,
+          restore: false,
+          preview: true,
+        });
+      }
+      sink.noteOn({
+        ...event({ note: high, beat: first, when: 0.1, duration: 1.5 }),
+        preview: true,
+      });
+      const data = (await context.startRendering()).getChannelData(0);
+      expect(sampler.strip(guitar.id)?.wah).toBeUndefined();
+      return toneLevel(data, midiToFrequency(midiNote(guitar, high)), 0.6, 1.2);
+    };
+
+    const plain = await levelOf(false);
+    const wah = await levelOf(true);
+    // A closed pedal is a band-pass around 400 Hz: the high note is far off its centre.
+    expect(plain).toBeGreaterThan(0.1);
+    expect(wah).toBeLessThan(plain * 0.6);
+  });
+
+  it('starts a previewed note clean after a wah preview: its pedal is off, not left closed', async () => {
+    const context = offline(2.5);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitar, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    sink.wah?.({
+      track: guitarTrack,
+      trackIndex: 0,
+      state: 'closed',
+      when: 0,
+      playbackTick: 0,
+      sequenceIndex: 0,
+      masterBarIndex: 0,
+      passIndex: 0,
+      restore: false,
+      preview: true,
+    });
+    const high = note(1, 24);
+    // At 0.5 s, within the beat's wah, a plain note is previewed.
+    context.suspend(0.5).then(
+      () => {
+        sampler.previewNote(guitar.id, high);
+        return context.resume();
+      },
+      () => undefined,
+    );
+    const data = (await context.startRendering()).getChannelData(0);
+    expect(toneLevel(data, midiToFrequency(midiNote(guitar, high)), 0.8, 1.0)).toBeGreaterThan(0.1);
   });
 });
