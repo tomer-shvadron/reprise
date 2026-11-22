@@ -50,10 +50,14 @@ export function barWidth(
   factor = 1,
   squeeze = 1,
   rigidScale = 1,
+  fixedScale = 1,
 ): number {
   let content = 0;
   for (const spring of measure.springs) {
-    content += Math.max(squeezedMin(spring, squeeze, rigidScale), spring.natural * factor);
+    content += Math.max(
+      squeezedMin(spring, squeeze, rigidScale, fixedScale),
+      spring.natural * factor,
+    );
   }
   return fixedWidth(measure, opensSystem) + content;
 }
@@ -150,6 +154,7 @@ export function measureBar(
   const left = ticks.map(() => 0);
   const right = ticks.map(() => 0);
   const rigid = ticks.map(() => 0);
+  const fixed = ticks.map(() => 0);
   const ideal = ticks.map(() => 0);
 
   const extents = slots.map((slot) => {
@@ -161,12 +166,16 @@ export function measureBar(
       left[i] = Math.max(left[i] ?? 0, extent.left);
       right[i] = Math.max(right[i] ?? 0, extent.right);
       rigid[i] = Math.max(rigid[i] ?? 0, extent.rigid ?? 0);
+      fixed[i] = Math.max(fixed[i] ?? 0, extent.fixed ?? extent.rigid ?? 0);
       ideal[i] = Math.max(ideal[i] ?? 0, extent.ideal ?? 0);
     }
     return { above: measured.above, below: measured.below };
   });
 
-  const rigidParts = rigidShares(rigid);
+  // Each onset's fixed floor and the room above it that voice shifts can give back; the maximum of
+  // the staves' floors and of their totals bounds every staff's extent at any scale.
+  const fixedParts = rigidShares(fixed);
+  const movableParts = rigidShares(rigid.map((total, i) => Math.max(0, total - (fixed[i] ?? 0))));
   const springs = onsets.map(({ tick, governing }, i): Spring => {
     const next = onsets[i + 1]?.tick ?? end;
     const gap = Math.max(next - tick, TICK_EPSILON);
@@ -179,7 +188,8 @@ export function measureBar(
     return {
       natural: Math.max(min, natural, wish),
       min,
-      rigid: rigidParts[i] ?? 0,
+      rigid: fixedParts[i] ?? 0,
+      movable: movableParts[i] ?? 0,
     };
   });
 

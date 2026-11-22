@@ -57,6 +57,12 @@ export interface OnsetExtent {
    */
   rigid?: number;
   /**
+   * The part of `rigid` that does not shrink however far a bar is squeezed: `rigid` less the
+   * voice-separation shift, which is drawn scaled by `SystemPlan.rigidScale`. Absent: all of
+   * `rigid` is fixed. Never above `rigid`.
+   */
+  fixed?: number;
+  /**
    * Room right of the onset a staff would like but can do without: the bar's natural width grows
    * to hold it, its minimum does not, so a bar that fits keeps its room and a dense one squeezes
    * no further than without it. It is a width for text, not for duration: justification still

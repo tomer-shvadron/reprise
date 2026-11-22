@@ -101,6 +101,7 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
           onset.right = Math.max(onset.right, room);
         }
         onset.rigid = onset.right;
+        onset.fixed = Math.max(0, onset.right - (beat.shift ?? 0));
         if (beat.labelRight) onset.ideal = beat.labelRight;
         if (drawsWords(input)) {
           const words = wordsExtent(beat.beat, wordStart(beat), input.space, input.chordDiagrams);
@@ -119,6 +120,7 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
         // counts as rigid. A line whose minimums fit never squeezes, so it is unchanged. A bend's
         // label reserves nothing here; `BendFrame.limit` keeps it inside the bar.
         onset.rigid = Math.max(onset.rigid ?? 0, reserved.right);
+        onset.fixed = Math.max(onset.fixed ?? 0, reserved.right);
       }
       return { onsets, above: plan.above, below: plan.below };
     },
