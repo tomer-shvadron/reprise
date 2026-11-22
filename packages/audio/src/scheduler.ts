@@ -4,7 +4,8 @@
  * worker or an AudioWorklet without change.
  *
  * Time is mapped through an anchor: playback tick `anchor.tick` sounds at `anchor.time`, and
- * later ticks follow the written tempo map stretched by `anchor.rate`. A tempo change, a seek or
+ * later ticks follow the anchor's pace: the written tempo map stretched by a factor, or one fixed
+ * BPM that ignores the map. A tempo change, a seek or
  * a loop wrap starts a new anchor at the cursor, so events already handed out never move.
  */
 import { PPQ, positionAtSeconds, secondsAtTick } from '@reprise/model';
@@ -37,8 +38,20 @@ export interface Anchor {
   /** `AudioContext` time at which `tick` sounds. */
   time: number;
   tick: number;
-  /** Context seconds per second of the written tempo map: 2 plays at half speed. */
-  rate: number;
+  pace: Pace;
+}
+
+/**
+ * How ticks turn into seconds from an anchor on. `scaled`: context seconds per second of the
+ * written tempo map (2 plays at half speed), so tempo automation still changes the speed.
+ * `fixed`: every tick plays at one BPM, whatever the map says.
+ */
+export type Pace = { kind: 'scaled'; rate: number } | { kind: 'fixed'; bpm: number };
+
+/** Context seconds one tick lasts at `tick` under `pace`. */
+export function secondsPerTickAt(timeline: Timeline, pace: Pace, tick: number): number {
+  if (pace.kind === 'fixed') return 60 / (PPQ * pace.bpm);
+  return (60 / (PPQ * bpmAtTick(timeline, tick))) * pace.rate;
 }
 
 export interface ScheduledClick {
@@ -161,14 +174,22 @@ function settled(change: MixerChange): MixerChange {
 }
 
 export function timeAtTick(timeline: Timeline, anchor: Anchor, tick: number): number {
+  if (anchor.pace.kind === 'fixed') {
+    return anchor.time + (tick - anchor.tick) * secondsPerTickAt(timeline, anchor.pace, tick);
+  }
   const delta = secondsAtTick(timeline.map, tick) - secondsAtTick(timeline.map, anchor.tick);
-  return anchor.time + delta * anchor.rate;
+  return anchor.time + delta * anchor.pace.rate;
 }
 
 /** The playback tick sounding at context `time`; the anchor's own tick before it. */
 export function tickAtTime(timeline: Timeline, anchor: Anchor, time: number): number {
   if (time <= anchor.time) return anchor.tick;
-  const seconds = secondsAtTick(timeline.map, anchor.tick) + (time - anchor.time) / anchor.rate;
+  if (anchor.pace.kind === 'fixed') {
+    const ticks = (time - anchor.time) / secondsPerTickAt(timeline, anchor.pace, anchor.tick);
+    return Math.min(anchor.tick + ticks, timeline.endTick);
+  }
+  const seconds =
+    secondsAtTick(timeline.map, anchor.tick) + (time - anchor.time) / anchor.pace.rate;
   return positionAtSeconds(timeline.map, seconds)?.playbackTick ?? anchor.tick;
 }
 
@@ -176,7 +197,7 @@ export interface RunStart {
   tick: number;
   /** Context time the run begins: the first count-in click, or `tick` itself without one. */
   time: number;
-  rate: number;
+  pace: Pace;
   loop: TickRange | undefined;
   countIn: boolean;
 }
@@ -186,7 +207,7 @@ export function startRun(timeline: Timeline, start: RunStart): Run {
   let time = start.time;
   if (start.countIn && timeline.endTick > 0) {
     const { ticks, unit } = countInTicks(timeline, start.tick);
-    const secondsPerTick = (60 / (PPQ * bpmAtTick(timeline, start.tick))) * start.rate;
+    const secondsPerTick = secondsPerTickAt(timeline, start.pace, start.tick);
     for (let offset = 0; offset < ticks - EPSILON; offset += unit) {
       clicks.push({
         when: start.time + offset * secondsPerTick,
@@ -197,7 +218,7 @@ export function startRun(timeline: Timeline, start: RunStart): Run {
     time += ticks * secondsPerTick;
   }
   return {
-    anchor: { time, tick: start.tick, rate: start.rate },
+    anchor: { time, tick: start.tick, pace: start.pace },
     cursorTick: start.tick,
     runStartTick: start.tick,
     loop: start.loop,
@@ -210,9 +231,9 @@ export function startRun(timeline: Timeline, start: RunStart): Run {
 }
 
 /** Changes the tempo from the cursor on; everything already handed out keeps its time. */
-export function retime(timeline: Timeline, run: Run, rate: number): Run {
+export function retime(timeline: Timeline, run: Run, pace: Pace): Run {
   const time = timeAtTick(timeline, run.anchor, run.cursorTick);
-  return { ...run, anchor: { time, tick: run.cursorTick, rate } };
+  return { ...run, anchor: { time, tick: run.cursorTick, pace } };
 }
 
 export function withLoop(run: Run, loop: TickRange | undefined): Run {
@@ -268,7 +289,7 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
       // Reaching the loop end by playing is a crossing; a cursor a seek or setLoop left past it
       // only jumps back, so it neither counts a pass nor fires the event.
       const crossed = next.cursorTick <= limit + EPSILON;
-      const wrapped: Anchor = { time: when, tick: loop.startTick, rate: anchor.rate };
+      const wrapped: Anchor = { time: when, tick: loop.startTick, pace: anchor.pace };
       const loopPasses = crossed ? next.loopPasses + 1 : next.loopPasses;
       next = {
         ...next,
@@ -296,13 +317,13 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
     if (target <= next.cursorTick) break;
 
     const range = { runStartTick: next.runStartTick, limitTick: limit };
-    const secondsPerTickAt = (tick: number): number =>
-      (60 / (PPQ * bpmAtTick(timeline, tick))) * anchor.rate;
+    const secondsPerTickIn = (tick: number): number =>
+      secondsPerTickAt(timeline, anchor.pace, tick);
     if (Math.abs(next.cursorTick - next.runStartTick) < EPSILON) {
       // The run's first window: the changes before its start point, settled, restore the mixer
       // state in effect there before the first note sounds.
       const when = Math.max(timeAtTick(timeline, anchor, next.runStartTick), now);
-      const secondsPerTick = secondsPerTickAt(next.runStartTick);
+      const secondsPerTick = secondsPerTickIn(next.runStartTick);
       const before = { runStartTick: 0, limitTick: next.runStartTick };
       for (const mix of mixesInRange(timeline, 0, next.runStartTick, before)) {
         mixes.push({ ...mix, mix: settled(mix.mix), when, secondsPerTick });
@@ -324,7 +345,7 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
     const beatEvents = beatEventsInRange(timeline, next.cursorTick, target, range);
     for (const mix of beatEvents.mixes) {
       const when = Math.max(timeAtTick(timeline, anchor, mix.tick), now);
-      mixes.push({ ...mix, when, secondsPerTick: secondsPerTickAt(mix.tick) });
+      mixes.push({ ...mix, when, secondsPerTick: secondsPerTickIn(mix.tick) });
     }
     for (const wah of wahChangesInRange(timeline, next.cursorTick, target, range)) {
       const when = Math.max(timeAtTick(timeline, anchor, wah.tick), now);
@@ -454,7 +475,8 @@ export function previewBeatEvents(
   const run = startRun(timeline, {
     tick: startTick,
     time: when,
-    rate: 1,
+    // The beat's written tempo, never the transport's percent or fixed setting.
+    pace: { kind: 'scaled', rate: 1 },
     loop: undefined,
     countIn: false,
   });

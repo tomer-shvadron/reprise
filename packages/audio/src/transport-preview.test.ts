@@ -165,6 +165,24 @@ describe('Transport.previewBeat', () => {
     expect(h.sink.notes[0]?.durationTicks).toBe(PPQ / 2);
   });
 
+  it('plays at the written tempo, whatever fixed or percent tempo the transport plays at', async () => {
+    const song = effects();
+    const beat = beatsOf(song)[0];
+    const trackId = song.tracks[0]?.id;
+    if (!beat || !trackId) throw new Error('fixture');
+    const h = await harness(song, 6);
+    // Written 120 BPM; the transport is set to a fixed 60 BPM and running.
+    h.transport.setTempo('bpm', 60);
+    h.transport.play();
+    h.transport.previewBeat(trackId, beat.id);
+    const previewed = h.sink.notes.filter((n) => n.preview);
+    // A half note at the written 120 BPM is 1 s, not the 2 s a fixed 60 BPM would give.
+    expect(previewed[0]?.duration).toBeCloseTo(1, 9);
+    h.transport.setTempo('percent', 50);
+    h.transport.previewBeat(trackId, beat.id);
+    expect(h.sink.notes.filter((n) => n.preview)[2]?.duration).toBeCloseTo(1, 9);
+  });
+
   it('ignores a track or beat the loaded song lacks', async () => {
     const song = effects();
     const h = await harness(song, 3);

@@ -710,6 +710,28 @@ describe('Transport (OfflineAudioContext)', () => {
     }
   });
 
+  it('plays a two-tempo song at one BPM in fixed mode, count-in included', async () => {
+    let builder = score().tempo(60).track('guitar').bar();
+    for (let beat = 0; beat < 4; beat++) builder = builder.beat('4', [note(1, 0)]);
+    builder = builder.bar().tempo(120);
+    for (let beat = 0; beat < 4; beat++) builder = builder.beat('4', [note(1, 1)]);
+    const h = await harness(builder.build(), 10);
+    h.engine.setTempo('bpm', 90);
+    h.engine.setCountIn(true);
+    h.engine.play();
+    await h.render();
+
+    const beat = 60 / 90;
+    expectTimes(
+      h.sink.clicks.map((c) => c.when),
+      range(4, LATENCY, beat),
+    );
+    expectTimes(
+      h.sink.notes.map((n) => n.when),
+      range(8, LATENCY + 4 * beat, beat),
+    );
+  });
+
   it('applies a tempo change during playback from the next scheduled event', async () => {
     const h = await harness(bars(3), 12);
     let changedAt = 0;

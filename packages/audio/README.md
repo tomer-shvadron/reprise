@@ -183,7 +183,7 @@ running), before its first window is handed out; the engine resets the channel b
 | `stop()`                        | Cuts everything, returns to the loop start or the song start.                                                                                                                             |
 | `seek(tick)`                    | While playing: cuts, restarts from `tick` after `startLatency`, no count-in. Otherwise moves the resume point. Past the loop end, playback restarts at the loop start.                    |
 | `setTempo('percent', p)`        | Scales the whole tempo map: 50 plays at half speed.                                                                                                                                       |
-| `setTempo('bpm', b)`            | Scales the whole map so the tempo at the current position plays at `b`; other tempo regions keep their ratio to it. The factor is fixed until the next `setTempo`.                        |
+| `setTempo('bpm', b)`            | Fixed tempo: every tick plays at `b` BPM, ignoring the tempo map's marks and ramps, the count-in included. Re-anchors from the cursor like `percent`.                                     |
 | `setLoop({ startBar, endBar })` | Master-bar ids, inclusive. In playback order the occurrence holding the playhead wins, then the next one, then the first. `undefined` clears the loop.                                    |
 | `setCountIn(on)`                | One bar of clicks before the first beat (see below).                                                                                                                                      |
 | `setMetronome(on, volume)`      | A click per beat of the time signature, accented on the downbeat; `volume` 0 to 1 is the metronome's level only.                                                                          |
@@ -361,7 +361,7 @@ assignments by track); it is not part of the contract.
 ## Decisions
 
 - **Count-in.** One bar of the time signature where playback starts, at the tempo there
-  (percent or BPM scaling included), accented on its first click. Starting at the beginning of
+  (percent scaling included, or the fixed BPM in fixed mode), accented on its first click. Starting at the beginning of
   an anacrusis, the count-in is shortened by the pickup so the two make one bar: a one-beat
   pickup in 4/4 gets three clicks. The count-in sounds whether or not the metronome is on, at its own volume (`setCountInVolume`).
 - **Metronome beats** follow the time signature's denominator: 6/8 clicks six eighths. An

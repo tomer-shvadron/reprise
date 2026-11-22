@@ -13,12 +13,12 @@ import {
   wahEventOf,
   withLoop,
 } from './scheduler';
-import type { Anchor, Run } from './scheduler';
+import type { Anchor, Pace, Run } from './scheduler';
 import { PREVIEW_LET_RING_SECONDS, PREVIEW_MIN_SECONDS } from './sink';
 import type { InstrumentSink, MetronomeSink } from './sink';
 import { frameTicker, workerTicker } from './ticker';
 import type { Ticker } from './ticker';
-import { bpmAtTick, createTimeline, loopRange } from './timeline';
+import { createTimeline, loopRange } from './timeline';
 import type { TickRange, Timeline } from './timeline';
 
 export type Unsubscribe = () => void;
@@ -126,7 +126,7 @@ export function createTransport(options: TransportOptions): Transport {
   let runStart = 0;
   let restTick = 0;
   let tempo: { mode: TempoMode; value: number } = { mode: 'percent', value: 100 };
-  let rate = 1;
+  let pace: Pace = { kind: 'scaled', rate: 1 };
   let loopBars: { startBar: Id; endBar: Id } | undefined;
   let loop: TickRange | undefined;
   let countIn = false;
@@ -185,9 +185,9 @@ export function createTransport(options: TransportOptions): Transport {
     emit('position', { position, masterBarId: masterBar.id, seconds, countingIn });
   }
 
-  function rateFor(tick: number): number {
-    if (tempo.mode === 'percent') return 100 / tempo.value;
-    return timeline ? bpmAtTick(timeline, tick) / tempo.value : 1;
+  function paceFor(): Pace {
+    if (tempo.mode === 'percent') return { kind: 'scaled', rate: 100 / tempo.value };
+    return { kind: 'fixed', bpm: tempo.value };
   }
 
   function silence(when: number): void {
@@ -264,7 +264,7 @@ export function createTransport(options: TransportOptions): Transport {
     run = startRun(line, {
       tick,
       time: context.currentTime + startLatency,
-      rate,
+      pace,
       loop,
       countIn: withCountIn,
     });
@@ -315,14 +315,14 @@ export function createTransport(options: TransportOptions): Transport {
       if (!previous) {
         restTick = 0;
         resolveLoop(line, 0);
-        rate = rateFor(0);
+        pace = paceFor();
         if (state !== 'stopped') setState('stopped');
         emitPosition();
         return;
       }
       const target = clampTick(line, tick);
       resolveLoop(line, target);
-      rate = rateFor(target);
+      pace = paceFor();
       place(line, target);
     },
 
@@ -404,9 +404,9 @@ export function createTransport(options: TransportOptions): Transport {
         throw new RangeError(`setTempo: value must be a positive number, got ${String(value)}`);
       }
       tempo = { mode, value };
-      rate = rateFor(currentTick());
+      pace = paceFor();
       if (run && timeline) {
-        run = retime(timeline, run, rate);
+        run = retime(timeline, run, pace);
         anchors.push(run.anchor);
       }
     },
