@@ -127,7 +127,8 @@ export interface ChordPlan {
   dots: { x: number; ys: number[] };
   /** The x of the ghost parentheses' glyph origins, when a head is a ghost note's. */
   parens?: { left: number; right: number };
-  ledgers: { y: number; left: number; right: number }[];
+  /** `own`: the left edge before `bridgeLedgers` ran it back to an earlier voice's ledger; drawn instead when the shifts are scaled (`rigidScale` < 1). */
+  ledgers: { y: number; left: number; right: number; own?: number }[];
   left: number;
   right: number;
   top: number;

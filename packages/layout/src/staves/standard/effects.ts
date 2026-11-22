@@ -47,6 +47,7 @@ import {
 } from './chord';
 import { placeNote } from './pitch';
 import type { BarPlan, BeatPlan } from './plan';
+import { drawnShift } from './shift';
 import {
   SHORTENING,
   beamStep,
@@ -427,7 +428,7 @@ function locate(
   const others = voiceBeats(input.track, found.bar, voice);
   const origin = others[found.beat];
   const planned = context.previousBeat(voice, found.beat);
-  const x = previous.onsetX(tickOf(others, found.beat)) + (planned?.shift ?? 0);
+  const x = previous.onsetX(tickOf(others, found.beat)) + drawnShift(planned, placement.rigidScale);
   const plannedHead =
     planned?.chord && mainHeads(planned.chord).find((other) => other.note === found.note);
   const width = glyphWidth(headGlyph('normal', origin?.duration ?? 4), space);

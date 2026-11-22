@@ -24,6 +24,7 @@ import {
   headReach,
   type ConnectionContext,
 } from './effects';
+import { drawnShift } from './shift';
 import { drawsWords, wordStart } from './words';
 import {
   GRACE_SCALE,
@@ -82,7 +83,9 @@ function drawChord(
   const top = placement.top;
   const { scale } = chord;
   const ledger = engraving.legerLineThickness * space * scale;
-  for (const { y, left, right } of chord.ledgers) {
+  for (const { y, left: bridged, right, own } of chord.ledgers) {
+    // A bridge is measured with the unscaled voice shifts; a squeezed bar draws them smaller.
+    const left = placement.rigidScale < 1 ? (own ?? bridged) : bridged;
     sink.primitives.push(line(x + left, top + y, x + right, top + y, ledger, { node: beat }));
   }
   let box: Rect | undefined;
@@ -170,7 +173,7 @@ function beatX(context: Context, beat: BeatPlan): number {
  * `measure` reserved their room from (the rest glyph itself is centred in the bar).
  */
 function wordX(context: Context, beat: BeatPlan): number {
-  return context.placement.onsetX(beat.tick) + (beat.shift ?? 0);
+  return context.placement.onsetX(beat.tick) + drawnShift(beat, context.placement.rigidScale);
 }
 
 function drawGraces(context: Context, beat: BeatPlan, x: number): void {
@@ -492,7 +495,7 @@ function drawTies(context: Context, fretted: boolean): void {
               start =
                 (origin?.chord && originHead
                   ? onset +
-                    (origin.shift ?? 0) +
+                    drawnShift(origin, placement.rigidScale) +
                     headReach(origin.chord, originHead, last.dots, space)
                   : onset + loneHeadRight(blackWidth, source.ghost, last.dots, space)) + gap;
             } else {
