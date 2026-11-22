@@ -71,19 +71,33 @@ describe('installMenuChecks', () => {
     expect(setMenuChecks.mock.calls[1]?.[0]['transport.toggleCountIn']).toBe(true);
   });
 
-  it('tries a refused push again on the next change, and stops after the undo', async () => {
+  it('does not send a map again while it is in flight', () => {
+    const { playback, setMenuChecks } = setup();
+    setMenuChecks.mockReturnValue(new Promise(() => undefined));
+    installMenuChecks({ playback, platform: { setMenuChecks } });
+    setSettings(playback, { metronome: { on: false, volume: 0.1 } });
+    setSettings(playback, { metronome: { on: false, volume: 0.2 } });
+
+    expect(setMenuChecks).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a refused map only once the map differs, and stops after the undo', async () => {
     const { playback, setMenuChecks } = setup();
     setMenuChecks.mockResolvedValueOnce(false);
     const stop = installMenuChecks({ playback, platform: { setMenuChecks } });
     await settle();
-    setSettings(playback, { countIn: false, loop: undefined });
+    // Position ticks change the store, not the map: no retry.
+    setSettings(playback, { metronome: { on: false, volume: 0.3 } });
+    expect(setMenuChecks).toHaveBeenCalledTimes(1);
+
+    setSettings(playback, { countIn: true });
     expect(setMenuChecks).toHaveBeenCalledTimes(2);
     await settle();
-    setSettings(playback, { countIn: false });
+    setSettings(playback, { countIn: true });
     expect(setMenuChecks).toHaveBeenCalledTimes(2);
 
     stop();
-    setSettings(playback, { countIn: true });
+    setSettings(playback, { countIn: false });
     expect(setMenuChecks).toHaveBeenCalledTimes(2);
   });
 });
