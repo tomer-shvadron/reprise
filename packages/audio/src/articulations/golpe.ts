@@ -27,8 +27,9 @@ export function golpeInstrument(sampleRate: number): Instrument {
       kind: 'sine',
       frequency: spec.frequency,
       endFrequency: spec.endFrequency,
+      glide: spec.decay,
       duration: spec.decay * 3,
-      amplitude: 0.9,
+      amplitude: 0.3,
     };
     samples[`fx:golpe-${kind}-noise`] = {
       kind: 'noise',

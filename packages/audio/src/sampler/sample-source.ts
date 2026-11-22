@@ -17,8 +17,9 @@ export type SynthSample =
       frequency: number;
       duration: number;
       amplitude?: number;
-      /** A linear glide to this frequency over the buffer; fixed pitch when absent. */
+      /** A linear glide to this frequency over `glide` seconds, then held; fixed pitch when absent. */
       endFrequency?: number;
+      glide?: number;
     }
   | {
       kind: 'noise';
@@ -54,7 +55,8 @@ function synthesize(spec: SynthSample, sampleRate: number): AudioBuffer {
     let phase = 0;
     for (let i = 0; i < length; i += 1) {
       data[i] = amplitude * Math.sin(phase);
-      const frequency = spec.frequency + ((end - spec.frequency) * i) / length;
+      const progress = Math.min(1, i / sampleRate / (spec.glide ?? length / sampleRate));
+      const frequency = spec.frequency + (end - spec.frequency) * progress;
       phase += (2 * Math.PI * frequency) / sampleRate;
     }
   } else {
@@ -67,7 +69,7 @@ function synthesize(spec: SynthSample, sampleRate: number): AudioBuffer {
     let y = 0;
     for (let i = 0; i < length; i += 1) {
       y += a * (random() * 2 - 1 - y);
-      data[i] = amplitude * Math.min(1, gain * y);
+      data[i] = amplitude * Math.max(-1, Math.min(1, gain * y));
     }
   }
   return buffer;

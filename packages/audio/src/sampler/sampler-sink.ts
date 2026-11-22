@@ -348,6 +348,8 @@ export function createSamplerSink(
    * apply. A beat with no notes (a rest) hits at the default velocity.
    */
   function hit(event: HitEvent): void {
+    // The body thump is a guitar's: drum and keyboard tracks keep their silence on a golpe.
+    if (event.track.kind !== 'fretted') return;
     golpe ??= golpeInstrument(sampler.context.sampleRate);
     const { restVelocity, length } = ARTICULATION.golpe;
     const velocity = event.beat.notes.reduce(

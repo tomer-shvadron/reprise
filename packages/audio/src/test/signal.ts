@@ -464,3 +464,33 @@ export function attackRatios(flux: SpectralFlux, attacks: readonly number[]): nu
     return (peaks[i] ?? 0) / Math.max(background, floor, 1e-9);
   });
 }
+
+/**
+ * The spectral centroid in Hz of `[from, to)` between `low` and `high` Hz, by a direct DFT every
+ * `resolution` Hz with a Hann window: slow, but the windows it is used on are 100 ms.
+ */
+export function spectralCentroid(
+  signal: Signal,
+  from: number,
+  to: number,
+  { low = 200, high = 12_000, resolution = 50 } = {},
+): number {
+  const window = slice(signal, from, to);
+  const size = window.length;
+  let weighted = 0;
+  let total = 0;
+  for (let hertz = low; hertz <= high; hertz += resolution) {
+    const step = (2 * Math.PI * hertz) / signal.sampleRate;
+    let re = 0;
+    let im = 0;
+    for (let i = 0; i < size; i += 1) {
+      const sample = (window[i] ?? 0) * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (size - 1)));
+      re += sample * Math.cos(step * i);
+      im -= sample * Math.sin(step * i);
+    }
+    const power = re * re + im * im;
+    weighted += hertz * power;
+    total += power;
+  }
+  return total > 0 ? weighted / total : 0;
+}

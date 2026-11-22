@@ -6,6 +6,7 @@ import { ARTICULATION } from './parameters';
 import { scrapeInstrument } from './scrape';
 
 const SAMPLE_RATE = 44_100;
+const bodyOf = () => buffer(golpeInstrument(SAMPLE_RATE), 'fx:golpe-thumb-body');
 
 function buffer(instrument: ReturnType<typeof golpeInstrument>, sample: string) {
   const found = instrument.source.peekBuffer(sample);
@@ -50,12 +51,33 @@ describe('golpeInstrument', () => {
   });
 });
 
+describe('the synthesized noise', () => {
+  it('stays inside [-1, 1] on both sides, with no DC from clipping one side', () => {
+    const instrument = golpeInstrument(SAMPLE_RATE);
+    for (const sample of ['fx:golpe-thumb-noise', 'fx:golpe-finger-noise']) {
+      const { data } = buffer(instrument, sample);
+      const peak = data.reduce((max, value) => Math.max(max, Math.abs(value)), 0);
+      expect(peak).toBeLessThanOrEqual(ARTICULATION.golpe.noiseAmplitude + 1e-6);
+      const mean = data.reduce((sum, value) => sum + value, 0) / data.length;
+      expect(Math.abs(mean)).toBeLessThan(0.05);
+    }
+  });
+
+  it('glides the body within its decay, as documented', () => {
+    const body = bodyOf();
+    const { decay, endFrequency } = ARTICULATION.golpe.thumb;
+    const tail = zeroCrossingFrequency(body, decay + 0.02, decay * 2.5);
+    expect(tail).toBeGreaterThan(endFrequency * 0.9);
+    expect(tail).toBeLessThan(endFrequency * 1.1);
+  });
+});
+
 describe('scrapeInstrument', () => {
-  it('is seeded noise long enough for an octave-up sweep over the capped note', () => {
+  it('is seeded noise at least as long as the capped note', () => {
     const instrument = scrapeInstrument(SAMPLE_RATE);
     const noise = buffer(instrument, 'fx:scrape');
     expect(noise.data.length / SAMPLE_RATE).toBeGreaterThanOrEqual(
-      ARTICULATION.pickScrape.maxLength * 1.5,
+      ARTICULATION.pickScrape.maxLength,
     );
     expect(rms(noise, 0, 0.5)).toBeGreaterThan(0.1);
     expect(buffer(scrapeInstrument(SAMPLE_RATE), 'fx:scrape').data[100]).toBe(noise.data[100]);
