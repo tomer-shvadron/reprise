@@ -217,6 +217,7 @@ describe('ScoreView', () => {
     const result = small();
     const { rerender } = renderView(result);
     const before = mountedIds();
+    const nodes = new Map(before.map((id) => [id, svgOf(id)]));
     const first = result.systems[0];
     if (!first) throw new Error('no system');
     const observer = new MutationObserver(() => undefined);
@@ -231,7 +232,10 @@ describe('ScoreView', () => {
 
     const records = observer.takeRecords();
     observer.disconnect();
-    expect(mountedIds()).toEqual(before);
+    // The window shrinks at zoom 2, so a far system may unmount; none is remounted.
+    const after = mountedIds();
+    expect(after.length).toBeGreaterThan(0);
+    for (const id of after) expect(svgOf(id)).toBe(nodes.get(id));
     expect(Number(svgOf(first.id).getAttribute('width'))).toBeCloseTo(first.bbox.width * 2);
     const inside = records.filter(({ target }) => target.parentElement?.closest('svg'));
     expect(inside).toEqual([]);
