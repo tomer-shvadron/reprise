@@ -1,4 +1,4 @@
-import type { Score } from '@reprise/model';
+import { applyCommand, setMasterBar, type Score } from '@reprise/model';
 import { fullScore, largeScore, note, score, type ScoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -13,7 +13,7 @@ import {
 import { glyphMetrics } from '../../metrics';
 import type { LayoutSink } from '../../primitives';
 import { SCRAPE, analyseEffects } from '../effects';
-import { expectValid, overlappingAnchors } from '../../test/check-result';
+import { expectValid, overlappingAnchors, stable } from '../../test/check-result';
 import { describeAnchor, describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
 import { TAB } from './analysis';
@@ -252,6 +252,53 @@ describe('tab staff: rests', () => {
           .rest('2..'),
       ),
     ).toMatchSnapshot();
+  });
+});
+
+describe('tab staff: hidden voices', () => {
+  const bar = (hiddenVoice: boolean): Score => {
+    const builder = guitar()
+      .bar()
+      .beat('1', [note(1, 3)]);
+    return (hiddenVoice ? builder.voice(1).rest('1') : builder).build({ ids: 'sequential' });
+  };
+
+  it('reserves no rhythm row for a hidden voice', () => {
+    const plain = laid(bar(false));
+    const hidden = laid(bar(true));
+    expect(hidden.systems[0]?.bbox.height).toBe(plain.systems[0]?.bbox.height);
+  });
+
+  it('reaches the same staff top and keeps the hidden rest selectable', () => {
+    const plain = laid(bar(false));
+    const hidden = laid(bar(true));
+    expect(hidden.systems[0]?.staves[0]?.top).toBe(plain.systems[0]?.staves[0]?.top);
+    const rest = bar(true).tracks[0]?.bars[0]?.voices[1]?.beats[0]?.id;
+    expect(hidden.anchors.some((a) => a.kind === 'beat' && a.id === rest)).toBe(true);
+  });
+
+  it('re-measures a bar when its pickup flag is toggled, as a cold layout would', () => {
+    const built = guitar()
+      .bar()
+      .beat('4', [note(2, 5)])
+      .voice(1)
+      .rest('4')
+      .bar()
+      .beat('1', [note(1, 3)])
+      .build({ ids: 'sequential' });
+    const rests = (result: LayoutResult): number =>
+      result.primitives.filter((p) => p.kind === 'glyph' && p.glyph.startsWith('rest')).length;
+    const cache = new LayoutCache();
+    expect(rests(layout(built, paged, cache))).toBe(1);
+    const step = applyCommand(
+      built,
+      setMasterBar({ masterBarId: built.masterBars[0]?.id ?? '' }, { anacrusis: true }),
+    );
+    const edited = layout(step.score, { ...paged, dirtyBars: step.change.touchedBars }, cache);
+    expect(rests(edited)).toBe(0);
+    const clone = JSON.parse(JSON.stringify(step.score)) as Score;
+    // A structural clone shares no analysis cache entry with the edited score.
+    expect(stable(edited)).toBe(stable(layout(clone, paged)));
   });
 });
 

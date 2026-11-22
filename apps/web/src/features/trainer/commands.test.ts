@@ -2,7 +2,7 @@ import { write } from '@reprise/formats';
 import { setBeatEffect } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { act } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { insightsFor } from './insights/insights-for';
 import { createAppRegistry } from '@/app/app-registry';
@@ -13,6 +13,8 @@ import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars } from '@/test/position';
 import { createTestServices } from '@/test/services';
 
+import { installPracticeLog } from './practice-log/install';
+import { practiceTable, rowOf } from './practice-log/test-support';
 import { arpeggioOverlayFor } from './fretboard/arpeggio-overlay';
 import { scaleOverlayFor } from './fretboard/scale-overlay';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
@@ -363,5 +365,70 @@ describe('trainer commands', () => {
     expect(services.ui.getState().rightPanelView).toBe('insights');
     expect(insightsFor(services).getState().focus).toMatchObject({ bar: 1 });
     expect(registry.get('trainer.sectionInsights')?.shortcut).toBeUndefined();
+  });
+});
+
+describe('trainer.resumePractice', () => {
+  const SONG = 'SONGSONGSONG';
+  async function resumeSetup() {
+    const services = createTestServices();
+    mirrorAudio(services);
+    const table = practiceTable();
+    installPracticeLog(services, table);
+    const registry = createAppRegistry(services);
+    const { bytes } = await write(fourBars(), 'reprise');
+    await act(async () => {
+      await services.document.getState().openBytes('song.reprise', bytes, { songId: SONG });
+    });
+    const ids = services.document.getState().score?.masterBars.map((bar) => bar.id) ?? [];
+    return { services, registry, ids, table };
+  }
+
+  it('is listed in the palette only while a library song is open', async () => {
+    const { services, registry } = await resumeSetup();
+    const command = registry.get('trainer.resumePractice');
+    expect(command?.title).toBe('Resume practice');
+    expect(command?.enabled?.()).toBe(true);
+    services.document.getState().close();
+    expect(command?.enabled?.()).toBe(false);
+    // A document opened without importing has no song id, so no log to read.
+    const { bytes } = await write(fourBars(), 'reprise');
+    await act(async () => {
+      await services.document.getState().openBytes('loose.reprise', bytes);
+    });
+    expect(command?.enabled?.()).toBe(false);
+  });
+
+  it('announces a failed read instead of staying silent', async () => {
+    const { services, registry, table } = await resumeSetup();
+    vi.spyOn(table, 'where').mockImplementation(() => {
+      throw new Error('disk gone');
+    });
+    await registry.get('trainer.resumePractice')?.run();
+    expect(services.transport.getState().announcement?.text).toBe('Could not resume: disk gone');
+  });
+
+  it('restores the latest loop and tempo of the open song', async () => {
+    const { services, registry, ids, table } = await resumeSetup();
+    await table.put(
+      rowOf({
+        songId: SONG,
+        loops: [{ startBar: ids[1] ?? '', endBar: ids[2] ?? '' }],
+        tempoHistory: [{ atPlayedMs: 0, tempo: { mode: 'percent', value: 85 } }],
+      }),
+    );
+    await registry.get('trainer.resumePractice')?.run();
+    expect(services.playback.getState().settings.loop).toEqual({
+      startBar: ids[1],
+      endBar: ids[2],
+    });
+    expect(services.playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 85 });
+  });
+
+  it('says so when the song has no practice history', async () => {
+    const { services, registry } = await resumeSetup();
+    await registry.get('trainer.resumePractice')?.run();
+    expect(services.transport.getState().announcement?.text).toContain('No practice to resume');
+    expect(services.playback.getState().settings.loop).toBeUndefined();
   });
 });

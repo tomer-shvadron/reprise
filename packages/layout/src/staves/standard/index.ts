@@ -14,6 +14,7 @@ import { glyphWidth } from '../../primitives';
 import { DYNAMICS_GLYPHS, beatDynamics, reservedDynamics, shownDynamics } from '../dynamics';
 import { drawsWords, wordStart } from './words';
 import { wordLanes, wordRows, wordsExtent } from '../words';
+import { tiesIntoNext } from './bend-targets';
 import { MIN_ROOM, planBar, type BarPlan, type NotationOptions } from './plan';
 import { renderBar } from './render';
 import { TICK_EPSILON } from '../../ticks';
@@ -52,6 +53,7 @@ function planInputs(input: StaffBar): unknown[] {
     track.display,
     input.masterBar,
     track.bars[barIndex - 1],
+    tiesIntoNext(track.bars[barIndex + 1]),
     score.masterBars[barIndex - 1]?.keySignature,
     input.clef,
     input.space,

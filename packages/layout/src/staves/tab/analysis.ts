@@ -1,5 +1,4 @@
 import {
-  barTicks,
   beatTicks,
   type Bar,
   type Beat,
@@ -30,6 +29,7 @@ import {
   BEND_FRAME,
   BEND_ROOM,
   bendLabelNeed,
+  graceLinks,
   KNOCKOUT,
   LETTER,
   naturalHarmonicText,
@@ -49,6 +49,8 @@ export const TAB = {
   knockoutY: KNOCKOUT.y,
   graceScale: 0.7,
   graceGap: 0.25,
+  /** Extra gap between two grace columns joined by a hammer-on, in staff spaces. */
+  graceLink: 1,
   /** From the outer string to where stems start, and a stem's length to its beam or flag. */
   stemGap: 0.75,
   stem: 3.25,
@@ -108,6 +110,8 @@ export interface GraceColumn {
   width: number;
   /** Room kept right of the column for a bend, in px. */
   room: number;
+  /** Space between this column and the next, or the beat: wider when a hammer-on links them. */
+  gap: number;
 }
 
 export interface TabBeat {
@@ -315,8 +319,17 @@ function analyseBeat(
       labels: graceLabels,
       width: Math.max(0, ...graceLabels.map((label) => labelHalf(label, graceSize) * 2)),
       room: grace.notes.some((note) => note.bend) ? TAB.graceBendRoom * space : 0,
+      gap: TAB.graceGap * space,
     };
   });
+  const links = graceLinks(beat.grace);
+  // The gap before a linked column is wide enough for its arc.
+  for (const { from, to } of links) {
+    for (let g = from; g < to; g++) {
+      const column = graces[g];
+      if (column) column.gap = (TAB.graceGap + TAB.graceLink) * space;
+    }
+  }
   const rhythm = event(beat, tick);
   let half: number;
   let right: number;
@@ -350,7 +363,7 @@ function analyseBeat(
     if (note.bend || note.slide || note.hammerPull) drawn = true;
   }
   for (const grace of beat.grace ?? []) {
-    for (const note of grace.notes) if (note.bend || note.slide) drawn = true;
+    for (const note of grace.notes) if (note.bend || note.slide || note.hammerPull) drawn = true;
   }
   // What hangs right of a number starts past its suffix (a harmonic's brackets), as the drawing
   // in effects.ts places it, so the room counts from there.
@@ -377,7 +390,7 @@ function analyseBeat(
     played && (beat.effects.arpeggio || beat.effects.brush) ? TAB.strokeRoom * space : 0;
   let left = half + stroke;
   if (slideIn) left += TAB.slideRoom * space;
-  for (const column of graces) left += TAB.graceGap * space + column.width + column.room;
+  for (const column of graces) left += column.gap + column.width + column.room;
   return {
     voice,
     index,
@@ -472,7 +485,9 @@ function arcRoom(
       for (const grace of beat.grace ?? []) {
         for (const note of grace.notes) {
           const side = arcSide(note, strings);
-          if (note.slide?.includes('legato')) keep(note.string, side, lettered(side));
+          if (note.hammerPull || note.slide?.includes('legato')) {
+            keep(note.string, side, lettered(side));
+          }
         }
       }
     }
@@ -492,7 +507,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const signature = input.masterBar.timeSignature;
   const rhythm = rhythmOnTab(input);
   const strings = input.track.tuning.length;
-  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${rhythm ? 'rhythm' : 'numbers'} ${String(strings)} ${String(input.chordDiagrams)} ${String(input.track.drone?.string)}:${String(input.track.drone?.fret)}`;
+  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${String(input.masterBar.anacrusis)} ${rhythm ? 'rhythm' : 'numbers'} ${String(strings)} ${String(input.chordDiagrams)} ${String(input.track.drone?.string)}:${String(input.track.drone?.fret)}`;
   const cached = analyses.get(bar)?.get(key);
   if (cached) return cached;
 
@@ -500,7 +515,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const beats: TabBeat[] = [];
   const reserved: ReadonlySet<string> = rhythm ? reservedDynamics(bar) : new Set();
   let maxFingers = 0;
-  const hidden = hiddenVoices(bar, barTicks(input.masterBar));
+  const hidden = hiddenVoices(bar, input.masterBar);
   for (const [index, voice] of bar.voices.entries()) {
     if (!voicePresent(voice)) continue;
     const direction = voiceDirection(bar, index);
@@ -558,9 +573,9 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   );
   const lowerExtra = Math.max(
     0,
-    ...voices.filter((v) => v.direction === 'down').map((v) => v.extraStem),
+    ...voices.filter((v) => v.direction === 'down' && !v.hidden).map((v) => v.extraStem),
   );
-  const uppers = rhythm ? voices.filter((v) => v.direction === 'up') : [];
+  const uppers = rhythm ? voices.filter((v) => v.direction === 'up' && !v.hidden) : [];
   const rows: TabRows = {
     upper: uppers.length > 0 ? stemZone(Math.max(...uppers.map((v) => v.extraStem)), space) : 0,
     fingering: maxFingers * TAB.fingerRow * space,
