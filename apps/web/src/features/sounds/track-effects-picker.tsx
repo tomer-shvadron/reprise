@@ -16,6 +16,7 @@ export function TrackEffectsPicker({ trackId, label }: { trackId: Id; label?: st
   const { document, playback } = useAppServices();
   const track = useStore(document, (state) => state.score?.tracks.find((t) => t.id === trackId));
   const gmTierBypass = useStore(playback, (state) => state.settings.gmTierBypass);
+  const channelEffects = useStore(playback, (state) => state.settings.channelEffects);
   const tier = useStore(playback, (state) => state.trackSounds[trackId]?.tier ?? 'gm');
   if (!track) return null;
   const name = label ?? (track.name || 'track');
@@ -32,7 +33,7 @@ export function TrackEffectsPicker({ trackId, label }: { trackId: Id; label?: st
           .apply(setTrackProperties({ trackId }, { sound: soundWith(track, next) }));
       }}
     >
-      <option value={AUTOMATIC}>{automaticLabel(track, gmTierBypass, tier)}</option>
+      <option value={AUTOMATIC}>{automaticLabel(track, gmTierBypass, tier, channelEffects)}</option>
       {PRESET_CHOICES.map((id) => (
         <option key={id} value={id}>
           {presetLabel(id)}

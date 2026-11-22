@@ -9,6 +9,7 @@ import {
   DEFAULT_VIEW_MODE_SETTING,
   DEFAULT_ZOOM_SETTING,
   FOLLOW_PLAYHEAD_SETTING,
+  CHANNEL_EFFECTS_SETTING,
   GM_TIER_BYPASS_SETTING,
   MASTER_VOLUME_SETTING,
   MEMORY_BUDGET_SETTING,
@@ -30,6 +31,7 @@ describe('the app settings', () => {
     expect(store.get(METRONOME_VOLUME_SETTING)).toBe(0.7);
     expect(store.get(MASTER_VOLUME_SETTING)).toBe(1);
     expect(store.get(GM_TIER_BYPASS_SETTING)).toBe(true);
+    expect(store.get(CHANNEL_EFFECTS_SETTING)).toBe(true);
     expect(store.get(MEMORY_BUDGET_SETTING)).toBe(HQ_BUDGET_BYTES);
     expect(store.get(FOLLOW_PLAYHEAD_SETTING)).toBe(true);
     expect(store.get(DEFAULT_VIEW_MODE_SETTING)).toBe('paged');

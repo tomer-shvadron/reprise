@@ -4,6 +4,7 @@ import type { PlaybackStore, TempoSetting } from '@/state/playback';
 import {
   COUNT_IN_SETTING,
   COUNT_IN_VOLUME_SETTING,
+  CHANNEL_EFFECTS_SETTING,
   GM_TIER_BYPASS_SETTING,
   MASTER_VOLUME_SETTING,
   MEMORY_BUDGET_SETTING,
@@ -58,6 +59,7 @@ export function installTransport(deps: TransportDeps): () => void {
   audio.setMetronome(settings.get(METRONOME_ON_SETTING), settings.get(METRONOME_VOLUME_SETTING));
   audio.setMasterVolume(settings.get(MASTER_VOLUME_SETTING));
   audio.setGmTierBypass(settings.get(GM_TIER_BYPASS_SETTING));
+  audio.setChannelEffects(settings.get(CHANNEL_EFFECTS_SETTING));
   audio.setMemoryBudget(settings.get(MEMORY_BUDGET_SETTING));
 
   const unsubscribeSettings = [
@@ -75,6 +77,9 @@ export function installTransport(deps: TransportDeps): () => void {
     settings.subscribe(GM_TIER_BYPASS_SETTING, (value) => {
       if (now().gmTierBypass !== value) audio.setGmTierBypass(value);
     }),
+    settings.subscribe(CHANNEL_EFFECTS_SETTING, (value) => {
+      if (now().channelEffects !== value) audio.setChannelEffects(value);
+    }),
     settings.subscribe(MEMORY_BUDGET_SETTING, (value) => {
       if (now().memoryBudgetBytes !== value) audio.setMemoryBudget(value);
     }),
@@ -90,6 +95,7 @@ export function installTransport(deps: TransportDeps): () => void {
     put(METRONOME_VOLUME_SETTING, current.metronome.volume, before.metronome.volume);
     put(MASTER_VOLUME_SETTING, current.masterVolume, before.masterVolume);
     put(GM_TIER_BYPASS_SETTING, current.gmTierBypass, before.gmTierBypass);
+    put(CHANNEL_EFFECTS_SETTING, current.channelEffects, before.channelEffects);
     put(MEMORY_BUDGET_SETTING, current.memoryBudgetBytes, before.memoryBudgetBytes);
   });
 
