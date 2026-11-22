@@ -65,7 +65,8 @@ export interface LayoutOptions {
    * lane appearing or growing), at most this many unedited segments, nearest the edit, are
    * redrawn for it in this call; the others keep their previous drawing, stale, until a later
    * call redraws them (see `LayoutMetrics.staleSystems`). Unset: every segment, as without it.
-   * Paged mode and a call without a cache ignore it.
+   * A non-negative integer; 0 only defers, as a call with no dirty bars then redraws nothing, so
+   * follow-up calls need at least 1. Paged mode and a call without a cache ignore it.
    */
   verticalReach?: number | undefined;
 }
