@@ -37,6 +37,7 @@
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
+  --color-track: var(--track);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -92,6 +93,8 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+  /* The unfilled part of a slider: 3:1 on the card, background and current mixer card (WCAG 1.4.11). */
+  --track: oklch(0.55 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -144,6 +147,7 @@
   /* 3:1 on the background and the sidebar (WCAG 1.4.11): the outline of an input and the off track of a switch. `--border` stays a soft hairline. */
   --input: oklch(0.65 0 0);
   --ring: oklch(0.6 0 0);
+  --track: oklch(0.62 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);

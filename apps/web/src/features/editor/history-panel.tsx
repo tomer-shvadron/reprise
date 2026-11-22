@@ -144,7 +144,8 @@ export function HistoryPanel() {
                 className={cn(
                   'hover:bg-muted focus-visible:ring-ring cursor-pointer px-3 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset',
                   row.kind === 'undone' && 'text-muted-foreground italic',
-                  index === current && 'bg-muted font-medium',
+                  index === current &&
+                    'bg-muted font-medium shadow-[inset_3px_0_0_var(--color-primary)]',
                 )}
                 onMouseDown={keepFocus}
                 onClick={() => {

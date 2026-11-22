@@ -150,7 +150,11 @@ function RailButton({ entry }: { entry: (typeof PANEL_TABS)[number] }) {
           if (active) state.setPanelOpen('rightPanel', false);
           else state.showPanelView(entry.view);
         }}
-        className={active ? 'bg-accent text-accent-foreground' : undefined}
+        className={
+          active
+            ? 'bg-accent hover:bg-accent dark:hover:bg-accent text-accent-foreground shadow-[inset_3px_0_0_var(--color-primary)]'
+            : undefined
+        }
       >
         <Icon />
       </Button>

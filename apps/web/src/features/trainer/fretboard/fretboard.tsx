@@ -164,6 +164,8 @@ const ScaleLayer = memo(function ScaleLayer({
         const y = geometry.stringY(dot.string);
         return (
           <g key={`${String(dot.string)}.${String(dot.absolute)}`} data-scale-tone={dot.degree}>
+            {/* An opaque disc, so the string does not run through the label. */}
+            <circle cx={x} cy={y} r={DOT_RADIUS + RING_GAP} fill="var(--color-sidebar)" />
             <circle
               cx={x}
               cy={y}

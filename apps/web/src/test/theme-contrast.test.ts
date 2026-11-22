@@ -40,6 +40,24 @@ const MARKS: [string, string][] = [
   ['--paper-accent', '--paper'],
   ['--arpeggio', '--background'],
   ['--arpeggio', '--sidebar'],
+  // The unfilled part of a slider: on the mixer cards, the current card (`--sidebar-accent`), the
+  // sidebar and the page (#472).
+  ['--track', '--card'],
+  ['--track', '--background'],
+  ['--track', '--sidebar'],
+  ['--track', '--sidebar-accent'],
+];
+
+// The bar on the selected state's leading edge (the active rail button, History's current row, the
+// palette's selected row), drawn in `--primary`. It carries the 3:1 of 1.4.11, and is the
+// palette's keyboard focus indicator (#471); the light fill beside it is only a second cue. It
+// sits on the surface and on the fill.
+const SELECTED_BAR: [string, string][] = [
+  ['--primary', '--background'],
+  ['--primary', '--popover'],
+  ['--primary', '--sidebar'],
+  ['--primary', '--accent'],
+  ['--primary', '--muted'],
 ];
 
 // What identifies an input or an off switch: the light `--input` is split from the decorative
@@ -65,6 +83,10 @@ describe.each<ThemeName>(['dark', 'light'])('theme contrast, %s', (name) => {
   });
 
   it.each(MARKS)('mark %s on %s is at least 3', (fg, bg) => {
+    expect(tokenContrast(values, fg, bg)).toBeGreaterThanOrEqual(3);
+  });
+
+  it.each(SELECTED_BAR)('selected bar %s on %s is at least 3', (fg, bg) => {
     expect(tokenContrast(values, fg, bg)).toBeGreaterThanOrEqual(3);
   });
 
