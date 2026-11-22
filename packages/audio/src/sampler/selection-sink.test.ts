@@ -66,7 +66,8 @@ async function strikes(
   for (let pass = 0; pass < (options.passes ?? 1); pass += 1) {
     for (const [index, beat] of beats.entries()) {
       if (index < (options.from ?? 0)) continue;
-      sink.noteOn(eventOf(track, beat, index, pass));
+      if (beat.notes.length === 0) continue;
+      sink.noteOn(eventOf(track, beats, index, pass));
     }
     sink.allNotesOff(0);
   }
@@ -79,8 +80,14 @@ async function strikes(
   }));
 }
 
-function eventOf(track: Track, beat: Beat, index: number, passIndex: number): NoteEvent {
-  const first = beat.notes[0];
+function eventOf(track: Track, beats: Beat[], index: number, passIndex: number): NoteEvent {
+  const beat = beats[index];
+  const first = beat?.notes[0];
+  if (!beat) throw new Error('a beat');
+  // The next note on the string, as the scheduler hands it: a rest between leaves a gap.
+  const nextIndex = beats.findIndex((other, at) => at > index && other.notes.length > 0);
+  const nextBeat = beats[nextIndex];
+  const nextNote = nextBeat?.notes[0];
   if (!first) throw new Error('a note');
   return {
     track,
@@ -90,7 +97,7 @@ function eventOf(track: Track, beat: Beat, index: number, passIndex: number): No
     beatIndex: index,
     note: first,
     when: 0.1 + index * 0.1,
-    duration: 0.05,
+    duration: 0.1,
     playbackTick: index * (PPQ / 2),
     durationTicks: PPQ / 2,
     // The bar's place in the playback sequence: one value for a bar, higher on a repeat.
@@ -98,7 +105,8 @@ function eventOf(track: Track, beat: Beat, index: number, passIndex: number): No
     masterBarIndex: 0,
     passIndex,
     barEnd: 5,
-    nextOnString: undefined,
+    nextOnString: nextBeat &&
+      nextNote && { note: nextNote, beat: nextBeat, when: 0.1 + nextIndex * 0.1 },
     continuations: [],
   };
 }
@@ -163,6 +171,31 @@ describe('the sink selects takes from the synthetic guitar pack', () => {
     expect(made[1]?.request.offset).toBeUndefined();
   });
 
+  it('strikes a tapped note after a rest with the first-trigger region, not the legato one', async () => {
+    const song = score()
+      .track('guitar', { tuning: tuning(legato.key) })
+      .bar()
+      .beat('8', [note(1, 0)])
+      .rest('8')
+      .beat('8', [note(1, 0)], { effects: { tapping: true } })
+      .build();
+    const made = await strikes(song);
+    expect(made[1]?.request.select?.legato).toBeUndefined();
+    expect(made[1]?.request.offset).toBe(ARTICULATION.hammerOffset);
+  });
+
+  it('strikes a hammer-on after a rest with the first-trigger region too', async () => {
+    const song = score()
+      .track('guitar', { tuning: tuning(legato.key) })
+      .bar()
+      .beat('8', [note(1, 0)])
+      .rest('8')
+      .beat('8', [note(1, 0, { hammerPull: true })])
+      .build();
+    const made = await strikes(song);
+    expect(made[1]?.request.select?.legato).toBeUndefined();
+  });
+
   it('plays the legato region on a tapped note, with no 20 ms offset', async () => {
     const song = score()
       .track('guitar', { tuning: tuning(legato.key) })
@@ -172,6 +205,7 @@ describe('the sink selects takes from the synthetic guitar pack', () => {
       .build();
     const made = await strikes(song);
     expect(made.map((strike) => strike.sample)).toEqual(legato.tones.map(take));
+    expect(made[1]?.request.select?.legato).toBe(true);
     expect(made[1]?.request.offset).toBeUndefined();
   });
 
