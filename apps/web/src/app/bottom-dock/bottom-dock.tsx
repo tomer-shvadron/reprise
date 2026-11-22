@@ -167,7 +167,7 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
                     showView(id);
                   }}
                   className={cn(
-                    'text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 -mb-px border-b-2 border-transparent px-2.5 py-1.5 text-xs font-medium outline-none focus-visible:ring-2',
+                    'text-muted-foreground hover:text-foreground focus-visible:ring-ring -mb-px border-b-2 border-transparent px-2.5 py-1.5 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-inset',
                     // No underline while collapsed: nothing is showing.
                     selected && 'text-foreground',
                     selected && open && 'border-primary',

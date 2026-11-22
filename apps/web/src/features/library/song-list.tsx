@@ -192,7 +192,7 @@ export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: Song
         aria-label="Songs"
         tabIndex={0}
         aria-activedescendant={activeId}
-        className="focus-visible:ring-ring/50 min-h-0 flex-1 overflow-y-auto outline-none focus-visible:ring-3"
+        className="focus-visible:ring-ring min-h-0 flex-1 overflow-y-auto outline-none focus-visible:ring-3"
         onScroll={(event) => {
           setScrollTop(event.currentTarget.scrollTop);
         }}

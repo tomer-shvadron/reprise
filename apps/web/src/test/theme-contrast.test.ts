@@ -34,8 +34,7 @@ const TEXT: [string, string][] = [
   ['--ink-muted', '--paper'],
 ];
 
-// `--ring` here is the solid ring (`border-ring`, `outline-ring`). Five components draw only the
-// halo, `focus-visible:ring-ring/50`, which is the HALO test below; that gap is a known follow-up.
+// `--ring` here is the solid focus indicator (`ring-ring`, `border-ring`, `outline-ring`).
 const MARKS: [string, string][] = [
   ['--ring', '--background'],
   ['--paper-accent', '--paper'],
@@ -69,9 +68,10 @@ describe.each<ThemeName>(['dark', 'light'])('theme contrast, %s', (name) => {
     expect(tokenContrast(values, fg, bg)).toBeGreaterThanOrEqual(3);
   });
 
-  // The solid ring is at least 3:1, but a halo at 50% is not: about 1.85:1 in both themes, under the
-  // 3:1 of WCAG 1.4.11. Pinned so it only moves on purpose; the halo gap is tracked as a follow-up.
-  it('pins the focus halo at 50%, a known gap near 1.85', () => {
+  // A 50% halo is about 1.85:1, under 1.4.11's 3:1, which is why focus must draw the solid `--ring`
+  // (MARKS above); focus-indicator.test.ts pins which components do. Pinned so the number only moves
+  // on purpose.
+  it('pins the 50% focus halo near 1.85, under 3', () => {
     const halo = { rgb: paint(values, '--ring').rgb, alpha: 0.5 };
     const background = paint(values, '--background').rgb;
     const ratio = contrastRatio(over(halo, background), background);
