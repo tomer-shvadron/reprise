@@ -41,6 +41,7 @@ export const SAMPLES: Record<string, unknown> = {
   'score.defaultNotationVocals': 'standard',
   'score.chordDiagrams': false,
   'score.chordStrip': true,
+  'editing.sound': false,
   'layout.bottomDockOpen': true,
   'layout.bottomDockHeight': 300,
   'layout.rightPanelOpen': true,

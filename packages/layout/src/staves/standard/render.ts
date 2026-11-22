@@ -447,9 +447,9 @@ export function renderBar(
         }),
       );
     }
-    for (const [i, { glyph: name, note }] of [...beat.fingering].reverse().entries()) {
+    for (const { glyph: name, note, row } of beat.fingering) {
       const width = glyphWidth(name, space);
-      const y = top + plan.fingeringY - i * FINGERING_STEP * space;
+      const y = top + plan.fingeringY - row * FINGERING_STEP * space;
       sink.primitives.push(glyph(name, x - width / 2, y, space, { node: note.id }));
     }
   }

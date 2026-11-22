@@ -17,6 +17,7 @@ import {
   DEFAULT_ZOOM_SETTING,
   FOLLOW_PLAYHEAD_SETTING,
   COUNT_IN_VOLUME_SETTING,
+  EDIT_SOUND_SETTING,
   METRONOME_VOLUME_SETTING,
   THEME_SETTING,
 } from '@/state/app-settings';
@@ -134,6 +135,9 @@ describe('the settings dialog', () => {
     expect(settings.get(COUNT_IN_SETTING)).toBe(true);
     await user.click(screen.getByRole('switch', { name: 'Follow the playhead' }));
     expect(settings.get(FOLLOW_PLAYHEAD_SETTING)).toBe(false);
+    expect(settings.get(EDIT_SOUND_SETTING)).toBe(true);
+    await user.click(screen.getByRole('switch', { name: 'Sound notes while editing' }));
+    expect(settings.get(EDIT_SOUND_SETTING)).toBe(false);
     screen.getByRole('slider', { name: 'Count-in volume' }).focus();
     await user.keyboard('{ArrowLeft}');
     expect(settings.get(COUNT_IN_VOLUME_SETTING)).toBeCloseTo(0.65, 5);

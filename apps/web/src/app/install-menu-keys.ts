@@ -15,7 +15,9 @@ const NAMED_KEYS =
  * The key as the menu can carry it: one printable ASCII character, or a name the accelerator
  * grammar has. Anything else (a non-ASCII character) gives `null`: the menu then shows no key for
  * that item, while the renderer still fires it. A key with neither Cmd/Ctrl nor Alt goes the same
- * way unless it is an F-key.
+ * way unless it is an F-key. An Alt-only key (the Playback menu's Option+C and the like) does go
+ * to the menu, shown on its item; the renderer drops such an accelerator while a text field has
+ * focus (`menuKeyYieldsToField`), so it cannot toggle a setting while the user types.
  */
 export function menuKeyOf(shortcut: Shortcut | undefined): MenuKey | null {
   if (!shortcut) return null;

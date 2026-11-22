@@ -12,6 +12,7 @@ import { formatShortcut, type KeyboardPlatform } from './keyboard';
 import {
   installShortcutDispatcher,
   menuCommandAllowed,
+  menuKeyYieldsToField,
   modalBlocksCommand,
 } from './shortcut-dispatcher';
 
@@ -702,5 +703,24 @@ describe('text fields and open dialogs', () => {
 
     expect(run.open).toHaveBeenCalledOnce();
     expect(run.undo).toHaveBeenCalledOnce();
+  });
+
+  it('has an Alt-only menu accelerator yield to a focused text field, and nothing else', () => {
+    const input = document.createElement('input');
+    document.body.append(input);
+    const alt = { key: 'c', alt: true };
+    try {
+      expect(menuKeyYieldsToField(alt)).toBe(false);
+      input.focus();
+      expect(menuKeyYieldsToField(alt)).toBe(true);
+      expect(menuKeyYieldsToField({ key: 'm', alt: true, shift: true })).toBe(true);
+      // An F-key types nothing, and a Cmd or Ctrl key is the menu's own, as Save is.
+      expect(menuKeyYieldsToField({ key: 'F9' })).toBe(false);
+      expect(menuKeyYieldsToField({ key: 's', mod: true })).toBe(false);
+      expect(menuKeyYieldsToField({ key: 'c', mod: true, alt: true })).toBe(false);
+      expect(menuKeyYieldsToField(undefined)).toBe(false);
+    } finally {
+      input.remove();
+    }
   });
 });

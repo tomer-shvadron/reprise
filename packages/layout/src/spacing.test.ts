@@ -87,7 +87,10 @@ describe('rigidShares', () => {
     expect(squeezedMin(last, 0.99)).toBeLessThan(last.min * 0.99 + 6 + 1e-9);
   });
 
-  it('scales the rigid parts when they alone overflow', () => {
-    expect(squeezedMin({ natural: 50, min: 40, rigid: 30 }, 0, 0.5)).toBe(15);
+  it('scales the movable part before the fixed one when they alone overflow', () => {
+    const spring = { natural: 50, min: 40, rigid: 20, movable: 10 };
+    expect(squeezedMin(spring, 0, 0.5)).toBe(25);
+    expect(squeezedMin(spring, 0, 0)).toBe(20);
+    expect(squeezedMin(spring, 0, 0, 0.5)).toBe(10);
   });
 });
