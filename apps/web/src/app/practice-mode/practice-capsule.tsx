@@ -3,8 +3,8 @@ import { useStore } from 'zustand';
 
 import { keepFocus } from '@/app/command-control';
 import { CommandTooltip } from '@/app/command-tooltip';
+import { scoreRegion } from '@/app/score-region';
 import { useAppServices } from '@/app/services-context';
-import { scoreRegion } from '@/app/status-bar/click-status';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
