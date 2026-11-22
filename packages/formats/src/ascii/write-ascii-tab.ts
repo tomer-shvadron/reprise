@@ -60,8 +60,8 @@ function toWarning(dropped: AsciiDropCollector['dropped'][number]): Warning {
  * What the text holds, per track block: a header line (name, tuning low to high, capo, the first
  * bar's tempo), then systems of whole bars wrapped at `width`. Voice 1 only. Beats are spaced by
  * duration within a bar (a quarter is four times a sixteenth) and two-digit frets are aligned,
- * but rhythm is otherwise not marked. Above the strings: chord names, beat text, and an
- * annotation row (the bar number at each line's start, sections, a changed time signature or
+ * but rhythm is otherwise not marked. Above the strings: chord names, beat text, a wah row
+ * (`+` closed, `o` open, rests included) and an annotation row (the bar number at each line's start, sections, a changed time signature or
  * tempo, volta numbers, jumps, `x3` at a repeat end). Below: palm-mute and let-ring runs and lyric
  * line 1. A row appears on a line only when it has something. A legend of the symbols used ends
  * the text. A tied note is dashes; a trill is `7tr9`.

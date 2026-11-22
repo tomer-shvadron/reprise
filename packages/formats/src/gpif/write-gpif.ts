@@ -430,6 +430,9 @@ class BodyWriter {
     // Guitar Pro 8 writes the golpe between `Rhythm` and `Notes` (fixtures/gp/golpe.gp).
     if (effects.golpe !== undefined)
       xml.text('Golpe', effects.golpe === 'thumb' ? 'Thumb' : 'Finger');
+    // GP8 writes `Wah` after `Rhythm` and before `Notes` too (alphaTab's notation-legend.gp, GP 12025);
+    // no GP7/8 file has both, so it follows `Golpe`. alphaTab itself writes it after `Notes`.
+    if (effects.wah !== undefined) xml.text('Wah', effects.wah === 'open' ? 'Open' : 'Closed');
     if (noteIds.length > 0) xml.text('Notes', noteIds.join(' '));
 
     xml.open('Properties');

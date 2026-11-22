@@ -87,6 +87,7 @@ export function featuresOf(score: Score): Set<string> {
             found.add('chord-diagrams');
           }
           if (beat.effects.golpe) found.add('golpe');
+          if (beat.effects.wah) found.add('wah');
           for (const note of beat.notes) {
             if (note.bend) found.add('bends');
             if (note.slide) found.add('slides');

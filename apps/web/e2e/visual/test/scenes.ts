@@ -721,6 +721,29 @@ export const SCENES: readonly Scene[] = [
     pages: 'all',
   },
   {
+    id: 'golpe',
+    covers: 'Finger golpes above the staff and thumb golpes below it, from a real file (#354)',
+    source: { fixture: 'gp/golpe.gp' },
+    notations: ['tab', 'standard'],
+    pages: [0],
+    guard: (result) => {
+      const golpes = result.primitives.filter(
+        (p) => p.kind === 'glyph' && p.glyph === 'guitarGolpe',
+      );
+      expect(golpes.length).toBeGreaterThanOrEqual(2);
+    },
+  },
+  {
+    id: 'pick-scrape',
+    covers: 'Pick scrapes: the P.S. run and the wave out of each note, from a real file (#354)',
+    source: { fixture: 'gp/pick-slide.gp' },
+    notations: ['tab', 'standard'],
+    pages: [0],
+    guard: (result) => {
+      expect(result.primitives.some((p) => p.kind === 'text' && p.text === 'P.S.')).toBe(true);
+    },
+  },
+  {
     id: 'multivoice',
     covers: 'A real two-voice file',
     source: { fixture: 'gp/multivoice-rhythm.gp' },
