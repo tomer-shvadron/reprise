@@ -15,7 +15,15 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { engraving } from '../../metrics';
-import { hitTest, type Anchor, type LayoutResult, type Primitive, type Rect } from '../../index';
+import {
+  PAGE_SIZES,
+  hitTest,
+  layout,
+  type Anchor,
+  type LayoutResult,
+  type Primitive,
+  type Rect,
+} from '../../index';
 import { expectValid, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import { guitar, laid as laidOut } from '../../test/effects';
@@ -426,6 +434,38 @@ describe('ledger lines and ties on unisons', () => {
       reach = Math.max(reach, rightOf(box));
     }
     expect(reach).toBeGreaterThanOrEqual(rightOf(later) + extension - EPSILON);
+  });
+
+  it('draws no bridge past the earlier voice’s ledger in a bar too dense for its line', () => {
+    const first = guitar('standard').bar();
+    for (let i = 0; i < 16; i++) first.beat('16', [note(1, 17)]);
+    first.voice(1);
+    for (let i = 0; i < 16; i++) first.beat('16', [note(1, 19)]);
+    const built = first.build({ ids: 'sequential' });
+    const track = built.tracks[0];
+    const result = layout(built, {
+      mode: 'paged',
+      width: 200,
+      pageHeight: PAGE_SIZES.a4.height,
+      zoom: 1,
+      tracks: 'all',
+      notation: track ? { [track.id]: 'standard' } : {},
+    });
+    expectValid(result);
+    const [earlier, later] = built.tracks[0]?.bars[0]?.voices ?? [];
+    let compared = 0;
+    for (const [i, beat] of (later?.beats ?? []).entries()) {
+      const mine = ledgers(result, beat.id);
+      for (const other of ledgers(result, earlier?.beats[i]?.id ?? '')) {
+        for (const line of mine.filter((l) => Math.abs(l.bbox.y - other.bbox.y) < EPSILON)) {
+          // The bridge would start left of the earlier voice's ledger at full shift, and
+          // overshoot it once the shift is drawn smaller.
+          expect(line.bbox.x, `beat ${String(i)}`).toBeGreaterThanOrEqual(other.bbox.x - EPSILON);
+          compared++;
+        }
+      }
+    }
+    expect(compared).toBeGreaterThan(0);
   });
 
   it('stops a bridged ledger line short of a moved voice’s accidentals and parentheses', () => {

@@ -17,6 +17,12 @@ import { randomScore } from './test/random-score';
 const EPSILON = 0.02;
 
 /**
+ * Seeds whose standard bars still draw lane-effect text (`let ring`, the bend label `full`) past
+ * a 320 px system; #477 reserves room for it and deletes this set.
+ */
+const UNTIL_477 = new Set([16, 59, 158, 161]);
+
+/**
  * Primitives, as `kind node`, that reach past the right edge of the system drawing them. Only the
  * right edge: continuous segments draw a few markings (pedal and track names) left of their
  * frame on purpose, in the margin.
@@ -110,14 +116,33 @@ describe('primitives stay inside their system', () => {
     expect(outside(result)).toEqual([]);
   });
 
+  it('keeps a shifted voice inside a bar too dense for its line', () => {
+    const first = score().track('guitar').bar();
+    for (let i = 0; i < 16; i++) first.beat('16', [note(1, 0), note(2, 0), note(3, 0)]);
+    first.voice(1);
+    for (let i = 0; i < 16; i++) first.beat('16', [note(1, 1), note(2, 1)]);
+    const built = first.build({ ids: 'sequential' });
+    expect(outside(layout(built, options(built, 200, 'standard')))).toEqual([]);
+  });
+
+  it('keeps the voices of the dense standard bars at 320 px inside the system', () => {
+    for (const seed of [16, 169, 250, 399]) {
+      const built = randomScore(seed, { diagrams: true });
+      const found = outside(layout(built, options(built, 320, 'standard')));
+      // Seed 16 keeps its bend label `full`, 0.3 px out: lane-effect text, #477's.
+      const rest = seed === 16 ? found.filter((entry) => !entry.startsWith('text ')) : found;
+      expect(rest, `seed ${String(seed)}`).toEqual([]);
+    }
+  });
+
   it('ends every paged system within its line, even where the rigid parts alone overflow it', () => {
     // Seed 399 has an onset of three voices, each shifted right of the one before: 117.8 px of
     // rigid parts against 61.7 px of room at 320 px.
     const built = randomScore(399, { diagrams: true });
     const result = layout(built, options(built, 320, 'standard'));
-    // Its heads cannot all fit, so some stay past the bar\'s end (anchors collapse onto it), but
-    // the system keeps to its line.
+    // The voice shifts are drawn at `rigidScale`, so the heads fit and no anchor needs clipping.
     expectValid(result);
+    expect(outside(result)).toEqual([]);
     expect(lineOverflow(result, 320)).toEqual([]);
   });
 
@@ -157,17 +182,18 @@ describe('primitives stay inside their system', () => {
 
   it('holds for random scores in paged mode at narrow and wide lines', () => {
     // Paged only: continuous mode never squeezes (`finish` squeezes only paged lines), so it
-    // could not reach the squeezed cases this guards. At 320 px tab alone is held to it: a few
-    // dense seeds (16, 59, 158, 161, 169, 250, 399) still draw standard heads, words or a slide
-    // past a line their bars cannot fit (the rigid parts alone overflow it), tracked in #477.
+    // could not reach the squeezed cases this guards. At 320 px tab and standard are held to it,
+    // standard but for the seeds in `UNTIL_477` (lane-effect text, #477); `both` is not: its
+    // rigid extent scales the tab's fixed glyphs along with the voice shifts.
     assert(
       property(
         integer({ min: 0, max: 400 }),
         oneof(
-          tuple(constant(320), constant<Notation>('tab')),
+          tuple(constant(320), constantFrom<Notation>('tab', 'standard')),
           tuple(constantFrom(500, 700, 1200), constantFrom<Notation>('tab', 'standard', 'both')),
         ),
         (seed, [width, notation]) => {
+          if (width === 320 && notation === 'standard' && UNTIL_477.has(seed)) return;
           const built = randomScore(seed, { diagrams: true });
           const result = layout(built, options(built, width, notation));
           const label = `seed ${String(seed)} ${String(width)} ${notation}`;

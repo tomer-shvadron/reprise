@@ -38,13 +38,10 @@ export function separateAnchors(
     if (anchor.kind !== 'note' && anchor.kind !== 'beat') continue;
     const span = anchor.masterBar === undefined ? undefined : spans.get(anchor.masterBar);
     if (span) {
-      // Only a bar whose rigid parts alone overflow its line (`SystemPlan.rigidScale` below 1)
-      // leaves a note beyond its bar's end: its heads cannot all fit. Such an anchor collapses
-      // onto the bar's edge, so that a hit box never lies outside its system.
-      const spanLeft = round(span.left);
-      const spanRight = round(Math.max(span.left, span.right));
-      const left = Math.min(Math.max(anchor.bbox.x, spanLeft), spanRight);
-      const right = Math.min(anchor.bbox.x + anchor.bbox.width, spanRight);
+      // Anchors are clipped to their bar; the glyphs are drawn inside it, so nothing needs
+      // collapsing onto its edge.
+      const left = Math.max(anchor.bbox.x, round(span.left));
+      const right = Math.min(anchor.bbox.x + anchor.bbox.width, round(span.right));
       anchors[i] = {
         ...anchor,
         bbox: { ...anchor.bbox, x: left, width: round(Math.max(0, right - left)) },
