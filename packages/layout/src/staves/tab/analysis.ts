@@ -26,7 +26,9 @@ import {
 import { reservedDynamics } from '../dynamics';
 import { WORDS, wordRows } from '../words';
 import {
+  BEND_FRAME,
   BEND_ROOM,
+  bendLabelNeed,
   graceLinks,
   KNOCKOUT,
   LETTER,
@@ -126,6 +128,8 @@ export interface TabBeat {
   /** Room the beat's own drawing takes either side of its onset, in px. */
   left: number;
   right: number;
+  /** The room right of the onset the bend's labels would like, beyond `right`, in px. */
+  labelRight?: number;
   /** Room for an arpeggio or brush arrow left of the numbers, in px; zero without one. */
   stroke: number;
   /** Whether a note or grace note of the beat bends, slides or is hammered on. */
@@ -344,6 +348,7 @@ function analyseBeat(
   let slideIn = false;
   let slideOut = false;
   let bent = false;
+  let labelRight: number | undefined;
   let drawn = false;
   for (const note of beat.rest ? [] : beat.notes) {
     for (const kind of note.slide ?? []) {
@@ -370,7 +375,16 @@ function analyseBeat(
   }
   right = Math.max(right, edge);
   if (slideOut) right = Math.max(right, edge + TAB.slideRoom * space);
-  if (bent) right = Math.max(right, edge + TAB.bendRoom * space);
+  if (bent) {
+    // Labels of tips a quarter of the frame or more apart stand side by side in it.
+    const labels = bendLabelNeed(
+      beat.notes.map((note) => note.bend),
+      BEND_FRAME.stop,
+    );
+    const frame = Math.max(TAB.bendRoom, BEND_FRAME.gap + labels + BEND_FRAME.stop);
+    right = Math.max(right, edge + TAB.bendRoom * space);
+    if (frame > TAB.bendRoom) labelRight = edge + frame * space;
+  }
   const played = !beat.rest && beat.notes.length > 0;
   const stroke =
     played && (beat.effects.arpeggio || beat.effects.brush) ? TAB.strokeRoom * space : 0;
@@ -389,6 +403,7 @@ function analyseBeat(
     half,
     left,
     right,
+    ...(labelRight !== undefined && { labelRight }),
     stroke,
     connects: drawn,
     dynamicsChange: false,

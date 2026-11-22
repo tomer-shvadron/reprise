@@ -47,8 +47,15 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
       last.left = Math.max(last.left, left);
       last.right = Math.max(last.right, right);
       last.rigid = Math.max(last.rigid ?? 0, beat.right);
+      if (beat.labelRight) last.ideal = Math.max(last.ideal ?? 0, beat.labelRight);
     } else {
-      onsets.push({ tick: beat.tick, left, right, rigid: beat.right });
+      onsets.push({
+        tick: beat.tick,
+        left,
+        right,
+        rigid: beat.right,
+        ...(beat.labelRight && { ideal: beat.labelRight }),
+      });
     }
   }
   const effects = analyseEffects(input.bar, space, { articulations: analysed.rhythm });
