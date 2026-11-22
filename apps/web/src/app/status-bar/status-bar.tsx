@@ -14,8 +14,8 @@ import { NotationSegment, ZoomSegment } from './view-status';
  *
  * Not a `<footer>`, which would be a second `contentinfo` landmark beside the transport; not a
  * toolbar, which would take the arrow keys; and not a live region as a whole, which would read the
- * bar at every cursor move; only the track flash is one. Its background is `bg-background`, never `bg-sidebar`: muted text on that
- * is 4.53:1 in the light theme.
+ * bar at every cursor move; only the track flash is one. Its background is `bg-background`, a segment's muted text is
+ * 5.06:1 on it in the light theme (4.85:1 on `bg-sidebar`).
  */
 export function StatusBar() {
   const services = useAppServices();

@@ -120,7 +120,7 @@ function placedDots(
 /** A long gap: at the board's real size (about two thirds of its viewBox) a short one reads as solid. */
 const OUTSIDE_DASH = '3 4';
 
-const TONE = 'var(--color-arpeggio, #14b8a6)';
+const TONE = 'var(--color-arpeggio)';
 
 /**
  * The chord's tones as tinted rings on the scale ring's radius, over the scale layer and under
@@ -167,12 +167,7 @@ export const ArpeggioLayer = memo(function ArpeggioLayer({
         const y = geometry.stringY(dot.string);
         return (
           <g key={`${String(dot.string)}.${String(dot.absolute)}`} data-arpeggio-tone={dot.degree}>
-            <circle
-              cx={x}
-              cy={y}
-              r={DOT_RADIUS + RING_GAP}
-              fill="var(--color-sidebar, var(--color-background, #fff))"
-            />
+            <circle cx={x} cy={y} r={DOT_RADIUS + RING_GAP} fill="var(--color-sidebar)" />
             <circle
               cx={x}
               cy={y}

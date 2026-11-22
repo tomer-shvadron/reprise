@@ -22,6 +22,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "conflicts:check": "node scripts/conflicts/check.ts",
+    "colors:check": "node scripts/colors/check.ts",
     "fixtures:describe": "node scripts/fixtures/describe.ts",
     "fixtures:check": "node scripts/fixtures/describe.ts --check && node scripts/fixtures/make-twelve-string.ts --check",
     "check:files": "node scripts/check-files/run.ts",
