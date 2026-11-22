@@ -1,4 +1,4 @@
-import type { Score } from '@reprise/model';
+import { applyCommand, setBeatRest, type Score } from '@reprise/model';
 import { fullScore, largeScore, note, score, type ScoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -13,7 +13,7 @@ import {
 import { glyphMetrics } from '../../metrics';
 import type { LayoutSink } from '../../primitives';
 import { SCRAPE, analyseEffects } from '../effects';
-import { expectValid, overlappingAnchors } from '../../test/check-result';
+import { expectValid, overlappingAnchors, stable } from '../../test/check-result';
 import { describeAnchor, describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
 import { TAB } from './analysis';
@@ -252,6 +252,32 @@ describe('tab staff: rests', () => {
           .rest('2..'),
       ),
     ).toMatchSnapshot();
+  });
+});
+
+describe('tab staff: hidden voices', () => {
+  const bar = (hiddenVoice: boolean): Score => {
+    const builder = guitar()
+      .bar()
+      .beat('1', [note(1, 3)]);
+    return (hiddenVoice ? builder.voice(1).rest('1') : builder).build({ ids: 'sequential' });
+  };
+
+  it('reserves no rhythm row for a hidden voice', () => {
+    const plain = laid(bar(false));
+    const hidden = laid(bar(true));
+    expect(hidden.systems[0]?.bbox.height).toBe(plain.systems[0]?.bbox.height);
+  });
+
+  it('measures the same cached as cold when an edit empties the hidden rest', () => {
+    const built = bar(true);
+    const cache = new LayoutCache();
+    layout(built, paged, cache);
+    const beat = built.tracks[0]?.bars[0]?.voices[1]?.beats[0];
+    if (!beat) throw new Error('fixture');
+    const step = applyCommand(built, setBeatRest({ beatId: beat.id }, false));
+    const edited = layout(step.score, { ...paged, dirtyBars: step.change.touchedBars }, cache);
+    expect(stable(edited)).toBe(stable(layout(step.score, paged)));
   });
 });
 

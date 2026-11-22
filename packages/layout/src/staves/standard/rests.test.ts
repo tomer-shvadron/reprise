@@ -205,6 +205,40 @@ describe('rests of two voices', () => {
     expectClear(laid(six));
   });
 
+  it('hides a secondary voice rest that fills a pickup bar, and keeps a shorter one', () => {
+    const pickup = (rest: '4' | '8'): Score =>
+      piano()
+        .bar()
+        .anacrusis()
+        .beat('4', [midi(74)])
+        .voice(1)
+        .rest(rest)
+        .build({ ids: 'sequential' });
+    const rests = (built: Score): number =>
+      laid(built).primitives.filter((q) => q.kind === 'glyph' && q.glyph.startsWith('rest')).length;
+    expect(plan(pickup('4')).multiVoice).toBe(false);
+    expect(rests(pickup('4'))).toBe(0);
+    // An eighth rest is shorter than the quarter note, so it is a voice like any other.
+    expect(plan(pickup('8')).multiVoice).toBe(true);
+    expect(rests(pickup('8'))).toBe(1);
+  });
+
+  it('hides a pickup-filling rest on a tab-only staff too', () => {
+    const tab = (rest: '4' | '8'): Score =>
+      score()
+        .track('guitar', { display: { notation: 'tab', octaveShift: 0 } })
+        .bar()
+        .anacrusis()
+        .beat('4', [note(2, 5)])
+        .voice(1)
+        .rest(rest)
+        .build({ ids: 'sequential' });
+    const rests = (built: Score): number =>
+      laid(built).primitives.filter((q) => q.kind === 'glyph' && q.glyph.startsWith('rest')).length;
+    expect(rests(tab('4'))).toBe(0);
+    expect(rests(tab('8'))).toBe(1);
+  });
+
   it('draws a lone short rest of a secondary voice, which does not fill the bar', () => {
     const built = piano()
       .bar()
