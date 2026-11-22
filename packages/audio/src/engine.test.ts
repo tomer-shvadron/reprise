@@ -908,7 +908,13 @@ describe('effects chains', () => {
       });
       second.engine.unlock();
       // The family preset (distortion), not the file's chorus alone.
-      expect(second.live().sampler.strip(hq.id)?.chain?.active).toContain('drive');
+      expect(second.live().sampler.strip(hq.id)?.chain?.active).toEqual([
+        'input',
+        'drive',
+        'tone',
+        'cabinet',
+        'output',
+      ]);
       second.engine.dispose();
     });
 

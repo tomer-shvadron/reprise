@@ -765,7 +765,7 @@ stack; `keys`, `drums` and `other` only a reverb send; `off` nothing.
 | absent or unknown            | gm   | on (default)   | no chain, the GM tier's own sound |
 | absent or unknown            | gm   | off            | the family preset                 |
 
-The third input, channel effects, fills the "no chain" row only (see below).
+With `setChannelEffects` on (the default), the "no chain" row plays the file's channel reverb and chorus instead (see below).
 
 So the bypass governs automatic presets on GM tracks only: a preset the user picks applies on
 either tier. The exported `tierOf(track, packs)` is `hq` when an assignment names the track, `gm`
@@ -783,8 +783,8 @@ CC93, 0 to 127) drive the strip, mapped linearly after the SF2 2.04 default modu
 8.4.8 and 8.4.9, 20% at CC 127; FluidSynth ships the same pair). `channelEffects(channel)` gives
 a reverb send of `REVERB_SEND_AT_FULL * cc / 127` (0.2 at full scale) and a `modulation` stage
 with `mix = CHORUS_MIX_AT_FULL * cc / 127` (0.4 at full scale, rate and depth those of `clean`:
-0.8 Hz, 2 ms). A value of 0 builds nothing. In GP units, a value `g` from 0 to 16 is `8g` on
-the CC scale.
+0.8 Hz, 2 ms). A value of 0 builds nothing. In GP units, a value `g` from 0 to 16 is `min(8g, 127)` on
+the CC scale (GP's 16 is 128, which the reader stores as 127).
 
 The file's values apply exactly where no preset does, the MIDI-mode sound: a GM-tier track on the
 automatic path with the GM tier bypass on, and `setChannelEffects(on)` (on by default) enabled.
