@@ -495,7 +495,7 @@ not carry over to a decorative tail. `candidates` includes only the release regi
 trigger, since one has to be resident at the note-off and nothing else would use it.
 `RegionMap.hasReleaseRegions` is true when any region triggers on release; a map without them
 (every SF2 preset) skips `resolveRelease` altogether, so a General MIDI note pays nothing for it.
-`RegionMap.hasLegatoRegions` is true when any region plays only on a hammer-on or pull-off
+`RegionMap.hasLegatoRegions` is true when any region plays only on a hammer-on, pull-off or tap
 (`trigger=legato`), in any layer; `hasLegatoRegionsIn(layer)` asks about one layer, with the
 default layer as the fallback, as `resolveAll` does.
 
@@ -585,7 +585,7 @@ main note, so each would play a release sample (at nearly full level with a high
 sink therefore sets `releaseTrigger` true only on the last strike of the main note: that covers the
 end of a legato chain (the chain's first voice carries the release) and the let-ring `until`, and
 it sets it false on earlier strikes and on every grace note. It is also false on a note whose
-next note on the string is a hammer-on or pull-off starting at its release (a let-ring note's is
+next note on the string is a hammer-on, pull-off or tap starting at its release (a let-ring note's is
 the ring's end), unless the hammered note has a grace note on its beat: the string is not let go
 there, so the chain plays one release sample, at the last note's release, not one per note. A note
 with no release regions gets the plain voice handle as before, so GM playback is unchanged.
@@ -595,8 +595,8 @@ with the articulation layer described under [Articulations](#articulations). Eve
 carries `NoteOnRequest.select`: `sequence` counts the notes struck so far per track, region map, layer
 and key (a stop, pause or seek starts it over, so a repeat from the same start rotates the same way),
 `random` is a hash of the note's id, its pass of the sequence and the strike's index (no
-`Math.random`, so an offline render repeats exactly), and `legato` is set on a hammer-on or
-pull-off when `voicingFor(track)` says the track's default map has `trigger=legato` regions. A track
+`Math.random`, so an offline render repeats exactly), and `legato` is set on a hammer-on, pull-off or tap that starts at the
+release of the note before it on the string (not after a rest or a let-go string; the sink records the hand-over) when `voicingFor(track)` says the track's default map has `trigger=legato` regions. A track
 with no voicing, every General MIDI track, plays as before. The counter is per key and layer, not
 per region as in sfizz (which advances one counter per region on every note-on in its key range,
 so a scale run inside one multi-key region rotates its takes; here each new key starts at take 1).
@@ -1130,6 +1130,7 @@ quotes.
 | `accent` normal, heavy                               | +1, +2 steps of 16, capped at 127.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ghost`                                              | -2 steps.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `hammerPull` (on the destination)                    | -1 step, and the sample starts 20 ms in (`offset`), past the pick transient. After a legato slide it is no attack at all (below).                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `Beat.effects.tapping`                               | Played as a hammer-on (#255): -1 step, then the pack's `tap` set, else its `legato` set, else its `trigger=legato` regions, with no 20 ms offset; without any, the 20 ms offset. The note before it keeps its release sample for the chain. Slap, pop, pick stroke, arpeggio and brush get no special treatment.                                                                                                                                                                                                                                                                                 |
 | `bend`                                               | Points to a sampled detune curve (2 ms resolution, linear between points): `position` 0 to 60 across the note's own beat, `value` / 2 semitones. Prebend, release and hold shapes are the points; `kind` adds nothing. Holds after the beat. On a tie chain it spans the bare links after it and stops at the first link with its own bend or vibrato, as alphaTab's `extendBendArrowsOnTiedNotes` does: see Tied links.                                                                                                                                                                         |
 | `Beat.effects.whammy`                                | The same, added to the bend (negative values dive).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `vibrato` slight, wide; `Beat.effects.vibrato`       | A sine on detune from the onset: slight 5.5 Hz ±0.25 semitone, wide 5 Hz ±0.6; the wider of note and beat wins. A tied link's vibrato takes over at its onset and carries through the bare links after it, phase unbroken.                                                                                                                                                                                                                                                                                                                                                                       |
@@ -1258,15 +1259,15 @@ still filtered at 900 Hz. A track on General MIDI, a drum track, a pack without 
 when the pack has no `dead` set (it is the noise burst, which no other set replaces) all get
 `default` and drop nothing.
 
-| The note has                  | The pack has the set                                              | The pack lacks it                             |
-| ----------------------------- | ----------------------------------------------------------------- | --------------------------------------------- |
-| palm mute                     | the layer; no 900 Hz low-pass, no -18 dB / 250 ms decay           | default with both (ADR-0004)                  |
-| dead note                     | the layer at the note's key, released at 250 ms or the note's end | the noise burst and its 2.5 kHz filter        |
-| natural harmonic              | the layer at the sounding pitch; no +6 dB shelf                   | default at the sounding pitch with the shelf  |
-| other harmonics               | `artificialHarmonic`, else `harmonic`; no shelf                   | default with the shelf (`semi` keeps its +12) |
-| hammer-on or pull-off         | the layer, or `trigger=legato` regions; no 20 ms offset           | the 20 ms offset                              |
-| staccato                      | the layer or file; the half-beat release stays                    | default with the half-beat release            |
-| tap, slap, pop (beat effects) | `tap` (else `legato`), `slap`, `pop`                              | default (their GM sound is a separate issue)  |
+| The note has                  | The pack has the set                                              | The pack lacks it                                                                           |
+| ----------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| palm mute                     | the layer; no 900 Hz low-pass, no -18 dB / 250 ms decay           | default with both (ADR-0004)                                                                |
+| dead note                     | the layer at the note's key, released at 250 ms or the note's end | the noise burst and its 2.5 kHz filter                                                      |
+| natural harmonic              | the layer at the sounding pitch; no +6 dB shelf                   | default at the sounding pitch with the shelf                                                |
+| other harmonics               | `artificialHarmonic`, else `harmonic`; no shelf                   | default with the shelf (`semi` keeps its +12)                                               |
+| hammer-on, pull-off, tap      | the layer, or `trigger=legato` regions; no 20 ms offset           | the 20 ms offset                                                                            |
+| staccato                      | the layer or file; the half-beat release stays                    | default with the half-beat release                                                          |
+| tap, slap, pop (beat effects) | `tap` (else `legato`), `slap`, `pop`                              | default; a tap is still a hammer-on (-1 step, 20 ms); slap and pop get no special treatment |
 
 Bends, slides, vibrato, trills, tremolo, dynamics and fades stay automation in both tiers. This
 widens ADR-0004's "palm mute and harmonics" to the dead, legato and staccato layers the work
@@ -1275,7 +1276,8 @@ on an open origin keeps the synthesized link filter, a legato slide's carried vo
 sample, and a trill's alternations and a tremolo's strokes take the note's own set (a trill's
 alternation is not given the `legato` layer). A voice a legato slide carries into a note whose set differs keeps the sample it was struck with,
 so the effects the new set would have sampled stay synthesized (the palm mute's gain decay still applies; a carried voice never takes a new filter).
-The 20 ms offset is dropped by a `legato` set and also whenever a `trigger=legato` region plays.
+The 20 ms offset is dropped by a `legato` or `tap` set and also whenever a `trigger=legato` region plays.
+Tapping is a beat effect here, and a gpif file marks it per note: a picked note sharing a tapped beat loses its pick attack too (the importer sets the beat's flag when any note is tapped).
 A tied note is never struck, so the planner leaves it in the default layer. The velocity step of a hammer-on (one lower) stays,
 being dynamics and not timbre.
 
