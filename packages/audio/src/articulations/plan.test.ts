@@ -180,6 +180,22 @@ describe('planNote', () => {
     expect(strike?.offset).toBe(ARTICULATION.hammerOffset);
     expect(strike?.velocity).toBe(79);
   });
+
+  it('plays a tapped note like a hammer-on: a step softer and no pick attack', () => {
+    const tapped = planNote(input(guitar, note(1, 7), { effects: { tapping: true } }));
+    const hammered = planNote(input(guitar, note(1, 7, { hammerPull: true })));
+    expect(tapped.strikes).toEqual(hammered.strikes);
+    expect(tapped.strikes[0]?.offset).toBe(ARTICULATION.hammerOffset);
+    expect(planNote(input(guitar, note(1, 7))).strikes[0]?.offset).toBeUndefined();
+  });
+
+  it('drops the offset of a tapped note whose set carries the onset', () => {
+    const plan = planNote(
+      input(guitar, note(1, 7), { effects: { tapping: true }, sampled: new Set(['legato']) }),
+    );
+    expect(plan.strikes[0]?.offset).toBeUndefined();
+    expect(plan.strikes[0]?.velocity).toBe(79);
+  });
 });
 
 describe('planNote over a tie chain', () => {

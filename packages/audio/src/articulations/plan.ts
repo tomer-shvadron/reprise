@@ -37,7 +37,8 @@ export interface PlanInput {
   links: readonly PlanLink[];
   secondsPerTick: number;
   barEnd: number;
-  next: { note: Note; when: number } | undefined;
+  /** The next note on the string; its beat's effects tell whether it is tapped. */
+  next: { note: Note; when: number; effects?: BeatEffects } | undefined;
   /** The key of the voice a legato slide carries into this note, which then has no attack. */
   continues?: number;
   /**
@@ -45,6 +46,17 @@ export interface PlanInput {
    * synthesized automation is left out. Absent on General MIDI, where nothing is.
    */
   sampled?: ReadonlySet<SampledEffect>;
+}
+
+/**
+ * A hammer-on, pull-off or tapped note: struck by the fretting hand, so no pick attack. Tapping
+ * is a beat effect, not a note one, and sounds like a hammer-on (scope-v1, #255).
+ */
+export function isHammered(
+  note: Pick<Note, 'hammerPull'>,
+  effects: Pick<BeatEffects, 'tapping'>,
+): boolean {
+  return note.hammerPull || (effects.tapping ?? false);
 }
 
 /** One attack: a voice started at `when` and released at `end`. */
@@ -264,15 +276,16 @@ export function planNote(input: PlanInput): NotePlan {
   const legatoInto = legato ? input.next?.when : undefined;
 
   const velocity = noteVelocity(note);
+  const hammered = isHammered(note, effects);
   const softened = noteVelocity(note, { hammer: true });
   const base: Strike = {
     key: continues ?? rounded,
     detune: key - (continues ?? rounded),
-    velocity: note.hammerPull ? softened : velocity,
+    velocity: hammered ? softened : velocity,
     when,
     end,
     // A legato layer carries its own onset, so the 20 ms of a synthesized one is dropped.
-    ...(note.hammerPull && !sampled.has('legato') && { offset: ARTICULATION.hammerOffset }),
+    ...(hammered && !sampled.has('legato') && { offset: ARTICULATION.hammerOffset }),
   };
 
   let strikes: Strike[] = [base];

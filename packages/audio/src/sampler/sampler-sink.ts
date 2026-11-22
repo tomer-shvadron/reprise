@@ -5,7 +5,7 @@ import { DEAD_NOTE_KEY, deadNoteInstrument } from '../articulations/dead-note';
 import { GOLPE_KEY, golpeInstrument } from '../articulations/golpe';
 import { placeGraces } from '../articulations/grace';
 import { ARTICULATION } from '../articulations/parameters';
-import { planNote } from '../articulations/plan';
+import { isHammered, planNote } from '../articulations/plan';
 import { availableSets, voicingOf } from '../articulations/sets';
 import type { ArticulationSet, NoteVoicing, SetVoicing, Voicing } from '../articulations/sets';
 import type { GainPoint, NotePlan, PlanInput, Strike } from '../articulations/plan';
@@ -81,7 +81,10 @@ const CURVE_GAP = 2 * CHAIN_TOLERANCE;
 function handsOver(input: PlanInput, releaseAt: number, nextOnBeatGrace: boolean): boolean {
   const { next } = input;
   return (
-    next?.note.hammerPull === true && !nextOnBeatGrace && next.when <= releaseAt + CHAIN_TOLERANCE
+    next !== undefined &&
+    isHammered(next.note, next.effects ?? {}) &&
+    !nextOnBeatGrace &&
+    next.when <= releaseAt + CHAIN_TOLERANCE
   );
 }
 
@@ -219,7 +222,7 @@ export function createSamplerSink(
     // The layer actually played decides, not any keyswitch layer of the pack.
     const legato =
       pass.voicing?.legatoTrigger === true &&
-      input.note.hammerPull &&
+      isHammered(input.note, input.effects) &&
       instrument.regions.hasLegatoRegionsIn(layer);
     const selection = select(
       trackId,
@@ -409,7 +412,7 @@ export function createSamplerSink(
           })),
           secondsPerTick,
           barEnd: event.barEnd,
-          next: event.nextOnString,
+          next: next && { note: next.note, when: next.when, effects: next.beat.effects },
         },
         pass,
         true,

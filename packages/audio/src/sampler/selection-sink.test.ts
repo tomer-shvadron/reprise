@@ -163,6 +163,29 @@ describe('the sink selects takes from the synthetic guitar pack', () => {
     expect(made[1]?.request.offset).toBeUndefined();
   });
 
+  it('plays the legato region on a tapped note, with no 20 ms offset', async () => {
+    const song = score()
+      .track('guitar', { tuning: tuning(legato.key) })
+      .bar()
+      .beat('8', [note(1, 0)])
+      .beat('8', [note(1, 0)], { effects: { tapping: true } })
+      .build();
+    const made = await strikes(song);
+    expect(made.map((strike) => strike.sample)).toEqual(legato.tones.map(take));
+    expect(made[1]?.request.offset).toBeUndefined();
+  });
+
+  it('starts a tapped note 20 ms in when no legato region plays', async () => {
+    const song = score()
+      .track('guitar', { tuning: tuning(velocity.key) })
+      .bar()
+      .beat('8', [note(1, 0)])
+      .beat('8', [note(1, 0)], { effects: { tapping: true } })
+      .build();
+    const made = await strikes(song);
+    expect(made[1]?.request.offset).toBe(ARTICULATION.hammerOffset);
+  });
+
   it('still starts a hammer-on 20 ms in when no legato region plays', async () => {
     const song = score()
       .track('guitar', { tuning: tuning(velocity.key) })

@@ -135,6 +135,8 @@ const SAMPLED: Readonly<Partial<Record<ArticulationSet, SampledEffect>>> = {
   harmonic: 'harmonic',
   artificialHarmonic: 'harmonic',
   legato: 'legato',
+  // A tap layer starts without a pick, as a legato one does.
+  tap: 'legato',
 };
 
 /**
