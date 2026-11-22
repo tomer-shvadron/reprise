@@ -1,4 +1,4 @@
-import { ARTICULATION_SETS, parsePackInstrumentId } from '@reprise/audio';
+import { ARTICULATION_SETS, parsePackInstrumentId, splitEntry } from '@reprise/audio';
 
 import { GM_DRUM_KITS, GM_PROGRAMS } from '@/lib/gm-programs';
 
@@ -51,8 +51,8 @@ function packLabel(id: string, packs: readonly InstalledPack[]): string {
   const pack = packs.find((candidate) => candidate.id === parsed.packId);
   if (!pack) return `${parsed.packId} (removed)`;
   for (const instrument of pack.instruments) {
-    for (const [key, path] of Object.entries(instrument.entries)) {
-      if (path !== parsed.path) continue;
+    for (const [key, value] of Object.entries(instrument.entries)) {
+      if ((splitEntry(value)?.path ?? value) !== parsed.path) continue;
       const base = pack.instruments.length === 1 ? pack.name : `${pack.name}: ${instrument.name}`;
       return key === 'default' ? base : `${base} (${setLabel(key)})`;
     }

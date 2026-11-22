@@ -1,4 +1,4 @@
-import { articulationSetOf, checkPack, checkSfzFile } from '@reprise/audio';
+import { articulationSetOf, checkPack, checkSfzFile, splitEntry } from '@reprise/audio';
 import type { PackSnapshot, SfzFileCheck } from '@reprise/audio';
 
 import type { PickedFile, PickedFolder, Platform } from '@/platform/platform';
@@ -387,7 +387,11 @@ function customInstruments(checks: readonly SfzFileCheck[]): {
 /** A curated pack is checked by what the manifest promises: every entry present and playable. */
 async function checkCurated(snapshot: PackSnapshot, manifest: PackManifest): Promise<string[]> {
   const paths = [
-    ...new Set(manifest.instruments.flatMap((instrument) => Object.values(instrument.entries))),
+    ...new Set(
+      manifest.instruments.flatMap((instrument) =>
+        Object.values(instrument.entries).map((value) => splitEntry(value)?.path ?? value),
+      ),
+    ),
   ];
   const missing = paths.filter((path) => !Object.hasOwn(snapshot, path));
   if (missing.length > 0) {

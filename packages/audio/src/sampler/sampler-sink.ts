@@ -6,7 +6,7 @@ import { GOLPE_KEY, golpeInstrument } from '../articulations/golpe';
 import { placeGraces } from '../articulations/grace';
 import { ARTICULATION } from '../articulations/parameters';
 import { isHammered, planNote } from '../articulations/plan';
-import { availableSets, voicingOf } from '../articulations/sets';
+import { availableSets, keyOnString, voicingOf } from '../articulations/sets';
 import type { ArticulationSet, NoteVoicing, SetVoicing, Voicing } from '../articulations/sets';
 import type { GainPoint, NotePlan, PlanInput, Strike } from '../articulations/plan';
 import { scrapeInstrument } from '../articulations/scrape';
@@ -225,6 +225,7 @@ export function createSamplerSink(
     final: boolean,
     set: SetVoicing | undefined,
     handedOver: boolean,
+    fixed: boolean,
   ): VoiceHandle | undefined {
     if (plan.dead) deadNote ??= deadNoteInstrument(sampler.context.sampleRate);
     if (plan.scrape) scrape ??= scrapeInstrument(sampler.context.sampleRate);
@@ -259,7 +260,7 @@ export function createSamplerSink(
         .some((region) => region.trigger === 'legato');
     // A dead note or a scrape is one noise burst and a ghost note one light stroke, not a strummed pair.
     const course =
-      plan.dead || plan.scrape || input.note.ghost
+      plan.dead || plan.scrape || input.note.dead || input.note.ghost
         ? null
         : courseOffset(input.track, input.note.string);
     return sampler.noteOn(trackId, {
@@ -278,6 +279,8 @@ export function createSamplerSink(
         final &&
         last &&
         !plan.scrape &&
+        // A muted noise does not let a string go: no release region starts on a noise key.
+        !fixed &&
         !handsOver(input, plan.letRingUntil ?? strike.end, pass.nextOnBeatGrace),
       ...(strike.offset !== undefined && !transition && { offset: strike.offset }),
       ...(own && { instrument: own }),
@@ -314,8 +317,13 @@ export function createSamplerSink(
     // A carried voice keeps the sample it was struck with, so the effects the new note's set
     // would have sampled are still the synthesized ones when the sets differ.
     const sampled = carried && chain?.set !== chosen.set ? undefined : chosen.sampled;
+    const fixedKey =
+      input.note.dead && set?.keys
+        ? keyOnString(set.keys, input.track, input.note.string)
+        : undefined;
     const plan = planNote({
       ...input,
+      ...(fixedKey !== undefined && { fixedKey }),
       ...(carried && { continues: carried.key }),
       ...(sampled && { sampled }),
     });
@@ -336,7 +344,19 @@ export function createSamplerSink(
       const voice =
         index === 0 && carried
           ? carried
-          : start(trackId, input, plan, strike, last, pass, index, final, set, handedOver);
+          : start(
+              trackId,
+              input,
+              plan,
+              strike,
+              last,
+              pass,
+              index,
+              final,
+              set,
+              handedOver,
+              fixedKey !== undefined,
+            );
       if (!voice) continue;
       const isCarried = voice === carried;
       const until = last && plan.legatoInto !== undefined ? plan.legatoInto : strike.end;

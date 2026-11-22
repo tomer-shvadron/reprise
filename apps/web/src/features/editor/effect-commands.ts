@@ -12,6 +12,7 @@ import {
 } from './bend-presets';
 import { commitEdit } from './commit';
 import { planEffect, type EffectAction, type EffectMode, type EffectResult } from './effects';
+import { soundEffect } from './effect-sound';
 import { entryController } from './entry-controller';
 import { visibleTracks } from './visible';
 import {
@@ -23,7 +24,10 @@ import {
   type WhammyShape,
 } from './whammy-presets';
 
-export type EffectServices = Pick<AppServices, 'document' | 'selection' | 'entry'>;
+export type EffectServices = Pick<
+  AppServices,
+  'document' | 'selection' | 'entry' | 'audio' | 'playback' | 'settings'
+>;
 
 /** What applying an effect did: changed the score, was refused (with the reason), or had nothing to change. */
 export type EffectOutcome = { applied: true } | { refused: string } | { nothing: true };
@@ -50,6 +54,8 @@ export function commitEffectPlan(
   }
   // What a mixed selection could not take, after the success message has cleared.
   if (plan.notice) entry.getState().setMessage(plan.notice);
+  // Last: the edit is done, so a failing preview must not undo or hide it.
+  if (plan.beatSound) soundEffect(services, plan.beatSound);
   return { applied: true };
 }
 

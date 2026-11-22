@@ -1,7 +1,7 @@
 import { isTooltipEscape } from '@/components/ui/tooltip-escape';
 
 import { contextRank, runCommand, type CommandRegistry } from './command-registry';
-import { matchesShortcut, type KeyboardPlatform, type KeyMatch } from './keyboard';
+import { matchesShortcut, type KeyboardPlatform, type KeyMatch, type Shortcut } from './keyboard';
 import { isEditable, isTextField } from './text-field';
 
 // Sliders are left out on purpose: Space plays while one has focus.
@@ -124,6 +124,17 @@ export function modalBlocksCommand(id: string): boolean {
 export function menuCommandAllowed(id: string): boolean {
   if (!modalBlocksCommand(id)) return true;
   return (id === 'edit.undo' || id === 'edit.redo') && isTextField(document.activeElement);
+}
+
+/**
+ * Whether a menu accelerator is typing: the key is Alt without Cmd or Ctrl (Option+C is a
+ * character on a Mac) and focus is in a text field or another control that takes bare keys.
+ * Other keys are not held back: an F-key types nothing, and the renderer prevents its own key
+ * when it runs a command, so the menu does not run it a second time. The menu item itself always
+ * runs from a click, the keyboard or a screen reader.
+ */
+export function menuKeyYieldsToField(shortcut: Shortcut | undefined): boolean {
+  return shortcut?.alt === true && shortcut.mod !== true && isEditable(document.activeElement);
 }
 
 /** Keys that delete text, so a text field keeps them whatever the modifiers. */

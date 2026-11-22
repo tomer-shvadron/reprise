@@ -10,6 +10,7 @@
  */
 import {
   CommandError,
+  addTrack,
   createHistory,
   insertBar,
   insertBeat,
@@ -17,6 +18,7 @@ import {
   openStringPitch,
   removeBar,
   removeBeat,
+  removeTrack,
   setBeatDuration,
   setBeatEffect,
   setMasterBar,
@@ -75,6 +77,7 @@ type Edit =
   | { kind: 'voiceDuration'; at: Where; duration: 1 | 8 }
   | { kind: 'undo' }
   | { kind: 'redo' }
+  | { kind: 'jump'; steps: number }
   | { kind: 'options'; change: OptionChange };
 
 type OptionChange = 'subset' | 'notation' | 'width' | 'zoom' | 'diagrams';
@@ -160,6 +163,10 @@ const edit: Arbitrary<Edit> = oneof(
   }),
   record({ kind: constantFrom('undo' as const) }),
   record({ kind: constantFrom('redo' as const) }),
+  record({
+    kind: constantFrom('jump' as const),
+    steps: oneof(integer({ min: -4, max: -1 }), integer({ min: 1, max: 4 })),
+  }),
   record({
     kind: constantFrom('options' as const),
     change: constantFrom<OptionChange>('subset', 'notation', 'width', 'zoom', 'diagrams'),
@@ -265,6 +272,7 @@ function command(score: Score, step: Edit): Command | undefined {
     }
     case 'undo':
     case 'redo':
+    case 'jump':
     case 'options':
       return undefined;
     default:
@@ -433,9 +441,9 @@ const SCORES: Record<'large' | 'sparse' | 'diagrams', () => Score> = {
  */
 const SPLIT_PAGE_HEIGHTS = [300, 640] as const;
 
-/** Widths a sequence starts at and steps through: A4, the narrow content widths 320, 480 and 640 px, Letter. */
+/** Widths a sequence starts at and steps through: A4, the narrow content widths 240, 320, 480 and 640 px, Letter. */
 const WIDTHS: Readonly<Record<LayoutOptions['mode'], readonly number[]>> = {
-  paged: [PAGE_SIZES.a4.width, 416, 576, 736, PAGE_SIZES.letter.width],
+  paged: [PAGE_SIZES.a4.width, 336, 416, 576, 736, PAGE_SIZES.letter.width],
   continuous: [640, 900, 320, 480],
 };
 
@@ -561,6 +569,12 @@ export function checkCachedEqualsCold(
             if (!replayed) continue;
             score = replayed.score;
             touched = replayed.change.touchedBars;
+          } else if (step.kind === 'jump') {
+            // One layout for the whole jump, with the union of the steps' touched bars.
+            const replayed = history.step(step.steps);
+            if (!replayed) continue;
+            score = replayed.score;
+            touched = replayed.change.touchedBars;
           } else {
             const made = command(score, step);
             if (!made) continue;
@@ -643,4 +657,55 @@ export function checkCachedEqualsCold(
     ),
     { numRuns: RUNS },
   );
+}
+
+/**
+ * One jump over a bar insert, a note edit in a later bar, a bar removal, a track added, a track
+ * removed and a retitle (a root change that touches no bar), back over all of them and forward
+ * again, laid out once each way with the merged `touchedBars` against a warm cache: the result
+ * must equal a cold layout. The random `jump` kind reaches this only by chance, and never crosses
+ * a track or score-level step.
+ */
+export function checkJumpOverStructure(notation: Notation, mode: LayoutOptions['mode']): void {
+  let current = SCORES.large();
+  const options = optionsFor(current, notation, mode, false, widthAt(mode, 0));
+  const cache = new LayoutCache();
+  let breaks: ReadonlySet<Id> = breakIds(current, layout(current, options, cache));
+  let systemKey = resolveOptions(current, options).systemKey;
+  const history = createHistory();
+  const commands: ((now: Score) => Command)[] = [
+    () => insertBar({ index: 2 }),
+    (now) => {
+      const beat = now.tracks[0]?.bars[5]?.voices[0].beats[0];
+      if (!beat) throw new Error('no beat to edit');
+      return setNote({ beatId: beat.id }, { string: 1, fret: 7 });
+    },
+    (now) => removeBar({ masterBarId: now.masterBars[8]?.id ?? '' }),
+    () => addTrack({ kind: 'fretted', index: 1 }),
+    (now) => removeTrack({ trackId: now.tracks[0]?.id ?? '' }),
+    () => ({
+      name: 'retitle',
+      run(draft) {
+        draft.meta.title = 'Jumped';
+      },
+    }),
+  ];
+  for (const make of commands) current = history.apply(current, make(current)).score;
+  breaks = breakIds(current, layout(current, options, cache));
+  systemKey = resolveOptions(current, options).systemKey;
+  for (const steps of [-commands.length, commands.length]) {
+    const replayed = history.step(steps);
+    expect(replayed?.count).toBe(commands.length);
+    if (!replayed) return;
+    current = replayed.score;
+    const cached = layout(current, { ...options, dirtyBars: replayed.change.touchedBars }, cache);
+    // Another track set lays the segments out afresh, as in the property.
+    const key = resolveOptions(current, options).systemKey;
+    const afresh = key !== systemKey;
+    systemKey = key;
+    expect(stable(cached), `${notation} ${mode} step ${String(steps)}`).toBe(
+      stable(layoutWith(current, options, undefined, afresh ? undefined : breaks)),
+    );
+    breaks = breakIds(current, cached);
+  }
 }

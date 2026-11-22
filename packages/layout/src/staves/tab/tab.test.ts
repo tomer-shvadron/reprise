@@ -13,7 +13,7 @@ import {
 import { glyphMetrics } from '../../metrics';
 import type { LayoutSink } from '../../primitives';
 import { SCRAPE, analyseEffects } from '../effects';
-import { expectValid, overlappingAnchors, stable } from '../../test/check-result';
+import { expectValid, overlappingAnchors, overlappingMarks, stable } from '../../test/check-result';
 import { describeAnchor, describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
 import { TAB } from './analysis';
@@ -573,6 +573,28 @@ describe('tab staff: words', () => {
           ]),
       ),
     ).toMatchSnapshot();
+  });
+
+  it('stacks the fingering of voices that start together instead of sharing a row (#511)', () => {
+    const built = guitar()
+      .bar()
+      .beat('4', [note(4, 2, { leftHandFinger: 'middle' })])
+      .voice(1)
+      .beat('4', [note(2, 1, { leftHandFinger: 'index' })])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const top = result.systems[0]?.staves[0]?.top ?? 0;
+    const digits = result.primitives.flatMap((p) =>
+      p.kind === 'text' && /^[1-4]$/.test(p.text) && p.bbox.y + p.bbox.height <= top ? [p] : [],
+    );
+    expect(digits.map((p) => p.text).sort()).toEqual(['1', '2']);
+    const a = digits.find((p) => p.text === '1');
+    const b = digits.find((p) => p.text === '2');
+    const centre = (p: typeof a): number => (p?.bbox.x ?? 0) + (p?.bbox.width ?? 0) / 2;
+    expect(centre(a)).toBeCloseTo(centre(b), 1);
+    // One row apart, in string order: the string-2 note's digit on top, though it is the later voice's.
+    expect(b?.bbox.y).toBeCloseTo((a?.bbox.y ?? 0) + TAB.fingerRow * STAFF_SPACE, 1);
+    expect(overlappingMarks(result)).toEqual([]);
   });
 
   it('writes a dynamic below where it changes, across bar lines too', () => {

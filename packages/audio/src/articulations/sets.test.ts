@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { ARTICULATION_SETS, articulationSetOf, setsOfLayers, voicingOf } from './sets';
+import {
+  ARTICULATION_SETS,
+  articulationSetOf,
+  keyOnString,
+  setsOfLayers,
+  splitEntry,
+  voicingOf,
+} from './sets';
 import type { ArticulationSet, VoicingInput } from './sets';
 
 describe('ARTICULATION_SETS', () => {
@@ -82,7 +89,8 @@ describe('voicingOf', () => {
 
   it.each([
     ['palm mute', { palmMute: true }, {}, 'palmMute', 'palmMute'],
-    ['dead note', { dead: true }, {}, 'dead', 'dead'],
+    // A muted-string sample is already damped, so it carries a palm mute too.
+    ['dead note', { dead: true }, {}, 'dead', ['dead', 'palmMute']],
     ['natural harmonic', { harmonic: { kind: 'natural' } }, {}, 'harmonic', 'harmonic'],
     ['pinch harmonic', { harmonic: { kind: 'pinch' } }, {}, 'artificialHarmonic', 'harmonic'],
     ['hammer-on', { hammerPull: true }, {}, 'legato', 'legato'],
@@ -95,7 +103,7 @@ describe('voicingOf', () => {
     (_, note, effects, set, effect) => {
       const result = voicingOf(input(note, effects), ALL);
       expect(result.set).toBe(set);
-      expect([...result.sampled]).toEqual(effect === undefined ? [] : [effect]);
+      expect([...result.sampled]).toEqual(effect === undefined ? [] : [effect].flat());
     },
   );
 
@@ -146,5 +154,61 @@ describe('setsOfLayers', () => {
         { id: 'sw:29', label: 'Natural Harmonic' },
       ]),
     ).toEqual({ palmMute: { layer: 'sw:25' }, harmonic: { layer: 'sw:29' } });
+  });
+});
+
+describe('splitEntry', () => {
+  it('reads a plain path, a range and a list of noise keys', () => {
+    expect(splitEntry('a/b.sfz')).toEqual({ path: 'a/b.sfz' });
+    expect(splitEntry('b.sfz#key:75-78')).toEqual({ path: 'b.sfz', keys: [75, 76, 77, 78] });
+    expect(splitEntry('b.sfz#key:91,92,95')).toEqual({ path: 'b.sfz', keys: [91, 92, 95] });
+    expect(splitEntry('b.sfz#key:60, 62-63')).toEqual({ path: 'b.sfz', keys: [60, 62, 63] });
+  });
+
+  it('keeps a # that is not the key suffix in the path', () => {
+    expect(splitEntry('C#.sfz')).toEqual({ path: 'C#.sfz' });
+    expect(splitEntry('a#b/c.sfz#key:5')).toEqual({ path: 'a#b/c.sfz', keys: [5] });
+  });
+
+  it.each([
+    'b.sfz#key:',
+    'b.sfz#key:a',
+    'b.sfz#key:128',
+    'b.sfz#key:78-75',
+    'b.sfz#key:1,,2',
+    'b.sfz#key:1-11',
+    'b.sfz#key:0-10',
+    '#key:5',
+  ])('rejects %s as a whole', (value) => {
+    expect(splitEntry(value)).toBeUndefined();
+  });
+
+  it('takes ten keys and no more', () => {
+    expect(splitEntry('b.sfz#key:0-9')?.keys).toHaveLength(10);
+    expect(splitEntry('b.sfz#key:0-10')).toBeUndefined();
+  });
+});
+
+describe('keyOnString', () => {
+  const bass = { tuning: [28, 33, 38, 43] };
+  const fiveBass = { tuning: [23, 28, 33, 38, 43] };
+  const guitar = { tuning: [40, 45, 50, 55, 59, 64] };
+  const noises = [75, 76, 77, 78];
+
+  it('spreads the strings from the lowest, and the extra high ones take the last key', () => {
+    expect([4, 3, 2, 1].map((string) => keyOnString(noises, bass, string))).toEqual([
+      75, 76, 77, 78,
+    ]);
+    expect([5, 4, 3, 2, 1].map((string) => keyOnString(noises, fiveBass, string))).toEqual([
+      75, 76, 77, 78, 78,
+    ]);
+    expect(
+      [6, 5, 4, 3, 2, 1].map((string) => keyOnString([91, 92, 93, 94, 95], guitar, string)),
+    ).toEqual([91, 92, 93, 94, 95, 95]);
+  });
+
+  it('takes the first key with no string or no tuning', () => {
+    expect(keyOnString(noises, guitar, 0)).toBe(75);
+    expect(keyOnString(noises, { tuning: [] }, 3)).toBe(75);
   });
 });

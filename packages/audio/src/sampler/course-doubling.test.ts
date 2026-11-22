@@ -140,6 +140,17 @@ describe('doubled courses', () => {
     expect(voices(note(6, 0, { dead: true }))).toBe(1);
   });
 
+  it('plays a dead note from a sampled layer on one voice too', () => {
+    const context = offline(1);
+    const sampler = new Sampler(context);
+    sampler.addTrack(twelve, sineInstrument());
+    const sink = createSamplerSink(sampler, {
+      voicingFor: () => ({ sets: { dead: { layer: 'sw:28' } } }),
+    });
+    sink.noteOn(event(twelve, note(6, 0, { dead: true }), 0, 0.8));
+    expect(sampler.pool.active(0.01).length).toBe(1);
+  });
+
   it('carries both strings through a legato slide without striking either again', async () => {
     const { context, sampler, sink } = setup(twelve, 1.2);
     const first = note(6, 0, { slide: ['legato'] });

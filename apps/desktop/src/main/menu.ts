@@ -1,6 +1,14 @@
 import type { MenuItemConstructorOptions } from 'electron';
 
-import type { HistoryMenuLabels, MenuCommandId, MenuKey, MenuKeys, RecentSong } from '@reprise/web';
+import type {
+  HistoryMenuLabels,
+  MenuCheckboxId,
+  MenuChecks,
+  MenuCommandId,
+  MenuKey,
+  MenuKeys,
+  RecentSong,
+} from '@reprise/web';
 
 interface MenuCommand {
   label: string;
@@ -31,7 +39,38 @@ export const MENU_COMMANDS = {
   'view.toggleSidebar': { label: 'Toggle Tracks' },
   'view.togglePanel': { label: 'Toggle Mixer' },
   'view.toggleViewMode': { label: 'Toggle Page and Continuous View' },
+  'transport.playPause': { label: 'Play/Pause' },
+  'transport.stop': { label: 'Stop' },
+  'transport.playFromStart': { label: 'Play from Start' },
+  'transport.playFromSelection': { label: 'Play from Selection' },
+  // The four checkbox items; their state comes from the renderer (`menu:set-checked`).
+  'transport.toggleLoop': { label: 'Loop' },
+  'transport.loopSelection': { label: 'Loop Selection' },
+  'transport.toggleCountIn': { label: 'Count-in' },
+  'transport.toggleMetronome': { label: 'Metronome' },
+  'transport.metronomeVolume': { label: 'Metronome Volume…' },
+  'transport.setTempo': { label: 'Set Tempo…' },
+  // The steps name the unit of the mode (see `FIXED_STEP_LABELS`).
+  'transport.slowDown': { label: 'Slow Down 5%' },
+  'transport.speedUp': { label: 'Speed Up 5%' },
+  'transport.toggleSpeed': { label: 'Toggle Relative Speed' },
+  'transport.toggleFixedTempo': { label: 'Fixed Tempo' },
+  'transport.masterVolume': { label: 'Master Volume…' },
 } satisfies Record<MenuCommandId, MenuCommand>;
+
+/** The items that are checkboxes; `validate.ts` refuses a check for any other id. */
+export const MENU_CHECKBOXES: Readonly<Record<MenuCheckboxId, true>> = {
+  'transport.toggleLoop': true,
+  'transport.toggleCountIn': true,
+  'transport.toggleMetronome': true,
+  'transport.toggleFixedTempo': true,
+};
+
+/** The step items' labels while Fixed Tempo is on: the keys then step the BPM, not the percent. */
+const FIXED_STEP_LABELS: Partial<Record<MenuCommandId, string>> = {
+  'transport.slowDown': 'Slow Down 5 BPM',
+  'transport.speedUp': 'Speed Up 5 BPM',
+};
 
 const ACCELERATOR_KEYS: Readonly<Record<string, string>> = {
   ' ': 'Space',
@@ -68,7 +107,8 @@ export interface MenuOptions {
   isMac: boolean;
   isPackaged: boolean;
   docsUrl: string;
-  sendCommand: (id: MenuCommandId) => void;
+  /** `withAlt` is passed (true) only when an accelerator with Alt ran the item. */
+  sendCommand: (id: MenuCommandId, withAlt?: boolean) => void;
   openExternal: (url: string) => void;
   /** Shows the About box; macOS has its own entry in the application menu. */
   showAbout?: () => void;
@@ -81,6 +121,8 @@ export interface MenuOptions {
   history?: HistoryMenuLabels;
   /** The key of each command, from the renderer; an item has none until it sends them. */
   keys?: MenuKeys;
+  /** The state of the checkbox items, from the renderer; an item is unchecked until it sends it. */
+  checked?: MenuChecks;
 }
 
 const acceleratorProp = (key: MenuKey | null | undefined) =>
@@ -97,13 +139,39 @@ export function menuTemplate({
   openRecent = () => undefined,
   history,
   keys = {},
+  checked = {},
 }: MenuOptions): MenuItemConstructorOptions[] {
   const command = (id: MenuCommandId): MenuItemConstructorOptions => ({
     label: MENU_COMMANDS[id].label,
     ...acceleratorProp(keys[id]),
-    click: () => {
-      sendCommand(id);
+    // `triggeredByAccelerator` is "not a mouse click" (keyboard menu navigation and screen readers
+    // included), so only an Alt accelerator counts: Option+C types a character in a text field,
+    // while choosing the item from the menu must always run it. A test may press with no event.
+    click: (_item, _window, event?: { triggeredByAccelerator?: boolean; altKey?: boolean }) => {
+      if (event?.triggeredByAccelerator && event.altKey) sendCommand(id, true);
+      else sendCommand(id);
     },
+  });
+  // The native item flips itself on a click; the renderer's push right after sets the truth.
+  const checkbox = (id: MenuCheckboxId): MenuItemConstructorOptions => {
+    const { click } = command(id);
+    return {
+      ...command(id),
+      type: 'checkbox',
+      checked: checked[id] === true,
+      // Electron flips the tick on every activation, but the renderer pushes only when its state
+      // changes (nothing does with no song open, or when the modal rule drops the command): put
+      // the tick back to the state the renderer last sent, which a later push then replaces.
+      click: (item: { checked: boolean } | undefined, window, event) => {
+        if (item) item.checked = checked[id] === true;
+        click?.(item as never, window, event);
+      },
+    };
+  };
+  const fixed = checked['transport.toggleFixedTempo'] === true;
+  const step = (id: 'transport.slowDown' | 'transport.speedUp'): MenuItemConstructorOptions => ({
+    ...command(id),
+    ...(fixed && { label: FIXED_STEP_LABELS[id] ?? MENU_COMMANDS[id].label }),
   });
   // Never disabled: a disabled item stops the accelerator reaching a focused text field's own
   // undo (macOS), so an empty stack shows the plain name.
@@ -200,6 +268,30 @@ export function menuTemplate({
         command('view.toggleSidebar'),
         command('view.togglePanel'),
         ...(isPackaged ? [] : [separator, { role: 'toggleDevTools' } as const]),
+      ],
+    },
+    {
+      label: 'Playback',
+      submenu: [
+        command('transport.playPause'),
+        command('transport.stop'),
+        command('transport.playFromStart'),
+        command('transport.playFromSelection'),
+        separator,
+        checkbox('transport.toggleLoop'),
+        command('transport.loopSelection'),
+        separator,
+        checkbox('transport.toggleCountIn'),
+        checkbox('transport.toggleMetronome'),
+        command('transport.metronomeVolume'),
+        separator,
+        command('transport.setTempo'),
+        step('transport.slowDown'),
+        step('transport.speedUp'),
+        command('transport.toggleSpeed'),
+        checkbox('transport.toggleFixedTempo'),
+        separator,
+        command('transport.masterVolume'),
       ],
     },
     { role: 'windowMenu' },

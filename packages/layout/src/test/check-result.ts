@@ -261,6 +261,7 @@ const MARK_GLYPHS = [
   'guitarVolume',
   'ornamentTrill',
   'dynamic',
+  'fingering',
 ] as const;
 
 function isMark(primitive: Primitive): boolean {

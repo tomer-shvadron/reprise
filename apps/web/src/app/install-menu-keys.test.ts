@@ -57,9 +57,24 @@ describe('menuKeysOf', () => {
     'view.toggleSidebar': null,
     'view.togglePanel': { key: 'F8' },
     'view.toggleViewMode': { key: 'F4' },
+    'transport.playPause': null,
+    'transport.stop': null,
+    'transport.playFromStart': null,
+    'transport.playFromSelection': null,
+    'transport.toggleLoop': { key: 'F9' },
+    'transport.loopSelection': null,
+    'transport.toggleCountIn': { key: 'c', alt: true },
+    'transport.toggleMetronome': { key: 'm', alt: true },
+    'transport.metronomeVolume': { key: 'm', alt: true, shift: true },
+    'transport.setTempo': { key: 't', alt: true },
+    'transport.slowDown': null,
+    'transport.speedUp': null,
+    'transport.toggleSpeed': { key: 'F9', mod: true },
+    'transport.toggleFixedTempo': null,
+    'transport.masterVolume': { key: 'v', alt: true, shift: true },
   };
 
-  it.each(['mac', 'other'] as const)('matches the old hand-kept menu keys on %s', (keyboard) => {
+  it.each(['mac', 'other'] as const)("gives the menu the registry's keys on %s", (keyboard) => {
     const registry = createAppRegistry(createTestServices());
 
     expect(menuKeysOf(registry, keyboard)).toEqual(WAS);
