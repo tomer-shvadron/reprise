@@ -47,7 +47,7 @@ import {
   type ShownAccidental,
 } from './pitch';
 import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
-import { BEND_FRAME, BEND_ROOM, SCRAPE, connections, letterReach } from '../effects';
+import { BEND_FRAME, BEND_ROOM, SCRAPE, bendLabelNeed, connections, letterReach } from '../effects';
 import {
   beamLine,
   dotsWidth,
@@ -502,7 +502,9 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         heads.some(({ note }) => note.bend && note.bend.kind !== 'prebend')
       ) {
         const right = Math.max(...heads.map((head) => headEdges(planned, head).right));
-        plan.right = Math.max(plan.right, right + BEND_ROOM.main * space);
+        const labels = bendLabelNeed(heads.map(({ note }) => note.bend));
+        const frame = Math.max(BEND_ROOM.main, BEND_FRAME.gap + labels + BEND_FRAME.stop);
+        plan.right = Math.max(plan.right, right + frame * space);
       }
       if (lone && !percussion) planTargets(plan, planned);
       planGraces(plan, chordNotes, space, multiVoice, lone && !percussion);

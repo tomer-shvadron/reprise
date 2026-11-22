@@ -2,7 +2,7 @@ import { beatTicks, type Bar, type Beat, type Bend, type Note, type Vibrato } fr
 
 import { glyphMetrics, textExtent, textWidth, type GlyphName } from '../../metrics';
 import { LANE_HEIGHT, type LaneRequests } from '../lanes';
-import { HARMONIC_LABELS } from './labels';
+import { HARMONIC_LABELS, bendLabel } from './labels';
 import { articulationMarks } from './marks';
 import { TICK_EPSILON } from '../../ticks';
 
@@ -281,27 +281,91 @@ export function bendRow(): number {
 }
 
 /**
- * The amounts labelled at each x of a beat's shared bend frame, ascending: its raised tips by
- * position, and `pre` for the pre-bend arrows. The notes of a chord share a frame, so tips at one
- * position stand at one x and their labels stack in one column.
+ * Tips of a beat's bends closer than this, in frame positions (a quarter of the frame), share one
+ * label column: their amounts stack. Further apart, the frame is made long enough for the labels
+ * to stand side by side, so the lane is reserved from positions alone.
  */
-export function bendColumns(bends: readonly (Bend | undefined)[]): Map<string, number[]> {
-  const columns = new Map<string, Set<number>>();
-  const add = (key: string, value: number): void => {
-    const found = columns.get(key);
-    if (found) found.add(value);
-    else columns.set(key, new Set([value]));
-  };
+export const BEND_LABEL_SPREAD = 15;
+/** The least gap between two labels standing side by side, in staff spaces. */
+const BEND_LABEL_SEP = 0.3;
+
+interface BendTip {
+  position: number;
+  value: number;
+  /** The key of the shared column a raised tip belongs to, `pre` for a pre-bend. */
+  key?: string;
+}
+
+interface BendCluster {
+  first: number;
+  last: number;
+  tips: BendTip[];
+}
+
+/** Every labelled tip of the bends: the pre-bend, each raised value and each release above zero. */
+function labelledTips(bends: readonly (Bend | undefined)[]): BendTip[] {
+  const tips: BendTip[] = [];
   for (const bend of bends) {
     const points = [...(bend?.points ?? [])].sort((a, b) => a.position - b.position);
     const [first] = points;
-    if (first && first.value > 0) add('pre', first.value);
+    if (first && first.value > 0) tips.push({ position: 0, value: first.value, key: 'pre' });
     for (const [i, q] of points.entries()) {
       const p = points[i - 1];
-      if (p && q.value > p.value) add(String(q.position), q.value);
+      if (!p) continue;
+      if (q.value > p.value) {
+        tips.push({ position: q.position, value: q.value, key: String(q.position) });
+      } else if (q.value < p.value && q.value > 0) {
+        tips.push({ position: q.position, value: q.value });
+      }
     }
   }
-  return new Map([...columns].map(([key, values]) => [key, [...values].sort((a, b) => a - b)]));
+  return tips;
+}
+
+/** The tips grouped left to right: a tip within the spread of the one before it joins its cluster. */
+function bendClusters(bends: readonly (Bend | undefined)[]): BendCluster[] {
+  const clusters: BendCluster[] = [];
+  for (const tip of labelledTips(bends).sort((a, b) => a.position - b.position)) {
+    const last = clusters.at(-1);
+    if (last && tip.position - last.last < BEND_LABEL_SPREAD) {
+      last.tips.push(tip);
+      last.last = tip.position;
+    } else clusters.push({ first: tip.position, last: tip.position, tips: [tip] });
+  }
+  return clusters;
+}
+
+/**
+ * The raised amounts labelled in each column of a beat's shared bend frame, ascending, by the key
+ * of every raised tip (its position, or `pre`). The notes of a chord share a frame, and tips close
+ * together (`BEND_LABEL_SPREAD`) share a column: their labels stack in one.
+ */
+export function bendColumns(bends: readonly (Bend | undefined)[]): Map<string, number[]> {
+  const columns = new Map<string, number[]>();
+  for (const cluster of bendClusters(bends)) {
+    const raised = cluster.tips.filter((tip) => tip.key !== undefined);
+    const amounts = [...new Set(raised.map((tip) => tip.value))].sort((a, b) => a - b);
+    for (const tip of raised) if (tip.key !== undefined) columns.set(tip.key, amounts);
+  }
+  return columns;
+}
+
+/**
+ * How long a beat's bend frame must be, in staff spaces, for the labels of consecutive clusters to
+ * stand side by side. The clusters are at least a quarter of the frame apart, so this is bounded.
+ */
+export function bendLabelNeed(bends: readonly (Bend | undefined)[]): number {
+  const widest = (cluster: BendCluster): number =>
+    Math.max(...cluster.tips.map((tip) => textWidth(bendLabel(tip.value), EFFECT_TEXT)));
+  const clusters = bendClusters(bends);
+  let need = 0;
+  for (const [i, cluster] of clusters.entries()) {
+    const before = clusters[i - 1];
+    if (!before) continue;
+    const apart = (cluster.first - before.last) / 60;
+    need = Math.max(need, ((widest(before) + widest(cluster)) / 2 + BEND_LABEL_SEP) / apart);
+  }
+  return need;
 }
 
 function bendLane(notes: readonly Note[]): number | undefined {
@@ -309,7 +373,9 @@ function bendLane(notes: readonly Note[]): number | undefined {
   if (top <= 0) return undefined;
   const stack = Math.max(
     1,
-    ...[...bendColumns(notes.map((note) => note.bend)).values()].map((amounts) => amounts.length),
+    ...bendClusters(notes.map((note) => note.bend)).map(
+      (cluster) => new Set(cluster.tips.map((tip) => tip.value)).size,
+    ),
   );
   return BEND_STEP * top + BEND_LABEL_ROOM + (stack - 1) * bendRow();
 }

@@ -1117,21 +1117,20 @@ describe('bend labels never overlap', () => {
     expect(two).toBeCloseTo(2 * one, 1);
   });
 
-  it.each(modes)('does not grow the lane for far-apart amounts of one note in %s', (mode) => {
-    const wide = custom([
-      [0, 0],
-      [10, 12],
-      [14, 1],
-      [20, 10],
-      [24, 3],
-      [30, 9],
-      [34, 4],
-      [40, 7],
-      [44, 5],
-      [50, 6],
-    ]);
-    expect(staffTop(mode, [wide])).toBeCloseTo(staffTop(mode, [rise(12)]), 5);
-  });
+  it.each(modes)(
+    'does not grow the lane for amounts of one note a quarter frame apart in %s',
+    (mode) => {
+      // Tips 15 positions apart stand side by side in a frame the measure lengthens, not stacked.
+      const wide = custom([
+        [0, 0],
+        [15, 12],
+        [30, 1],
+        [45, 10],
+        [60, 3],
+      ]);
+      expect(staffTop(mode, [wide])).toBeCloseTo(staffTop(mode, [rise(12)]), 5);
+    },
+  );
 
   it.each(modes)('measures the lane for the stack so nothing strays in %s', (mode) => {
     const built = guitar(mode)

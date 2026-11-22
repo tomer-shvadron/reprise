@@ -27,7 +27,9 @@ import {
 import { reservedDynamics } from '../dynamics';
 import { WORDS, wordRows } from '../words';
 import {
+  BEND_FRAME,
   BEND_ROOM,
+  bendLabelNeed,
   KNOCKOUT,
   LETTER,
   naturalHarmonicText,
@@ -357,7 +359,12 @@ function analyseBeat(
   }
   right = Math.max(right, edge);
   if (slideOut) right = Math.max(right, edge + TAB.slideRoom * space);
-  if (bent) right = Math.max(right, edge + TAB.bendRoom * space);
+  if (bent) {
+    // Labels of tips a quarter of the frame or more apart stand side by side in it.
+    const labels = bendLabelNeed(beat.notes.map((note) => note.bend));
+    const frame = Math.max(TAB.bendRoom, BEND_FRAME.gap + labels + BEND_FRAME.stop);
+    right = Math.max(right, edge + frame * space);
+  }
   const played = !beat.rest && beat.notes.length > 0;
   const stroke =
     played && (beat.effects.arpeggio || beat.effects.brush) ? TAB.strokeRoom * space : 0;
