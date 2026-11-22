@@ -1,3 +1,4 @@
+import { arpeggioOverlayFor } from './fretboard/arpeggio-overlay';
 import type { MenuContext, MenuContribution, MenuItemSpec } from '@/app/context-menu/types';
 
 const hasSelectedBars = ({ services }: MenuContext) =>
@@ -21,6 +22,11 @@ const fretboardItems: readonly MenuItemSpec[] = [
   leftHandedItem,
   { command: 'trainer.fretboardSongScale', group: 'view' },
   { command: 'trainer.fretboardClearScale', group: 'view' },
+  {
+    command: 'trainer.fretboardArpeggio',
+    group: 'view',
+    checked: ({ services }) => arpeggioOverlayFor(services).getState().on,
+  },
   { command: 'trainer.fretboard', group: 'view', label: 'Hide fretboard' },
 ];
 

@@ -13,6 +13,7 @@ import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars } from '@/test/position';
 import { createTestServices } from '@/test/services';
 
+import { arpeggioOverlayFor } from './fretboard/arpeggio-overlay';
 import { scaleOverlayFor } from './fretboard/scale-overlay';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
 import { tunerFor } from './tuner/tuner-for';
@@ -267,6 +268,26 @@ describe('trainer commands', () => {
     expect(store.getState().overlay).toBeUndefined();
     expect(registry.get('trainer.fretboardSongScale')?.shortcut).toBeUndefined();
     expect(clear?.shortcut).toBeUndefined();
+  });
+
+  it('toggles the arpeggio overlay, opens the fretboard and has no key', async () => {
+    const services = createTestServices();
+    const registry = createAppRegistry(services);
+    const command = registry.get('trainer.fretboardArpeggio');
+    expect(command?.title).toBe('Toggle arpeggio on the fretboard');
+    expect(command?.shortcut).toBeUndefined();
+    expect(command?.enabled?.()).toBe(false);
+    const { bytes } = await write(fourBars(), 'reprise');
+    await act(async () => {
+      await services.document.getState().openBytes('song.reprise', bytes);
+    });
+    expect(command?.enabled?.()).toBe(true);
+    const store = arpeggioOverlayFor(services);
+    await command?.run();
+    expect(store.getState().on).toBe(true);
+    expect(services.ui.getState().bottomPanel.open).toBe(true);
+    await command?.run();
+    expect(store.getState().on).toBe(false);
   });
 
   it('says so when no scale can be named for the song', async () => {

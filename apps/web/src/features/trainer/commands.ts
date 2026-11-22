@@ -8,6 +8,7 @@ import { applyLoop, seekToBar, targetBars, targetPlace } from '@/features/transp
 import type { SpeedTrainerServices } from './speed-trainer/speed-trainer-store';
 import { tunerFor } from './tuner/tuner-for';
 import { chordNameOfBeat } from './chords/chord-target';
+import { arpeggioOverlayFor } from './fretboard/arpeggio-overlay';
 import { scaleOverlayFor, songScaleOf } from './fretboard/scale-overlay';
 import { insightsFor } from './insights/insights-for';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
@@ -30,7 +31,8 @@ export type TrainerCommandId =
   | 'trainer.showFretboard'
   | 'trainer.fretboardLeftHanded'
   | 'trainer.fretboardSongScale'
-  | 'trainer.fretboardClearScale';
+  | 'trainer.fretboardClearScale'
+  | 'trainer.fretboardArpeggio';
 
 type TrainerCommand = Command & { id: TrainerCommandId };
 
@@ -214,6 +216,21 @@ export function trainerCommands(
       enabled: () => scaleOverlayFor(services).getState().overlay !== undefined,
       run: () => {
         scaleOverlayFor(services).getState().clear();
+      },
+    },
+    {
+      id: 'trainer.fretboardArpeggio',
+      title: 'Toggle arpeggio on the fretboard',
+      repeat: false,
+      enabled: () => services.document.getState().score !== undefined,
+      run: () => {
+        const arpeggio = arpeggioOverlayFor(services).getState();
+        if (arpeggio.on) {
+          arpeggio.turnOff();
+          return;
+        }
+        ui.getState().showBottomPanelView('fretboard');
+        arpeggio.turnOn();
       },
     },
     {

@@ -1,15 +1,19 @@
+import type { Id } from '@reprise/model';
 import { XIcon } from 'lucide-react';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { CommandTooltip } from '@/app/command-tooltip';
+import { insightsFor } from '../insights/insights-for';
 import { useAppServices } from '@/app/services-context';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { selectRunning } from '@/state/playback';
 import { startPositionReader } from '@/state/position-reader';
+import { scoreIndex } from '@/lib/score-index';
+import { chordTimelineIndex, type ChordSpan } from '@/lib/insights';
 
 import {
   boardOf,
@@ -22,14 +26,15 @@ import {
   type Dot,
 } from './fretboard-model';
 import { geometryOf, type Geometry } from './fretboard-geometry';
+import { ArpeggioChip, ArpeggioLayer } from './arpeggio-layer';
+import { arpeggioOverlayFor } from './arpeggio-overlay';
+import { ArpeggioPicker } from './arpeggio-picker';
 import { scaleDots, scaleLabel } from './scale-dots';
 import { scaleOverlayFor, type ScaleOverlay } from './scale-overlay';
+import { DOT_RADIUS, RING_GAP } from './layer-metrics';
 import { ScalePicker } from './scale-picker';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const DOT_RADIUS = 10;
-/** A scale ring sits this far outside a lit dot, so a lit scale tone keeps its halo. */
-const RING_GAP = 1.5;
 
 /** The part that never changes during playback: strings, frets, markers and the capo. */
 function StaticBoard({
@@ -266,6 +271,8 @@ export function Fretboard() {
   const overlay = useStore(scales, (state) => state.overlay);
   const clearScale = useCommand('trainer.fretboardClearScale');
   const scaleTrigger = useRef<HTMLButtonElement>(null);
+  const arpeggios = arpeggioOverlayFor(services);
+  const arpeggioTrigger = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const target = layer.current;
@@ -278,6 +285,41 @@ export function Fretboard() {
       shown = key;
       paintDots(target, dots, geometry);
     };
+    const arpeggio = arpeggioOverlayFor(services);
+    const insights = insightsFor(services);
+    // What the last lookup answered: the same span of the same timeline means the same chord, so
+    // the common frame costs a comparison and nothing is written to the store.
+    let lastTimeline: readonly ChordSpan[] | undefined;
+    let lastSpan: ChordSpan | undefined;
+    let lastKnown = false;
+    const followChord = (at: { masterBarId: Id; tick: number } | undefined) => {
+      const { on, follow } = arpeggio.getState();
+      if (!on || !follow) return;
+      const chords = insights.getState().insights?.chords;
+      if (!chords) {
+        lastKnown = false;
+        arpeggio.getState().setShown({ kind: 'finding' });
+        return;
+      }
+      if (chords.source === 'none') {
+        lastKnown = false;
+        arpeggio.getState().setShown({ kind: 'no-chords' });
+        return;
+      }
+      const current = document.getState().score;
+      const bar = current && at ? scoreIndex(current).barIndex.get(at.masterBarId) : undefined;
+      const span =
+        bar === undefined || !at ? undefined : chordTimelineIndex(chords.timeline).at(bar, at.tick);
+      if (lastKnown && chords.timeline === lastTimeline && span === lastSpan) return;
+      lastKnown = true;
+      lastTimeline = chords.timeline;
+      lastSpan = span;
+      arpeggio
+        .getState()
+        .setShown(
+          span ? { kind: 'chord', name: span.name, source: chords.source } : { kind: 'none-here' },
+        );
+    };
     const update = () => {
       const state = playback.getState();
       const { cursor } = selection.getState();
@@ -288,14 +330,29 @@ export function Fretboard() {
         cursor.track === track?.id
       ) {
         show(index.dotsOfBeat(cursor.masterBar, cursor.beat));
+        const current = document.getState().score;
+        const tick =
+          current && cursor.beat ? scoreIndex(current).beats.get(cursor.beat)?.tick : undefined;
+        followChord(
+          tick === undefined || !cursor.masterBar
+            ? undefined
+            : { masterBarId: cursor.masterBar, tick },
+        );
         return;
       }
       // While running, the drawn playhead's position, which already allows for the output
       // latency; otherwise the engine's, which a seek or a stop has just moved.
       const at = selectRunning(state) ? heard.current : undefined;
-      if (at) show(index.dotsAt(at.masterBarId, at.tick));
-      else if (lastEvent) show(index.dotsAt(lastEvent.masterBarId, lastEvent.position.tick));
-      else show([]);
+      if (at) {
+        show(index.dotsAt(at.masterBarId, at.tick));
+        followChord(at);
+      } else if (lastEvent) {
+        show(index.dotsAt(lastEvent.masterBarId, lastEvent.position.tick));
+        followChord({ masterBarId: lastEvent.masterBarId, tick: lastEvent.position.tick });
+      } else {
+        show([]);
+        followChord(undefined);
+      }
     };
     const reader = startPositionReader(playback, (event) => {
       lastEvent = event;
@@ -308,13 +365,23 @@ export function Fretboard() {
       editing.subscribe((state, previous) => {
         if (state.editing !== previous.editing) update();
       }),
+      // Turning follow on, or a new chord timeline, needs an answer before the next frame moves.
+      arpeggio.subscribe((state, previous) => {
+        if (state.on !== previous.on || state.follow !== previous.follow) {
+          lastKnown = false;
+          update();
+        }
+      }),
+      insights.subscribe((state, previous) => {
+        if (state.insights !== previous.insights) update();
+      }),
     ];
     update();
     return () => {
       reader.stop();
       for (const unsubscribe of unsubscribers) unsubscribe();
     };
-  }, [index, geometry, playback, selection, editing, heard, track?.id]);
+  }, [index, geometry, playback, selection, editing, heard, document, services, track?.id]);
 
   const title = track && board ? `${track.name} fretboard` : 'Fretboard';
   if (!track || !board || !geometry) {
@@ -331,12 +398,12 @@ export function Fretboard() {
 
   return (
     <div {...menu} className="flex h-full flex-col gap-1 p-2">
-      <div className="flex items-center justify-between gap-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <span className="text-muted-foreground">
           {board.strings} strings, tuning {names.join(' ')}
           {board.capo > 0 ? `, capo ${String(board.capo)}` : ''}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {overlay && (
             <span
               data-scale-chip
@@ -359,7 +426,9 @@ export function Fretboard() {
               </CommandTooltip>
             </span>
           )}
+          <ArpeggioChip store={arpeggios} triggerRef={arpeggioTrigger} />
           <ScalePicker store={scales} triggerRef={scaleTrigger} />
+          <ArpeggioPicker store={arpeggios} triggerRef={arpeggioTrigger} />
         </div>
         <label className="flex items-center gap-2">
           Left-handed
@@ -384,6 +453,15 @@ export function Fretboard() {
         <StaticBoard board={board} geometry={geometry} names={names} />
         {overlay && !overlay.none && tuning && stableBoard && (
           <ScaleLayer board={stableBoard} tuning={tuning} geometry={geometry} overlay={overlay} />
+        )}
+        {tuning && stableBoard && (
+          <ArpeggioLayer
+            store={arpeggios}
+            board={stableBoard}
+            tuning={tuning}
+            geometry={geometry}
+            scale={overlay && !overlay.none ? overlay : undefined}
+          />
         )}
         <g ref={layer} data-fretboard-notes />
       </svg>
