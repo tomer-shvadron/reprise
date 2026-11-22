@@ -24,16 +24,36 @@ describe('STANDARD_TUNINGS', () => {
     ['6-string bass standard', 'B0 E1 A1 D2 G2 C3', [23, 28, 33, 38, 43, 48]],
     ['Tenor banjo CGDA', 'C3 G3 D4 A4', [48, 55, 62, 69]],
     ['Irish tenor banjo GDAE', 'G2 D3 A3 E4', [43, 50, 57, 64]],
-    ['Violin GDAE', 'G3 D4 A4 E5', [55, 62, 69, 76]],
-    ['Cello CGDA', 'C2 G2 D3 A3', [36, 43, 50, 57]],
-    ['Shamisen honchoshi', 'C3 F3 C4', [48, 53, 60]],
-    ['Shamisen niagari', 'C3 G3 C4', [48, 55, 60]],
-    ['Shamisen sansagari', 'C3 F3 Bb3', [48, 53, 58]],
     ['Ukulele low G', 'G3 C4 E4 A4', [55, 60, 64, 69]],
     ['Baritone ukulele DGBE', 'D3 G3 B3 E4', [50, 55, 59, 64]],
   ])('%s is %s', (name, _notes, strings) => {
     expect(STANDARD_TUNINGS.find((tuning) => tuning.name === name)?.strings).toEqual(strings);
     expect(findTuningName(strings)).toBe(name);
+  });
+
+  it.each([
+    ['Violin GDAE', 'G3 D4 A4 E5', [55, 62, 69, 76], 40],
+    ['Viola CGDA', 'C3 G3 D4 A4', [48, 55, 62, 69], 41],
+    ['Cello CGDA', 'C2 G2 D3 A3', [36, 43, 50, 57], 42],
+    ['Double bass EADG', 'E1 A1 D2 G2', [28, 33, 38, 43], 43],
+    ['Shamisen honchoshi', 'C3 F3 C4', [48, 53, 60], 106],
+    ['Shamisen niagari', 'C3 G3 C4', [48, 55, 60], 106],
+    ['Shamisen sansagari', 'C3 F3 Bb3', [48, 53, 58], 106],
+  ])('%s is %s, and named only on program %i', (name, _notes, strings, program) => {
+    expect(STANDARD_TUNINGS.find((tuning) => tuning.name === name)?.strings).toEqual(strings);
+    expect(findTuningName(strings, { program })).toBe(name);
+    expect(findTuningName(strings)).not.toBe(name);
+    expect(findTuningName(strings, { program: 25 })).not.toBe(name);
+  });
+
+  it('names every row for some program, or for none', () => {
+    for (const { name, strings, courses, drone } of STANDARD_TUNINGS) {
+      const programs = [undefined, ...Array.from({ length: 128 }, (_, program) => program)];
+      expect(
+        programs.some((program) => findTuningName(strings, { courses, drone, program }) === name),
+        name,
+      ).toBe(true);
+    }
   });
 
   it('has unique names and tunings that fit a track', () => {
@@ -109,6 +129,7 @@ describe('the program hint of findTuningName', () => {
   it('is ignored when the program names an instrument with no matching preset', () => {
     expect(findTuningName(cgda, { program: 24 })).toBe('Tenor banjo CGDA');
     expect(findTuningName(cgda, { program: 42 })).toBe('Tenor banjo CGDA');
+    expect(findTuningName([55, 62, 69, 76], { program: 41 })).toBeUndefined();
     expect(findTuningName([40, 45, 50, 55, 59, 64], { program: 41 })).toBe('E standard');
   });
 
@@ -117,7 +138,9 @@ describe('the program hint of findTuningName', () => {
     expect(findTuningName(cgda, { courses: unison })).toBe('Mandola CGDA');
     expect(findTuningName([43, 50, 57, 64], { courses: unison })).toBe('Octave mandolin GDAE');
     expect(findTuningName([43, 50, 57, 64])).toBe('Irish tenor banjo GDAE');
-    expect(findTuningName([55, 62, 69, 76])).toBe('Violin GDAE');
+    expect(findTuningName([55, 62, 69, 76])).toBeUndefined();
+    expect(findTuningName([55, 62, 69, 76], { program: 25 })).toBeUndefined();
+    expect(findTuningName([55, 62, 69, 76], { program: 40 })).toBe('Violin GDAE');
     expect(findTuningName([55, 62, 69, 76], { courses: unison })).toBe('Mandolin GDAE');
   });
 });

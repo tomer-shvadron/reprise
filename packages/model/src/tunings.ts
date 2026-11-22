@@ -96,6 +96,19 @@ export const STANDARD_TUNINGS: readonly NamedTuning[] = [
   { name: 'Baritone ukulele DGBE', instrument: 'ukulele', strings: [50, 55, 59, 64] },
 ];
 
+/**
+ * Rows that name an instrument by its General MIDI program: a track's strings alone do not say a
+ * violin from a mandolin read from a gp file (single GDAE strings on program 25), so these match
+ * only when the caller passes that exact program.
+ */
+const BOUND_PROGRAM: Partial<Record<TuningInstrument, number>> = {
+  violin: 40,
+  viola: 41,
+  cello: 42,
+  doubleBass: 43,
+  shamisen: 106,
+};
+
 /** The instrument a General MIDI program points at, to pick between presets of equal strings. */
 const INSTRUMENT_OF_PROGRAM: ReadonlyMap<number, TuningInstrument> = new Map([
   [40, 'violin'],
@@ -132,12 +145,16 @@ export function findTuningName(
   extras: {
     courses?: readonly (number | null)[] | undefined;
     drone?: Drone | undefined;
-    /** Breaks a tie between presets of equal strings, courses and drone (viola against tenor banjo). */
+    /**
+     * Breaks a tie between presets of equal strings, courses and drone (viola against tenor
+     * banjo), and is the only way to match a violin, viola, cello, double bass or shamisen row.
+     */
     program?: number | undefined;
   } = {},
 ): string | undefined {
   const matches = STANDARD_TUNINGS.filter(
-    ({ strings, courses, drone }) =>
+    ({ strings, courses, drone, instrument }) =>
+      (BOUND_PROGRAM[instrument] ?? extras.program) === extras.program &&
       strings.length === tuning.length &&
       strings.every((pitch, index) => pitch === tuning[index]) &&
       sameCourses(courses, extras.courses) &&

@@ -129,7 +129,7 @@ const INSTRUMENTS: Record<Instrument, { kind: TrackKind; defaults: TrackSpec }> 
     kind: 'fretted',
     defaults: {
       name: 'Ukulele',
-      shortName: 'Uke',
+      shortName: 'Uke.',
       tuning: [67, 60, 64, 69],
       program: 24,
       display: { notation: 'tab', clef: 'treble', octaveShift: 0 },
