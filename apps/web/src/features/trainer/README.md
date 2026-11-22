@@ -53,7 +53,7 @@ shared field is a `type:contract` issue for the lead.
   `lastLoop` arrives. The engine emits `loop` as it wraps, before it schedules the next pass, and
   `setTempo` retimes from the wrap; a React effect, microtask or timer runs after the next pass
   is already scheduled at the old tempo, and the change lands mid-bar. Always percent mode: bpm
-  mode reads the tempo at the heard tick, which is still the end of the old pass. The event fires
+  mode (fixed tempo) is not the trainer's, so Start leaves fixed tempo and announces "Fixed tempo off"; a ramp over a fixed BPM is not supported. The event fires
   up to the lookahead plus one scheduler tick (0.225 s) before the wrap is heard, so the panel
   shows the new step that much early. The store notifies a nested change more than once, so the
   listener remembers the loop event it counted and ignores its own `setTempo`.

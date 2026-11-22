@@ -1,5 +1,7 @@
 import type { MenuContext, MenuContribution } from '@/app/context-menu/types';
 
+import { isFixed } from './tempo';
+
 const hasScore = ({ services }: MenuContext) => services.document.getState().score !== undefined;
 
 /** Play mode only here: the edit-mode score menus are another set. */
@@ -35,6 +37,12 @@ const barMenus: readonly MenuContribution[] = [
       { command: 'transport.slowDown', group: 'play', when: hasScore },
       { command: 'transport.speedUp', group: 'play', when: hasScore },
       { command: 'transport.toggleSpeed', group: 'play', when: hasScore },
+      {
+        command: 'transport.toggleFixedTempo',
+        group: 'play',
+        when: hasScore,
+        checked: ({ services }) => isFixed(services.playback.getState().settings.tempo),
+      },
     ],
   },
   {

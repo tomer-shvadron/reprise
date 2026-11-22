@@ -3,6 +3,15 @@ import type { TransportSettings } from '@/state/playback';
 /** The speed range in percent of the written tempo; keyboard steps snap to the `step` grid. */
 export const TEMPO_PERCENT = { min: 25, max: 200, default: 100, step: 5 } as const;
 
+/** Fixed tempo: one BPM for the whole song, set by the field or the keyboard steps. */
+export const FIXED_BPM = { min: 20, max: 400, step: 5 } as const;
+
+export function clampBpm(bpm: number): number {
+  return Math.min(FIXED_BPM.max, Math.max(FIXED_BPM.min, bpm));
+}
+
+export const isFixed = (tempo: TransportSettings['tempo']): boolean => tempo.mode === 'bpm';
+
 export function clampPercent(percent: number): number {
   return Math.min(TEMPO_PERCENT.max, Math.max(TEMPO_PERCENT.min, percent));
 }

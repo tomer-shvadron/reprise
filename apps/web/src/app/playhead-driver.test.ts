@@ -259,6 +259,12 @@ describe('output latency', () => {
       1760,
       6,
     );
+    // A fixed tempo of 60 BPM against the written 120 is half speed too: the written tempo at the
+    // playhead is the reference, not the BPM the map was scaled to.
+    expect(heardPosition(timeline, event, 0.25, { mode: 'bpm', value: 60 }, true).tick).toBeCloseTo(
+      1760,
+      6,
+    );
     expect(heardPosition(timeline, event, 0.25, tempo, false).tick).toBeCloseTo(2000, 6);
     // Never before the start of the run.
     expect(heardPosition(timeline, event, 0.25, tempo, true, event.seconds - 0.1).tick).toBeCloseTo(
