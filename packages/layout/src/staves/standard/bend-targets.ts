@@ -2,8 +2,19 @@ import type { Bend, Note, Track } from '@reprise/model';
 
 import type { ChordPlan } from './chord';
 
-/** Target heads, in staff spaces: the gap from the arrival x and around each obstacle. */
-export const TARGET = { gap: 0.2 } as const;
+/**
+ * Target heads: `gap` is the room from the arrival x and around each obstacle, `maxNeed` the
+ * most a frame is stretched for them (both in staff spaces), and `snap` how close two positions
+ * (0 to 60) or a position and the end count as one. Guitar Pro 6 and 7 store percentages, so a
+ * bend "to the end" holds 59.4 and a peak and its release dip 29.4 and 30; dividing by the
+ * sliver between them would stretch the bar by hundreds of px (#323).
+ */
+export const TARGET = { gap: 0.2, snap: 3, maxNeed: 6 } as const;
+
+/** A position within `snap` of the end is the end. */
+export function snapPosition(position: number): number {
+  return position >= 60 - TARGET.snap ? 60 : position;
+}
 
 /** A pitch a bend reaches and keeps, drawn as a grace-size head. */
 export interface BendTarget {
@@ -58,9 +69,10 @@ export function bendTargets(bend: Bend): BendTarget[] {
   if (bend.kind === 'bendRelease') {
     const peak = points.findIndex((point) => point.value === top);
     const at = points[peak];
-    if (at && peak >= 1 && peak < i) found.push({ value: top, position: at.position });
+    if (at && peak >= 1 && peak < i)
+      found.push({ value: top, position: snapPosition(at.position) });
   }
-  found.push({ value: last.value, position: arrival.position });
+  found.push({ value: last.value, position: snapPosition(arrival.position) });
   const kept: BendTarget[] = [];
   for (const target of found) {
     if (target.value < 0 || target.value % 2 !== 0) continue;
@@ -86,17 +98,21 @@ export function bendSpan(
   space: number,
 ): { need: number; tail: number } {
   const gap = TARGET.gap * space;
-  const tail = Math.max(0, ...groups.filter((g) => g.position >= 60).map((g) => gap + g.width));
+  const tail = Math.max(
+    0,
+    ...groups.filter((g) => snapPosition(g.position) >= 60).map((g) => gap + g.width),
+  );
   let need = 0;
   for (const group of groups) {
-    const f = group.position / 60;
+    const f = snapPosition(group.position) / 60;
     for (const obstacle of obstacles) {
       const after = obstacle.position / 60 - f;
-      if (after > 1e-9) {
+      // An obstacle within `snap` after the group is the group's own position.
+      if (after > TARGET.snap / 60) {
         need = Math.max(need, (group.width + 2 * gap + obstacle.offset) / after);
       }
     }
     if (f < 1) need = Math.max(need, (group.width + gap - tail) / (1 - f));
   }
-  return { need, tail };
+  return { need: Math.min(need, TARGET.maxNeed * space), tail };
 }
