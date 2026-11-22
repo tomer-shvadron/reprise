@@ -13,12 +13,11 @@ import {
   text,
   type LayoutSink,
 } from '../../primitives';
-import { BEND_STACK_GAP, BEND_STEP, EFFECT_TEXT, bendRow } from './analysis';
+import { BEND_LABEL_GAP, BEND_STACK_GAP, BEND_STEP, EFFECT_TEXT } from './analysis';
 import { bendLabel } from './labels';
 
 /** Shaft thickness, the gaps around labels and a hold's dashes, in staff spaces. */
 const SHAFT = 0.16;
-const LABEL_GAP = 0.3;
 const RELEASE_LABEL_GAP = 0.4;
 const RELEASE_STOP = 0.1;
 const HOLD_DASH = 0.4;
@@ -36,15 +35,15 @@ export interface BendDrawn {
   keys: Set<string>;
   labels: { text: string; bbox: Rect }[];
   arrows: Rect[];
-  /** The amounts labelled at each x of the frame being drawn, from `bendColumns`. */
-  columns: Map<string, number[]>;
+  /** How far each raised label stands above its tip, by `column value`, from `bendLifts`. */
+  lifts: Map<string, number>;
 }
 
 export const newBendDrawn = (): BendDrawn => ({
   keys: new Set(),
   labels: [],
   arrows: [],
-  columns: new Map(),
+  lifts: new Map(),
 });
 
 const overlap = (a: Rect, b: Rect): boolean =>
@@ -147,15 +146,13 @@ export function drawBend(
       at = next;
     }
   };
-  // The labels of one column read in the order of the arrows below them: the highest amount on
-  // top, the lowest just above the column's topmost tip.
+  // The labels of tips close together stand above the arrowheads next to them, the highest
+  // amount on top: `bendLifts` worked out how far each one rises from the same levels.
   const raised = (px: number, tip: number, value: number, column: string): void => {
     arrowUp(px, tip);
     once(`label ${String(round(px))} ${String(value)}`, () => {
-      const amounts = drawn.columns.get(column) ?? [value];
-      const rank = Math.max(0, amounts.indexOf(value));
-      const base = level(Math.max(value, ...amounts));
-      label(bendLabel(value), px, base - LABEL_GAP * space - rank * bendRow() * space, 'middle');
+      const lift = drawn.lifts.get(`${column} ${String(value)}`) ?? 0;
+      label(bendLabel(value), px, level(value) - (BEND_LABEL_GAP + lift) * space, 'middle');
     });
   };
 

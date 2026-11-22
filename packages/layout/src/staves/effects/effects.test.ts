@@ -1118,6 +1118,7 @@ describe('bend labels never overlap', () => {
   });
 
   it.each(modes)('does not grow the lane for far-apart amounts of one note in %s', (mode) => {
+    // effects.gp5's many-peak bend: its labels are spread over the frame, so they hardly stack.
     const wide = custom([
       [0, 0],
       [10, 12],
@@ -1130,7 +1131,19 @@ describe('bend labels never overlap', () => {
       [44, 5],
       [50, 6],
     ]);
-    expect(staffTop(mode, [wide])).toBeCloseTo(staffTop(mode, [rise(12)]), 5);
+    const grown = staffTop(mode, [wide]) - staffTop(mode, [rise(12)]);
+    expect(grown).toBeCloseTo(0, 5);
+  });
+
+  it.each(modes)('does not grow the lane for tips a quarter frame apart in %s', (mode) => {
+    const apart = custom([
+      [0, 0],
+      [15, 12],
+      [30, 1],
+      [45, 10],
+      [60, 3],
+    ]);
+    expect(staffTop(mode, [apart])).toBeCloseTo(staffTop(mode, [rise(12)]), 5);
   });
 
   it.each(modes)('measures the lane for the stack so nothing strays in %s', (mode) => {

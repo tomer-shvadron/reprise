@@ -10,7 +10,7 @@ import {
   BEND_FRAME,
   connections,
   type BendDrawn,
-  bendColumns,
+  bendLifts,
   drawBend,
   newBendDrawn,
   drawLetter,
@@ -244,7 +244,7 @@ function drawBendGroup(
   // never ends left of where it starts, which would invert it.
   const xEnd = Math.max(x0, Math.min(Math.max(stop, x0 + min * space), contentEnd(context)));
   const releaseTop = lineY(context, top.note.string) - labelHalfHeight(size);
-  drawn.columns = bendColumns(bent.map((label) => label.note.bend));
+  drawn.lifts = bendLifts(bent.map((label) => label.note.bend));
   for (const label of bent) {
     const { bend } = label.note;
     if (!bend) continue;

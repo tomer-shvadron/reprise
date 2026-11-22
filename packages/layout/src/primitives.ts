@@ -154,7 +154,7 @@ export function point(x: number, y: number): string {
 }
 
 /** Arrowheads are filled triangles this wide and long, in staff spaces. */
-const ARROW_WIDTH = 0.7;
+export const ARROW_WIDTH = 0.7;
 export const ARROW_LENGTH = 0.8;
 
 /** A filled triangular arrowhead with its tip at (x, y), pointing up or down. */
