@@ -38,6 +38,7 @@ export interface TransportSettings {
    * samples are already processed. A track's known `sound.preset` applies either way.
    */
   gmTierBypass: boolean;
+  channelEffects: boolean;
   /**
    * "Memory for sounds" in bytes, the engine's memory setting: the HQ tier's budget, and a cap on
    * the GM tier's. `MEMORY_BUDGET_RANGE` bounds it; the default is the HQ budget.
@@ -127,6 +128,7 @@ export function initialPlaybackState(): PlaybackStoreState {
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
       gmTierBypass: true,
+      channelEffects: true,
       memoryBudgetBytes: HQ_BUDGET_BYTES,
     },
     click: { running: false, settings: DEFAULT_CLICK_SETTINGS },

@@ -33,6 +33,7 @@ export const SAMPLES: Record<string, unknown> = {
   'playback.countInVolume': 0.45,
   'playback.masterVolume': 0.6,
   'playback.gmTierBypass': false,
+  'playback.channelEffects': false,
   'sounds.memoryBudgetBytes': 256 * 1024 * 1024,
   'playback.followPlayhead': false,
   'score.defaultViewMode': 'continuous',

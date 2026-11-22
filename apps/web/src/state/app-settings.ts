@@ -49,6 +49,11 @@ export const GM_TIER_BYPASS_SETTING = defineSetting({
   schema: z.boolean(),
   default: true,
 });
+export const CHANNEL_EFFECTS_SETTING = defineSetting({
+  key: 'playback.channelEffects',
+  schema: z.boolean(),
+  default: true,
+});
 export const MEMORY_BUDGET_SETTING = defineSetting({
   key: 'sounds.memoryBudgetBytes',
   schema: z.number().min(MEMORY_BUDGET_RANGE.min).max(MEMORY_BUDGET_RANGE.max),
@@ -135,6 +140,7 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   METRONOME_VOLUME_SETTING,
   MASTER_VOLUME_SETTING,
   GM_TIER_BYPASS_SETTING,
+  CHANNEL_EFFECTS_SETTING,
   MEMORY_BUDGET_SETTING,
   FOLLOW_PLAYHEAD_SETTING,
   DEFAULT_VIEW_MODE_SETTING,
