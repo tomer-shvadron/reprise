@@ -239,6 +239,7 @@ export type {
   CommandWarningCode,
   History,
   Patch,
+  Replayed,
 } from './history';
 
 export {

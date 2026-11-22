@@ -147,6 +147,11 @@ export interface DocumentState {
   view: DocumentView;
   /** The change that produced `score`; undefined right after an open. */
   lastChange: Change | undefined;
+  /**
+   * After an undo or redo (`lastStep`), the last step it replayed: `lastChange` itself after one
+   * step, the step nearest the target after a jump. Undefined after an apply, an open or a close.
+   */
+  lastReplayed: Change | undefined;
   revision: number;
   dirty: boolean;
   canUndo: boolean;
@@ -181,6 +186,11 @@ export interface DocumentState {
   newDocument(score: Score, options?: NewDocumentOptions): void;
   close(): void;
   apply(command: Command): readonly CommandWarning[];
+  /**
+   * Moves |n| steps through the history, undo for n < 0 and redo for n > 0, clamped to the stack,
+   * with one publish. Returns how many steps it replayed (0: nothing changed, nothing published).
+   */
+  step(n: number): number;
   undo(): void;
   redo(): void;
   /** Through the installed saver, else the built-in. */
@@ -353,17 +363,19 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       historyLabels: labelsNow(),
     });
 
-    const replay = (step: 'undo' | 'redo') => {
-      const applied = step === 'undo' ? history.undo() : history.redo();
-      if (!applied) return;
-      depth += step === 'undo' ? -1 : 1;
+    const step = (n: number): number => {
+      const replayed = history.step(n);
+      if (!replayed) return 0;
+      depth += Math.sign(n) * replayed.count;
       set((state) => ({
-        score: applied.score,
-        lastChange: applied.change,
-        lastStep: step,
+        score: replayed.score,
+        lastChange: replayed.change,
+        lastReplayed: replayed.last,
+        lastStep: n < 0 ? 'undo' : 'redo',
         revision: state.revision + 1,
         ...snapshot(),
       }));
+      return replayed.count;
     };
 
     const ask = (prompt: SavePrompt) =>
@@ -516,6 +528,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       songId: undefined,
       view: emptyView(),
       lastChange: undefined,
+      lastReplayed: undefined,
       revision: 0,
       dirty: false,
       canUndo: false,
@@ -574,6 +587,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
             songId,
             view: emptyView(),
             lastChange: undefined,
+            lastReplayed: undefined,
             lastStep: undefined,
             revision: state.revision + 1,
             warnings,
@@ -603,6 +617,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           songId: undefined,
           view: emptyView(),
           lastChange: undefined,
+          lastReplayed: undefined,
           lastStep: undefined,
           revision: state.revision + 1,
           warnings: [],
@@ -628,6 +643,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           songId: undefined,
           view: emptyView(),
           lastChange: undefined,
+          lastReplayed: undefined,
           lastStep: undefined,
           revision: state.revision + 1,
           warnings: [],
@@ -654,6 +670,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
         set((state) => ({
           score: applied.score,
           lastChange: applied.change,
+          lastReplayed: undefined,
           lastStep: 'apply',
           revision: state.revision + 1,
           ...snapshot(),
@@ -661,11 +678,12 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
         return applied.warnings;
       },
 
+      step,
       undo() {
-        replay('undo');
+        step(-1);
       },
       redo() {
-        replay('redo');
+        step(1);
       },
 
       async save() {

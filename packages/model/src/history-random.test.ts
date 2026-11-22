@@ -258,6 +258,17 @@ describe('history under random edits', () => {
           expect(current).toStrictEqual(states[cursor]);
           continue;
         }
+        if (groupDepth === 0 && roll === 3 && (history.canUndo || history.canRedo)) {
+          const target = r.int(states.length);
+          if (target !== cursor) {
+            const replayed = history.step(target - cursor);
+            expect(replayed?.count).toBe(Math.abs(target - cursor));
+            cursor = target;
+            current = replayed?.score ?? current;
+            expect(current).toStrictEqual(states[cursor]);
+          }
+          continue;
+        }
         if (roll === 2 && groupDepth === 0) {
           history.beginGroup('group');
           groupDepth = 1;

@@ -6,7 +6,7 @@ import {
   VERTICAL_FOLLOW_UP_REACH,
   type LayoutOptions,
 } from '@reprise/layout';
-import { setNote, setNoteEffect } from '@reprise/model';
+import { insertBar, setNote, setNoteEffect } from '@reprise/model';
 import { beatOf, largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -76,6 +76,26 @@ describe('the layout store', () => {
     expect(lastCall(spy).cache).toBe(cache);
     document.getState().redo();
     expect(lastCall(spy).options.dirtyBars).toEqual(touched);
+  });
+
+  it('lays out a history jump once, with every bar the jumped steps touched', async () => {
+    const { document, spy } = setup();
+    await document.getState().openBytes('a.reprise', await bytesOf('A', 3));
+    const { cache } = lastCall(spy);
+    edit(document, 5);
+    document.getState().apply(insertBar({ index: 1 }));
+    edit(document, 6);
+    const touched = document.getState().undoLabel;
+    expect(touched).toBeDefined();
+    const calls = spy.mock.calls.length;
+
+    expect(document.getState().step(-3)).toBe(3);
+    expect(spy.mock.calls.length).toBe(calls + 1);
+    expect(lastCall(spy).cache).toBe(cache);
+    const dirty = lastCall(spy).options.dirtyBars ?? [];
+    const merged = document.getState().lastChange?.touchedBars ?? [];
+    expect(dirty).toEqual(merged);
+    expect(dirty.length).toBeGreaterThan(1);
   });
 
   it('re-lays out for a view change, never for zoom, theme or panels', async () => {

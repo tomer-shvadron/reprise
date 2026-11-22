@@ -927,6 +927,16 @@ describe('document store save marks across history moves', () => {
     expect(store.getState().file).toMatchObject({ name: 'a.reprise' });
   });
 
+  it('follows the depth through a batched step', async () => {
+    const { store, mark } = await begun();
+    store.getState().apply(editOf(store, 6));
+    store.getState().step(-2);
+    store.getState().finishSave(mark, done());
+    expect(store.getState().dirty).toBe(true);
+    store.getState().step(1);
+    expect(store.getState().dirty).toBe(false);
+  });
+
   it('stays dirty after an undo during the save', async () => {
     const { store, mark } = await begun();
     store.getState().undo();
@@ -1110,6 +1120,64 @@ describe('document store history labels and the last step', () => {
     await ctx.store.getState().open();
     return ctx.store;
   }
+
+  it('moves several steps with one publish, and reports what the last step replayed', async () => {
+    const store = await opened();
+    const start = store.getState().score;
+    for (const fret of [2, 3, 4]) store.getState().apply(editOf(store, fret));
+    const published = vi.fn();
+    store.subscribe(published);
+    const revision = store.getState().revision;
+
+    expect(store.getState().step(-3)).toBe(3);
+    expect(published).toHaveBeenCalledTimes(1);
+    expect(store.getState().revision).toBe(revision + 1);
+    expect(store.getState().score).toEqual(start);
+    expect(store.getState().lastStep).toBe('undo');
+    expect(store.getState().lastChange?.touchedBars).toEqual(
+      store.getState().lastReplayed?.touchedBars,
+    );
+    expect(store.getState().lastChange).not.toBe(store.getState().lastReplayed);
+    expect(store.getState().lastChange?.patches).toHaveLength(
+      3 * (store.getState().lastReplayed?.patches.length ?? 0),
+    );
+    expect(store.getState().canUndo).toBe(false);
+    expect(store.getState().historyLabels.redo).toHaveLength(3);
+
+    expect(store.getState().step(3)).toBe(3);
+    expect(published).toHaveBeenCalledTimes(2);
+    expect(store.getState().lastStep).toBe('redo');
+    expect(store.getState().canRedo).toBe(false);
+    expect(store.getState().historyLabels.undo).toHaveLength(3);
+  });
+
+  it('clamps a step, and publishes nothing for zero or an empty stack', async () => {
+    const store = await opened();
+    store.getState().apply(editOf(store, 2));
+    const published = vi.fn();
+    store.subscribe(published);
+    expect(store.getState().step(0)).toBe(0);
+    expect(store.getState().step(5)).toBe(0);
+    expect(published).not.toHaveBeenCalled();
+    expect(store.getState().lastStep).toBe('apply');
+    expect(store.getState().step(-9)).toBe(1);
+    expect(published).toHaveBeenCalledTimes(1);
+  });
+
+  it('sets lastReplayed to lastChange after one step, and clears it on apply and close', async () => {
+    const store = await opened();
+    store.getState().apply(editOf(store, 2));
+    expect(store.getState().lastReplayed).toBeUndefined();
+    store.getState().undo();
+    expect(store.getState().lastReplayed).toBe(store.getState().lastChange);
+    store.getState().redo();
+    expect(store.getState().lastReplayed).toBe(store.getState().lastChange);
+    store.getState().apply(editOf(store, 3));
+    expect(store.getState().lastReplayed).toBeUndefined();
+    store.getState().undo();
+    store.getState().close();
+    expect(store.getState().lastReplayed).toBeUndefined();
+  });
 
   it('lists each stack newest first through apply, undo and redo', async () => {
     const store = await opened();

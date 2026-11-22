@@ -75,6 +75,7 @@ type Edit =
   | { kind: 'voiceDuration'; at: Where; duration: 1 | 8 }
   | { kind: 'undo' }
   | { kind: 'redo' }
+  | { kind: 'jump'; steps: number }
   | { kind: 'options'; change: OptionChange };
 
 type OptionChange = 'subset' | 'notation' | 'width' | 'zoom' | 'diagrams';
@@ -160,6 +161,10 @@ const edit: Arbitrary<Edit> = oneof(
   }),
   record({ kind: constantFrom('undo' as const) }),
   record({ kind: constantFrom('redo' as const) }),
+  record({
+    kind: constantFrom('jump' as const),
+    steps: oneof(integer({ min: -4, max: -1 }), integer({ min: 1, max: 4 })),
+  }),
   record({
     kind: constantFrom('options' as const),
     change: constantFrom<OptionChange>('subset', 'notation', 'width', 'zoom', 'diagrams'),
@@ -265,6 +270,7 @@ function command(score: Score, step: Edit): Command | undefined {
     }
     case 'undo':
     case 'redo':
+    case 'jump':
     case 'options':
       return undefined;
     default:
@@ -558,6 +564,12 @@ export function checkCachedEqualsCold(
             systemKey = key;
           } else if (step.kind === 'undo' || step.kind === 'redo') {
             const replayed = step.kind === 'undo' ? history.undo() : history.redo();
+            if (!replayed) continue;
+            score = replayed.score;
+            touched = replayed.change.touchedBars;
+          } else if (step.kind === 'jump') {
+            // One layout for the whole jump, with the union of the steps' touched bars.
+            const replayed = history.step(step.steps);
             if (!replayed) continue;
             score = replayed.score;
             touched = replayed.change.touchedBars;
