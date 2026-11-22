@@ -82,6 +82,29 @@ const headSpan = (beat: BeatPlan): { top: number; bottom: number } => {
   return { top: Math.min(...ys) - SPACE / 2, bottom: Math.max(...ys) + SPACE / 2 };
 };
 
+describe('rests beside chords a float apart', () => {
+  it('clears a centred rest from the chords of two voices at their one onset', () => {
+    // Seven septuplet 32nds reach tick 960 a float short of voice 2's quarter, so the two chords
+    // are one onset and the only one the centred whole rest of voice 0 has to clear.
+    const builder = piano().bar().rest('1');
+    builder.voice(1);
+    for (let i = 0; i < 7; i++) builder.rest('32', { tuplet: { n: 7, of: 8 } });
+    builder.beat('4', [midi(74)]);
+    builder
+      .voice(2)
+      .rest('4')
+      .beat('4', [midi(76)]);
+    const p = plan(builder.build({ ids: 'sequential' }));
+    const rest = p.beats.find((beat) => beat.voice === 0)?.rest;
+    if (!rest) throw new Error('no rest');
+    const { top, bottom } = restBounds(rest, SPACE);
+    for (const beat of p.beats.filter((b) => b.chord)) {
+      const span = headSpan(beat);
+      expect(top >= span.bottom - 1e-6 || bottom <= span.top + 1e-6).toBe(true);
+    }
+  });
+});
+
 describe('rests of two voices', () => {
   it('keeps a lower voice rest clear of the upper voice head at its onset', () => {
     const built = piano()

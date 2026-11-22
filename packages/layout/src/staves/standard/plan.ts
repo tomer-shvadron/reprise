@@ -56,6 +56,7 @@ import {
   type BeamLine,
   type StemDirection,
 } from './rhythm';
+import { TICK_EPSILON, sameTick } from '../../ticks';
 
 /** Options a notation staff is created with. */
 export interface NotationOptions {
@@ -74,6 +75,7 @@ export const MIN_ROOM = 1.5;
 export const MARGIN = 0.3;
 const FINGERING_GAP = 0.4;
 const FINGERING_STEP = 1.1;
+
 /** Gap between two voices' chords at one onset when the later moves right, in spaces. */
 const VOICE_GAP = 0.2;
 
@@ -710,14 +712,16 @@ function separateVoices(
   let sounding = 0;
   for (const voice of voices) if (voice.some(({ chord }) => chord)) sounding += 1;
   if (sounding < 2) return;
-  const byTick = new Map<number, BeatPlan[]>();
+  // Ticks that tuplet sums leave a float apart are one onset: `measure`
+  // draws them at one x, so keying on the exact tick would leave the voices unseparated there.
+  const onsets: BeatPlan[][] = [];
   for (const beat of beats) {
     if (!beat.chord) continue;
-    const at = byTick.get(beat.tick);
+    const at = onsets.find(([first]) => first && sameTick(first.tick, beat.tick));
     if (at) at.push(beat);
-    else byTick.set(beat.tick, [beat]);
+    else onsets.push([beat]);
   }
-  for (const onset of byTick.values()) {
+  for (const onset of onsets) {
     for (const [i, later] of onset.entries()) {
       const shares: { up: HeadPlan; down: HeadPlan }[] = [];
       let moved = true;
@@ -788,7 +792,7 @@ function clearRests(
 ): void {
   const middle = ticksPerBar / 2;
   const inWindow = (tick: number): boolean =>
-    tick >= middle - PPQ / 2 - 1e-6 && tick < middle + PPQ / 2;
+    tick >= middle - PPQ / 2 - TICK_EPSILON && tick < middle + PPQ / 2;
   for (const beat of beats) {
     const { rest } = beat;
     if (!rest || beat.hidden) continue;
@@ -796,10 +800,14 @@ function clearRests(
     const others = beats.filter((other) => other.voice !== beat.voice && !other.hidden);
     // A centred rest is drawn at the bar's middle, so only chords whose heads and stems are
     // drawn about there count: the onsets in the window, or the only onset a narrow bar has.
-    const onsets = new Set(others.flatMap((other) => (other.chord ? [other.tick] : [])));
-    const nearMiddle = (tick: number): boolean => inWindow(tick) || onsets.size === 1;
+    const onsets: number[] = [];
     for (const other of others) {
-      const sameOnset = Math.abs(other.tick - beat.tick) < 1e-6;
+      if (other.chord && !onsets.some((tick) => sameTick(tick, other.tick)))
+        onsets.push(other.tick);
+    }
+    const nearMiddle = (tick: number): boolean => inWindow(tick) || onsets.length === 1;
+    for (const other of others) {
+      const sameOnset = sameTick(other.tick, beat.tick);
       if (other.chord) {
         const span = (rest.centred ? nearMiddle(other.tick) : sameOnset)
           ? chordSpan(other, space)
