@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CHANNEL_CHORUS,
   CHORUS_MIX_AT_FULL,
   EFFECT_FAMILIES,
   EFFECT_PRESETS,
@@ -152,6 +153,15 @@ describe('channelEffects', () => {
       );
     }
     expect(CHORUS_MIX_AT_FULL).toBe(0.4);
+  });
+});
+
+describe('CHANNEL_CHORUS', () => {
+  it('has the rate and depth of the clean preset, so a retune of one is a decision about both', () => {
+    expect(CHANNEL_CHORUS).toEqual({
+      rate: EFFECT_PRESETS.clean.modulation?.rate,
+      depth: EFFECT_PRESETS.clean.modulation?.depth,
+    });
   });
 });
 
