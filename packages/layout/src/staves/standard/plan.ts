@@ -47,7 +47,15 @@ import {
   type ShownAccidental,
 } from './pitch';
 import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
-import { BEND_FRAME, BEND_ROOM, SCRAPE, connections, letterReach } from '../effects';
+import {
+  BEND_FRAME,
+  BEND_ROOM,
+  SCRAPE,
+  connections,
+  graceLinks,
+  graceOrigin,
+  letterReach,
+} from '../effects';
 import {
   beamLine,
   dotsWidth,
@@ -70,6 +78,8 @@ export interface NotationOptions {
 export const GRACE_SCALE = 0.6;
 const GRACE_GAP = 0.3;
 const GRACE_STEP = 0.2;
+/** The step between two grace notes a slur joins: it needs its ends and a 0.2 body. */
+const GRACE_LINKED_STEP = 0.8;
 /** Room every bar keeps above and below the staff, in staff spaces. */
 export const MIN_ROOM = 1.5;
 export const MARGIN = 0.3;
@@ -981,12 +991,26 @@ function planSlurs(
   const reach = tieReach(space) + (lone ? letterReach(space) : 0);
   const slidesIn =
     connections(input.bar).shifts || connections(track.bars[input.barIndex - 1]).shifts;
-  const lastGrace = plan.graces.at(-1);
+  // A slur between grace notes bends down, away from their stems, below the heads it joins.
+  if (track.kind === 'fretted') {
+    for (const { from, to, origin, target } of graceLinks(plan.beat.grace)) {
+      const start = plan.graces[from]?.chord.heads.find(
+        (head) => !head.sounding && head.note === origin,
+      );
+      const end = plan.graces[to]?.chord.heads.find(
+        (head) => !head.sounding && head.note === target,
+      );
+      if (start && end) plan.bottom = Math.max(plan.bottom, Math.max(start.y, end.y) + reach);
+    }
+  }
   for (const head of mainHeads(chord)) {
     const { note } = head;
-    const grace = lastGrace?.chord.heads.find(
-      (other) => !other.sounding && other.note.string === note.string,
-    );
+    const found = graceOrigin(plan.beat.grace ?? [], plan.graces.length, note.string);
+    const grace = found
+      ? plan.graces[found.column]?.chord.heads.find(
+          (other) => !other.sounding && other.note === found.note,
+        )
+      : undefined;
     let ys = [head.y];
     let direction = tieDirection(chord, head, multiVoice);
     if (grace) {
@@ -1038,6 +1062,10 @@ function planGraces(
       reachMiddle: false,
     }),
   );
+  const linked = new Set<number>();
+  for (const { from, to } of graceLinks(graces)) {
+    for (let g = from + 1; g <= to; g++) linked.add(g);
+  }
   let cursor = plan.left - GRACE_GAP * space;
   const placed: GracePlan[] = [];
   for (let g = chords.length - 1; g >= 0; g--) {
@@ -1047,7 +1075,7 @@ function planGraces(
     const bent = bends && (graces[g]?.notes.some((note) => note.bend) ?? false);
     const offset = cursor - chord.right - (bent ? BEND_ROOM.grace * space : 0);
     placed.unshift({ offset, chord, slash: single });
-    cursor = offset + chord.left - GRACE_STEP * space;
+    cursor = offset + chord.left - (linked.has(g) ? GRACE_LINKED_STEP : GRACE_STEP) * space;
     plan.top = Math.min(plan.top, chord.top);
     plan.bottom = Math.max(plan.bottom, chord.bottom);
   }

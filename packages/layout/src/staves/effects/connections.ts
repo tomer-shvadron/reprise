@@ -71,3 +71,57 @@ export function hammerLetter(origin: Note, target: Note): string {
 export function targetIsHigher(origin: Note, target: Note): boolean {
   return target.fret > origin.fret;
 }
+
+/** A hammer-on or pull-off from one grace column's note to a later one's on the same string. */
+export interface GraceLink {
+  from: number;
+  to: number;
+  origin: Note;
+  target: Note;
+}
+
+/**
+ * The note on `string` in the grace column just before `before`, or undefined. Only that column
+ * counts, as for a main note: a link never reaches over a column between, since its slur or
+ * letter would be drawn through what that column holds. A main note passes `graces.length`.
+ */
+export function graceOrigin(
+  graces: readonly { notes: readonly Note[] }[],
+  before: number,
+  string: number,
+): { column: number; note: Note } | undefined {
+  const column = Math.min(before, graces.length) - 1;
+  const note = graces[column]?.notes.find((candidate) => candidate.string === string);
+  return note ? { column, note } : undefined;
+}
+
+/** The links between the grace columns of a beat, one per hammered grace note with an origin. */
+export function graceLinks(graces: readonly { notes: readonly Note[] }[] | undefined): GraceLink[] {
+  const links: GraceLink[] = [];
+  for (const [to, column] of (graces ?? []).entries()) {
+    for (const target of column.notes) {
+      if (!target.hammerPull) continue;
+      const origin = graceOrigin(graces ?? [], to, target.string);
+      if (origin) links.push({ from: origin.column, to, origin: origin.note, target });
+    }
+  }
+  return links;
+}
+
+/**
+ * Of the links between two grace columns going one way, only the outermost carries its letter,
+ * as for the hammer-ons of a beat; `depth` grows outwards.
+ */
+export function lettersOfLinks(
+  links: readonly GraceLink[],
+  direction: (link: GraceLink) => 'up' | 'down',
+  depth: (link: GraceLink) => number,
+): Set<Note> {
+  const best = new Map<string, GraceLink>();
+  for (const link of links) {
+    const key = `${String(link.from)}:${String(link.to)}:${direction(link)}`;
+    const known = best.get(key);
+    if (!known || depth(link) > depth(known)) best.set(key, link);
+  }
+  return new Set([...best.values()].map(({ target }) => target));
+}
