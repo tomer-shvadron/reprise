@@ -1,4 +1,5 @@
 import {
+  barTicks,
   beatTicks,
   createHistory,
   validateScore,
@@ -7,7 +8,7 @@ import {
   type Score,
 } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
-import { array, assert, constantFrom, integer, property } from 'fast-check';
+import { array, assert, boolean, constantFrom, integer, property, tuple } from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import type { SelectionState } from '@/state/selection';
@@ -132,9 +133,12 @@ describe('paste that re-flows across a barline', () => {
     expect(second?.notes[0]?.tie).toBe(true);
   });
 
-  it('copies a vibrato and a palm mute to the continuation, and never a dead note', () => {
-    const { second } = pasteHalf(halfNote({ vibrato: 'wide', palmMute: true, dead: true }));
+  it('copies a vibrato and a palm mute to the continuation, and leaves a dead note out of it', () => {
+    const { second } = pasteHalf(halfNote({ vibrato: 'wide', palmMute: true }));
     expect(second?.notes[0]).toMatchObject({ vibrato: 'wide', palmMute: true, dead: false });
+    const dead = pasteHalf(halfNote({ dead: true }));
+    expect(dead.first?.notes[0]?.dead).toBe(true);
+    expect(dead.second?.rest).toBe(true);
   });
 
   it('slices a whammy curve at the barline', () => {
@@ -316,10 +320,188 @@ describe('paste that re-flows across a barline', () => {
     });
     const parsed = parseClip(text);
     expect(parsed).toBeDefined();
-    if (parsed)
-      expect(
-        'refused' in planPaste(target, parsed, at(target, 4), allTracks(target), 'overwrite'),
-      ).toBe(false);
+    if (!parsed) return;
+    // The same as a clip that has its lengths.
+    const after = run(target, planned(target, parsed, at(target, 4)));
+    expect(shape(beatsOf(after, 0))).toEqual(['1:4', '2:4', '3:4', '4:8', '9:8']);
+    expect(shape(beatsOf(after, 1))).toEqual(['~9:4.']);
+  });
+});
+
+/** A 4/4 bar of these whole-bar voices: `[voice, fret][]` one whole note each. */
+function wholes(bars: [number, number][][]): Score {
+  const b = score().track('guitar');
+  for (const voices of bars) {
+    b.bar();
+    for (const [voice, fret] of voices) {
+      b.voice(voice as 0 | 1).beat('1', [note(voice + 1, fret)]);
+    }
+  }
+  return b.build({ ids: 'sequential' });
+}
+
+describe('paste re-flow, edge cases', () => {
+  const wholeClip = (built: Score, lastBar: number) =>
+    clipOf(built, {
+      cursor: undefined,
+      range: beatsRange(built, { first: 0, bar: 0, lastBar, from: 0, to: 0 }),
+    });
+
+  it('keeps the length of a pickup bar it was copied from', () => {
+    const source = (() => {
+      const b = score().track('guitar');
+      b.bar()
+        .anacrusis()
+        .beat('4', [note(1, 21)]);
+      b.bar()
+        .beat('4', [note(1, 22)])
+        .beat('4', [note(1, 23)]);
+      return b.build({ ids: 'sequential' });
+    })();
+    const range = beatsRange(source, { first: 0, bar: 0, lastBar: 1, from: 0, to: 1 });
+    const clip = clipOf(source, { cursor: undefined, range });
+    expect(clip.tracks[0]?.bars[0]?.ticks).toBe(960);
+    const target = late();
+    const after = run(target, planned(target, clip, at(target, 0)));
+    // The second bar follows the pickup's beat at once, with no gap of three quarters.
+    expect(shape(beatsOf(after, 0))).toEqual(['21:4', '22:4', '23:4', '4:8', '5:8']);
+
+    // A clip from an older build has no length, so the written bar stands in and a gap shows.
+    const older: Clip = {
+      ...clip,
+      tracks: clip.tracks.map((track) => ({
+        ...track,
+        bars: track.bars.map((bar) => {
+          const copy = { ...bar };
+          delete copy.ticks;
+          return copy;
+        }),
+      })),
+    };
+    const gapped = run(target, planned(target, older, at(target, 0)));
+    expect(shape(beatsOf(gapped, 0))).toEqual(['21:4', 'r2.']);
+    expect(shape(beatsOf(gapped, 1)).slice(0, 2)).toEqual(['22:4', '23:4']);
+  });
+
+  it('fills a target pickup bar to the full meter, as its written length says', () => {
+    const target = (() => {
+      const b = score().track('guitar');
+      b.bar()
+        .anacrusis()
+        .beat('4', [note(1, 1)]);
+      b.bar().beat('1', [note(1, 2)]);
+      return b.build({ ids: 'sequential' });
+    })();
+    const source = late();
+    const clip = clipOf(source, {
+      cursor: undefined,
+      range: beatsRange(source, { first: 0, bar: 0, from: 0, to: 1 }),
+    });
+    const after = run(target, planned(target, clip, at(target, 0)));
+    expect(shape(beatsOf(after, 0))).toEqual(['1:4', '2:4']);
+  });
+
+  it('refuses a piece no note value can write, naming the bar', () => {
+    const source = (() => {
+      const b = score().track('guitar');
+      b.bar()
+        .beat('4t', [note(1, 1)])
+        .beat('4', [note(1, 2)]);
+      return b.build({ ids: 'sequential' });
+    })();
+    const target = (() => {
+      const b = score().track('guitar');
+      b.bar()
+        .beat('2', [note(1, 9)])
+        .beat('4t', [note(1, 8)])
+        .beat('4t', [note(1, 8)])
+        .beat('4t', [note(1, 8)]);
+      b.bar();
+      return b.build({ ids: 'sequential' });
+    })();
+    const clip = clipOf(source, {
+      cursor: undefined,
+      range: beatsRange(source, { first: 0, bar: 0, from: 0, to: 1 }),
+    });
+    // The triplet eighth fills 2560 to 3200, so the quarter has 640 ticks left in the bar.
+    expect(refusal(target, clip, at(target, 2))).toBe(
+      'Bar 1: the barline would split a beat into lengths no note value can write',
+    );
+  });
+
+  it('refuses the whole paste when only the second track cannot be laid out', () => {
+    const two = (() => {
+      const b = score().track('guitar');
+      b.bar()
+        .beat('4t', [note(1, 21)])
+        .beat('4t', [note(1, 22)]);
+      b.track('guitar');
+      b.bar()
+        .beat('4t', [note(1, 11)])
+        .beat('4', [note(1, 12)]);
+      return b.build({ ids: 'sequential' });
+    })();
+    const target = (() => {
+      const b = score().track('guitar');
+      b.bar()
+        .beat('2', [note(1, 9)])
+        .beat('4t', [note(1, 8)])
+        .beat('4t', [note(1, 8)])
+        .beat('4t', [note(1, 8)]);
+      b.bar();
+      b.track('guitar');
+      b.bar()
+        .beat('2', [note(1, 9)])
+        .beat('4t', [note(1, 8)])
+        .beat('4t', [note(1, 8)])
+        .beat('4t', [note(1, 8)]);
+      b.bar();
+      return b.build({ ids: 'sequential' });
+    })();
+    const clip = clipOf(two, {
+      cursor: undefined,
+      range: beatsRange(two, { first: 0, last: 1, bar: 0, from: 0, to: 1 }),
+    });
+    // Track 1 alone fits at this tick; track 2's quarter would leave a piece nothing writes.
+    expect(refusal(target, clip, at(target, 2))).toContain('no note value can write');
+    const onlyFirst = { ...clip, tracks: clip.tracks.slice(0, 1) };
+    expect(
+      'refused' in planPaste(target, onlyFirst, at(target, 2), allTracks(target), 'overwrite'),
+    ).toBe(false);
+  });
+
+  it('keeps voices aligned across a bar a voice sits out, and skips the rests in an unused voice', () => {
+    const source = wholes([
+      [
+        [0, 21],
+        [1, 11],
+      ],
+      [[0, 22]],
+      [
+        [0, 23],
+        [1, 13],
+      ],
+    ]);
+    const clip = wholeClip(source, 2);
+    // Into a target whose voice 2 is empty: bar 2's voice 2 stays empty, with no rests written.
+    const empty = wholes([[[0, 1]], [[0, 2]], [[0, 3]]]);
+    const into = run(empty, planned(empty, clip, at(empty, 0)));
+    expect(shape(beatsOf(into, 0, 1))).toEqual(['11:1']);
+    expect(shape(beatsOf(into, 1, 1))).toEqual([]);
+    expect(shape(beatsOf(into, 2, 1))).toEqual(['13:1']);
+    expect(shape(beatsOf(into, 1, 0))).toEqual(['22:1']);
+    // Into a target whose voice 2 holds notes in bar 2: they are overwritten with a rest.
+    const busy = wholes([
+      [[0, 1]],
+      [
+        [0, 2],
+        [1, 8],
+      ],
+      [[0, 3]],
+    ]);
+    const over = run(busy, planned(busy, clip, at(busy, 0)));
+    expect(shape(beatsOf(over, 1, 1))).toEqual(['r1']);
+    expect(shape(beatsOf(over, 2, 1))).toEqual(['13:1']);
   });
 });
 
@@ -328,41 +510,97 @@ describe('paste re-flow keeps the sound', () => {
     minLength: 1,
     maxLength: 4,
   });
+  // Each entry is a note (true) or a rest (false).
+  const sounds = array(boolean(), { minLength: 4, maxLength: 4 });
+  const meters = constantFrom([2, 4], [3, 4], [4, 4], [5, 8], [6, 8], [7, 8]);
 
-  it('merges back into the clip, stays valid, and is one undo step', () => {
+  /** The eighths each meter holds. */
+  const eighths = ([numerator, denominator]: readonly [number, number]) =>
+    numerator * (denominator === 8 ? 1 : 2);
+
+  it('keeps every pasted onset and length, never refuses, stays valid and is one undo step', () => {
     assert(
-      property(lengths, integer({ min: 0, max: 4 }), (clipLengths, stop) => {
-        const source = (() => {
-          const b = score().track('guitar');
-          const bar = b.bar();
-          for (const [i, length] of clipLengths.entries()) {
-            bar.beat(length, [note(1, 20 + i)]);
+      property(
+        lengths,
+        sounds,
+        array(tuple(meters, integer({ min: 1, max: 14 })), { minLength: 1, maxLength: 2 }),
+        integer({ min: 0, max: 13 }),
+        (clipLengths, clipSounds, bars, pick) => {
+          const source = (() => {
+            const b = score().track('guitar');
+            const bar = b.bar();
+            for (const [i, length] of clipLengths.entries()) {
+              if (clipSounds[i]) bar.beat(length, [note(1, 20 + i)]);
+              else bar.rest(length);
+            }
+            return b.build({ ids: 'sequential', validate: false });
+          })();
+          const target = (() => {
+            const b = score().track('guitar');
+            for (const [meter, wanted] of bars) {
+              const [numerator, denominator] = meter;
+              const bar = b.bar().timeSignature(numerator, denominator === 8 ? 8 : 4);
+              for (let i = 0; i < Math.min(wanted, eighths(meter)); i++)
+                bar.beat('8', [note(2, 1)]);
+            }
+            return b.build({ ids: 'sequential' });
+          })();
+          const stops = beatsOf(target, 0).length;
+          const stop = pick % stops;
+          const clip = clipOf(source, {
+            cursor: undefined,
+            range: beatsRange(source, { first: 0, bar: 0, from: 0, to: clipLengths.length - 1 }),
+          });
+          // Plain and dotted values pasted at a beat start in overwrite mode always fit.
+          const plan = planned(target, clip, at(target, stop));
+          const history = createHistory();
+          const after = history.apply(target, plan.command).score;
+          expect(history.steps).toHaveLength(1);
+          expect(validateScore(after)).toEqual(validateScore(target));
+
+          const starts: number[] = [];
+          let origin = 0;
+          for (const masterBar of after.masterBars) {
+            starts.push(origin);
+            origin += barTicks(masterBar);
           }
-          return b.build({ ids: 'sequential', validate: false });
-        })();
-        const clip = clipOf(source, {
-          cursor: undefined,
-          range: beatsRange(source, { first: 0, bar: 0, from: 0, to: clipLengths.length - 1 }),
-        });
-        const target = late();
-        const result = planPaste(target, clip, at(target, stop), allTracks(target), 'overwrite');
-        if ('refused' in result) return;
-        const history = createHistory();
-        const after = history.apply(target, result.command).score;
-        expect(history.steps).toHaveLength(1);
-        expect(validateScore(after)).toEqual(validateScore(target));
-        const merged: number[] = [];
-        for (const beat of after.masterBars.flatMap((_, bar) => beatsOf(after, bar))) {
-          const [first] = beat.notes;
-          if (!first || first.fret < 20) continue;
-          const length = beatTicks(beat);
-          if (first.tie) merged[merged.length - 1] = (merged.at(-1) ?? 0) + length;
-          else merged.push(length);
-        }
-        expect(merged).toEqual(beatsOf(source, 0).map((beat) => beatTicks(beat)));
-        expect(history.undo()?.score).toEqual(target);
-      }),
-      { numRuns: 80 },
+          const anchor = (starts[0] ?? 0) + stop * 480;
+          // Merge each tie chain into one onset and length.
+          const merged: [number, number][] = [];
+          let restTicks = 0;
+          for (const index of after.masterBars.keys()) {
+            let at = starts[index] ?? 0;
+            for (const beat of beatsOf(after, index)) {
+              const [first] = beat.notes;
+              const length = beatTicks(beat);
+              if (beat.rest && at >= anchor) restTicks += length;
+              if (first && first.fret >= 20) {
+                if (first.tie)
+                  merged[merged.length - 1] = [
+                    merged.at(-1)?.[0] ?? 0,
+                    (merged.at(-1)?.[1] ?? 0) + length,
+                  ];
+                else merged.push([at, length]);
+              }
+              at += length;
+            }
+          }
+          const expected: [number, number][] = [];
+          let running = anchor;
+          let clipRests = 0;
+          for (const beat of beatsOf(source, 0)) {
+            const length = beatTicks(beat);
+            if (beat.rest) clipRests += length;
+            else expected.push([running, length]);
+            running += length;
+          }
+          expect(merged).toEqual(expected);
+          // The clip's rests are all there; the target's own rests only add to them.
+          expect(restTicks).toBeGreaterThanOrEqual(clipRests);
+          expect(history.undo()?.score).toEqual(target);
+        },
+      ),
+      { numRuns: 120 },
     );
   });
 });
