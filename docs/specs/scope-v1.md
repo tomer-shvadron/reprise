@@ -78,5 +78,5 @@ On 2026-11-20 the owner decided that the picks of the Phase 5 milestone ([plan](
 | More instruments, and a roadmap for sampled sounds beyond GM                                                   | #348, #349     |
 | ASCII tab export, PNG and SVG export                                                                           | #350, #351     |
 | Chord library, chord diagrams drawn where the file has them                                                    | #352, #278     |
-| Song insights, with the scale and arpeggio overlay on the fretboard                                            | #353           |
+| Song insights, with the scale and arpeggio overlay on the fretboard                                            | #353, #457     |
 | Golpe, pick scrape and wah-wah marks                                                                           | #354, #355     |
