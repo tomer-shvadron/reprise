@@ -620,10 +620,14 @@ describe('createAudioEngine', () => {
     engine.setTempo('percent', 50);
     engine.setCountIn(true);
     engine.setMetronome(true, 0.5);
+    engine.setCountInVolume(0.4);
     engine.setMasterVolume(0.5);
     engine.setTrack(id, { mute: true });
     expect(() => {
       engine.setMasterVolume(1.5);
+    }).toThrow(RangeError);
+    expect(() => {
+      engine.setCountInVolume(-0.1);
     }).toThrow(RangeError);
     expect(() => {
       engine.setTempo('bpm', 0);

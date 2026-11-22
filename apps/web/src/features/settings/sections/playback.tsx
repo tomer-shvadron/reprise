@@ -1,5 +1,6 @@
 import {
   COUNT_IN_SETTING,
+  COUNT_IN_VOLUME_SETTING,
   FOLLOW_PLAYHEAD_SETTING,
   METRONOME_VOLUME_SETTING,
 } from '@/state/app-settings';
@@ -14,6 +15,13 @@ function Playback() {
         def={COUNT_IN_SETTING}
         label="Count-in"
         description="Click one bar before playback starts."
+      />
+      <SliderSetting
+        def={COUNT_IN_VOLUME_SETTING}
+        label="Count-in volume"
+        min={0}
+        max={1}
+        step={0.05}
       />
       <SliderSetting
         def={METRONOME_VOLUME_SETTING}
@@ -34,6 +42,11 @@ function Playback() {
 export const playbackSection: SettingsSection = {
   id: 'playback',
   title: 'Playback and practice',
-  settings: [COUNT_IN_SETTING, METRONOME_VOLUME_SETTING, FOLLOW_PLAYHEAD_SETTING],
+  settings: [
+    COUNT_IN_SETTING,
+    COUNT_IN_VOLUME_SETTING,
+    METRONOME_VOLUME_SETTING,
+    FOLLOW_PLAYHEAD_SETTING,
+  ],
   Component: Playback,
 };

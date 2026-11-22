@@ -10,6 +10,7 @@ import {
   GM_TIER_BYPASS_SETTING,
   MASTER_VOLUME_SETTING,
   MEMORY_BUDGET_SETTING,
+  COUNT_IN_VOLUME_SETTING,
   METRONOME_ON_SETTING,
   METRONOME_VOLUME_SETTING,
 } from '@/state/app-settings';
@@ -51,6 +52,7 @@ describe('installTransport', () => {
   it('applies the stored preferences to the audio service on hydration', async () => {
     const backend = createMemorySettingsBackend([
       [COUNT_IN_SETTING.key, true],
+      [COUNT_IN_VOLUME_SETTING.key, 0.45],
       [METRONOME_ON_SETTING.key, true],
       [METRONOME_VOLUME_SETTING.key, 0.4],
       [MASTER_VOLUME_SETTING.key, 0.5],
@@ -61,6 +63,7 @@ describe('installTransport', () => {
     const services = createTestServices({ settings });
     await settings.attach(backend);
     expect(services.fakeAudio.setCountIn).toHaveBeenLastCalledWith(true);
+    expect(services.fakeAudio.setCountInVolume).toHaveBeenLastCalledWith(0.45);
     expect(services.fakeAudio.setMetronome).toHaveBeenLastCalledWith(true, 0.4);
     expect(services.fakeAudio.setMasterVolume).toHaveBeenLastCalledWith(0.5);
     expect(services.fakeAudio.setGmTierBypass).toHaveBeenLastCalledWith(false);
@@ -71,6 +74,7 @@ describe('installTransport', () => {
     const { settings } = await storeWith();
     const services = createTestServices({ settings });
     expect(services.fakeAudio.setCountIn).toHaveBeenCalledWith(false);
+    expect(services.fakeAudio.setCountInVolume).toHaveBeenCalledWith(0.7);
     expect(services.fakeAudio.setMetronome).toHaveBeenCalledWith(false, 0.7);
     expect(services.fakeAudio.setMasterVolume).toHaveBeenCalledWith(1);
     expect(services.fakeAudio.setGmTierBypass).toHaveBeenCalledWith(true);
@@ -83,17 +87,23 @@ describe('installTransport', () => {
     mirrorAudio(services);
 
     services.audio.setCountIn(true);
+    services.audio.setCountInVolume(0.35);
     services.audio.setMetronome(true, 0.3);
     services.audio.setMasterVolume(0.6);
     services.audio.setGmTierBypass(false);
     services.audio.setMemoryBudget(128 * MB);
     expect(settings.get(COUNT_IN_SETTING)).toBe(true);
+    expect(settings.get(COUNT_IN_VOLUME_SETTING)).toBe(0.35);
     expect(settings.get(METRONOME_ON_SETTING)).toBe(true);
     expect(settings.get(METRONOME_VOLUME_SETTING)).toBe(0.3);
     expect(settings.get(MASTER_VOLUME_SETTING)).toBe(0.6);
     expect(settings.get(GM_TIER_BYPASS_SETTING)).toBe(false);
     expect(settings.get(MEMORY_BUDGET_SETTING)).toBe(128 * MB);
     expect(backend.rows.get(COUNT_IN_SETTING.key)).toBe(true);
+
+    services.fakeAudio.setCountInVolume.mockClear();
+    settings.set(COUNT_IN_VOLUME_SETTING, 0.2);
+    expect(services.fakeAudio.setCountInVolume).toHaveBeenCalledExactlyOnceWith(0.2);
 
     services.fakeAudio.setCountIn.mockClear();
     settings.set(COUNT_IN_SETTING, false);
