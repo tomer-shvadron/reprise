@@ -342,6 +342,12 @@ test('Re-layout after a segment-break-moving edit, continuous', RELAYOUT_BENCH, 
 
 const EDIT_REACH = VERTICAL_EDIT_REACH;
 const FOLLOW_UP_REACH = VERTICAL_FOLLOW_UP_REACH;
+/**
+ * The segments the view has mounted around an edit at zoom 1 on a 1 920 px pane: three visible
+ * (640 px each, the caret anywhere in view) and one of overscan each side, so up to seven around
+ * the edited one. The app passes its real mounted range as `verticalWindow`.
+ */
+const MOUNTED_AROUND_EDIT = { before: 3, after: 4 };
 
 /**
  * Letting a note ring adds a lane to its track's staff in every segment, so it changes the shared
@@ -382,9 +388,10 @@ async function heightBench(
   const cache = new LayoutCache();
   let score = longScore();
   const caseOptions = build(score);
-  layout(score, caseOptions, cache);
+  let last = layout(score, caseOptions, cache);
   let count = 0;
   let dirtyBars: string[] = [];
+  let verticalWindow: { start: number; end: number } | undefined;
   const edits: {
     ms: number;
     rendered: number;
@@ -408,11 +415,8 @@ async function heightBench(
           if (verticalReach !== undefined && count > 0) {
             for (;;) {
               const began = now();
-              const { metrics } = layout(
-                score,
-                { ...caseOptions, verticalReach: FOLLOW_UP_REACH },
-                cache,
-              );
+              last = layout(score, { ...caseOptions, verticalReach: FOLLOW_UP_REACH }, cache);
+              const { metrics } = last;
               const took = now() - began;
               convergeMs += took;
               calls.push(took);
@@ -424,15 +428,20 @@ async function heightBench(
           count += 1;
           score = next.score;
           dirtyBars = next.change.touchedBars;
+          const barIndex = score.masterBars.findIndex(({ id }) => id === dirtyBars[0]);
+          const at = last.systems.findIndex(
+            ({ bars }) => bars.start <= barIndex && barIndex < bars.end,
+          );
+          verticalWindow = {
+            start: Math.max(0, at - MOUNTED_AROUND_EDIT.before),
+            end: at + MOUNTED_AROUND_EDIT.after,
+          };
         },
       },
       () => {
         const began = now();
-        const { systems, metrics } = layout(
-          score,
-          { ...caseOptions, dirtyBars, verticalReach },
-          cache,
-        );
+        last = layout(score, { ...caseOptions, dirtyBars, verticalReach, verticalWindow }, cache);
+        const { systems, metrics } = last;
         const ms = now() - began;
         edits.push({
           ms,
@@ -455,7 +464,9 @@ async function heightBench(
     if (verticalReach === undefined) expect(edit.rendered).toBeGreaterThan(EDIT_REACH + 3);
     else {
       expect(edit.stale, `${name}: an edit left nothing stale`).toBeGreaterThan(0);
-      expect(edit.rendered).toBeLessThanOrEqual(verticalReach + 3);
+      expect(edit.rendered).toBeLessThanOrEqual(
+        verticalReach + MOUNTED_AROUND_EDIT.before + MOUNTED_AROUND_EDIT.after + 3,
+      );
     }
   }
   const p50 = median(times);

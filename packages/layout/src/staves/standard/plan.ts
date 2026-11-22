@@ -13,7 +13,7 @@ import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
 import { hiddenVoices } from '../hidden-voices';
 import type { StaffBar } from '../staff-module';
-import { bendSpan, type BendPlan, type TargetObstacle } from './bend-targets';
+import { TARGET, bendSpan, type BendPlan, type TargetObstacle } from './bend-targets';
 import {
   crossesLedger,
   headEdges,
@@ -294,7 +294,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   const noteVoices = bar.voices.filter(hasNotes).length;
   // A secondary voice that is one whole-bar rest beside a voice with notes is not drawn and does
   // not make the bar two-voice; any other voice of rests only counts (see `hiddenVoices`).
-  const hiddenSet = hiddenVoices(bar, barTicks(input.masterBar));
+  const hiddenSet = hiddenVoices(bar, input.masterBar);
   const counted = bar.voices.filter(
     (voice, i) => !hiddenSet.has(i) && voice.beats.some(hasContent),
   ).length;
@@ -330,14 +330,18 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
           ghost: false,
           ...(shown && { accidental: shown }),
         };
-        const group = byPosition.get(target.position) ?? [];
+        // Targets within `snap` of a group's position join it, as the integer positions would.
+        const at =
+          [...byPosition.keys()].find((k) => Math.abs(k - target.position) <= TARGET.snap) ??
+          target.position;
+        const group = byPosition.get(at) ?? [];
         const twin = group.find(
           (other) => other.position === entry.position && other.alter === entry.alter,
         );
         if (!twin) group.push(entry);
         // The walk signs one of the twins: the merged head keeps whichever sign it printed.
         else if (!twin.accidental && entry.accidental) twin.accidental = entry.accidental;
-        byPosition.set(target.position, group);
+        byPosition.set(at, group);
       }
       const points = [...(note.bend?.points ?? [])].sort((a, b) => a.position - b.position);
       if (Math.max(0, ...points.map((point) => point.value)) <= 0) continue;

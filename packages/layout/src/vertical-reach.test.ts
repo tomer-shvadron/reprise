@@ -191,6 +191,27 @@ describe.each(CASES)('verticalReach, continuous %s', (_name, build) => {
     expect(follow.metrics.staleSystems).toBe(first.metrics.staleSystems - rendered(follow));
   });
 
+  it('also redraws every stale segment in verticalWindow, wherever it is, and converges to cold', () => {
+    const { cache, first } = warm();
+    const { score: edited, touched } = ring(score, bar, true);
+    const at = first.systems.findIndex((s) => s.bars.start <= bar && bar < s.bars.end);
+    const window = { start: at + 8, end: at + 12 };
+    const after = layout(
+      edited,
+      { ...options, verticalReach: 1, verticalWindow: window, dirtyBars: touched },
+      cache,
+    );
+    for (let i = window.start; i < window.end; i++) {
+      const was = first.primitives[first.systems[i]?.primitives.start ?? 0];
+      expect(after.primitives[after.systems[i]?.primitives.start ?? 0]).not.toBe(was);
+    }
+    // Segments between the edit and the window are still stale.
+    expect(after.metrics.staleSystems).toBeGreaterThan(0);
+    expect(rendered(after)).toBeLessThanOrEqual(1 + (window.end - window.start) + 3);
+    const calls = converge(edited, { ...options, verticalReach: 1 }, cache);
+    expectCold(calls.at(-1) ?? after, edited, first, score);
+  });
+
   it('ignores the option without a cache', () => {
     const { score: edited } = ring(score, bar, true);
     const cold = layout(edited, { ...options, verticalReach: undefined });
