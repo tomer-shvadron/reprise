@@ -272,11 +272,12 @@ export function chordsUsed(
   const partsOf = (from: 'written' | 'inferred') =>
     spans
       .map((span) => {
-        const raw =
+        const events = collapse(
           from === 'written'
             ? writtenEvents(outline, span)
-            : inferred.filter((e) => e.bar >= span.fromBar && e.bar <= span.toBar);
-        return { span, raw, events: collapse(raw) };
+            : inferred.filter((e) => e.bar >= span.fromBar && e.bar <= span.toBar),
+        );
+        return { span, events };
       })
       .filter((part) => part.events.length > 0);
   // The few names a file writes still stand when its notes name no chord (an arpeggiated part).
@@ -315,9 +316,10 @@ export function chordsUsed(
         sections.length > 0 ? span.name : undefined,
       ),
     ),
-    // The uncollapsed events: a repeated chord far from its first mark is still a chord there.
+    // Song-wide and uncollapsed: a section start must not restart a hold (`writtenEvents` re-marks
+    // the held chord there for its weights), and a repeat far from its first mark is a chord there.
     timeline: chordTimeline(
-      parts.flatMap(({ raw }) => raw),
+      source === 'written' ? outline.chords : inferred,
       outline,
       MAX_HOLD_BARS,
     ),

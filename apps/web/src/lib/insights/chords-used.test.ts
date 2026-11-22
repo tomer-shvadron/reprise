@@ -347,3 +347,81 @@ describe('chords by section', () => {
     expect(shares['Am']).toBeCloseTo(1 / 11);
   });
 });
+
+describe('the chord timeline', () => {
+  const quiet = (count: number): SongBar[] =>
+    Array.from({ length: count }, () => ({ chord: chord(0) }));
+  const named = (pc: number, name: string, minor = false): SongBar => ({
+    chord: chord(pc, minor),
+    name,
+  });
+  const spans = (bars: SongBar[], options = {}) =>
+    used(bars, options).timeline.map(({ name, bar, endBar }) => [name, bar, endBar]);
+
+  it('follows the rhythm part when the notes name the chords', () => {
+    const bars = repeat(loop(), 2).map(({ chord: voicing }) => ({ chord: voicing }));
+    const result = used(bars);
+    expect(result.source).toBe('inferred');
+    expect(spans(bars)).toEqual([
+      ['Am', 0, 1],
+      ['F', 1, 2],
+      ['C', 2, 3],
+      ['G', 3, 4],
+      ['Am', 4, 5],
+      ['F', 5, 6],
+      ['C', 6, 7],
+      ['G', 7, 8],
+    ]);
+  });
+
+  it('falls back to the few written marks when the notes give no chord', () => {
+    expect(spans([named(0, 'C')], { arpeggiate: true })).toEqual([['C', 0, 1]]);
+  });
+
+  it('keeps a repeat of a chord after a gap longer than the hold', () => {
+    const bars = [
+      named(0, 'C'),
+      named(5, 'F'),
+      named(7, 'G'),
+      named(A, 'Am', true),
+      ...quiet(16),
+      named(A, 'Am', true),
+    ];
+    expect(spans(bars)).toEqual([
+      ['C', 0, 1],
+      ['F', 1, 2],
+      ['G', 2, 3],
+      ['Am', 3, 11],
+      ['Am', 20, 21],
+    ]);
+  });
+
+  it('does not restart a hold at a section start', () => {
+    const head = [named(0, 'C'), named(5, 'F'), named(7, 'G'), named(A, 'Am', true)];
+    const sectioned = (middle: SongBar[], last: SongBar): SongBar[] => {
+      const bars = [...head, ...middle, ...quiet(40 - head.length - middle.length)];
+      bars[20] = { ...bars[20], chord: bars[20]?.chord ?? chord(0), section: 'B' };
+      bars[0] = { ...(bars[0] as SongBar), section: 'A' };
+      bars[30] = last;
+      return bars;
+    };
+    // Am's hold ends at bar 11; the second section (bar 20) must not bring it back.
+    expect(spans(sectioned([], named(4, 'E')))).toEqual([
+      ['C', 0, 1],
+      ['F', 1, 2],
+      ['G', 2, 3],
+      ['Am', 3, 11],
+      ['E', 30, 38],
+    ]);
+    // A mark at bar 15 holds for 8 bars, not on to the section's far side.
+    const late = sectioned(quiet(11), named(A, 'Am', true));
+    expect(spans(late.map((bar, i) => (i === 15 ? named(A, 'Am', true) : bar)))).toEqual([
+      ['C', 0, 1],
+      ['F', 1, 2],
+      ['G', 2, 3],
+      ['Am', 3, 11],
+      ['Am', 15, 23],
+      ['Am', 30, 38],
+    ]);
+  });
+});
