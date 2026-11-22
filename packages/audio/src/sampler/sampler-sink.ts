@@ -13,7 +13,7 @@ import { scrapeInstrument } from '../articulations/scrape';
 import { levelAt } from '../articulations/tie-chain';
 import { noteVelocity } from '../articulations/velocity';
 import type { FilterSettings } from './voice';
-import type { HitEvent, InstrumentSink, MixEvent, NoteEvent } from '../sink';
+import type { HitEvent, InstrumentSink, MixEvent, NoteEvent, WahEvent } from '../sink';
 import type { RegionMap, RegionSelection } from './region-map';
 import type { Instrument, Sampler, TrackParams, VoiceHandle } from './sampler';
 
@@ -366,6 +366,12 @@ export function createSamplerSink(
     voice?.release(event.when + length);
   }
 
+  /** The wah pedal on the track's strip; the lane already holds only fretted tracks. */
+  function wah(event: WahEvent): void {
+    if (event.track.kind !== 'fretted') return;
+    sampler.setWah(event.track.id, event.state, event.when, event.restore);
+  }
+
   return {
     noteOn(event: NoteEvent): void {
       const { track, beat, note } = event;
@@ -411,6 +417,7 @@ export function createSamplerSink(
     },
     mix,
     hit,
+    wah,
     allNotesOff(when: number): void {
       chains.clear();
       counters = new WeakMap();

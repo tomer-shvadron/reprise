@@ -77,10 +77,12 @@ export * from './articulations/index';
 export * from './samples/index';
 
 // Tied continuations and mixer changes on beats (#65)
-export type { HitEvent, MixEvent } from './sink';
-export type { RecordedHit, RecordedMix } from './recording-sink';
-export type { ScheduledContinuation, ScheduledHit, ScheduledMix } from './scheduler';
+export type { HitEvent, MixEvent, WahEvent } from './sink';
+export type { RecordedHit, RecordedMix, RecordedWah } from './recording-sink';
+export type { ScheduledContinuation, ScheduledHit, ScheduledMix, ScheduledWah } from './scheduler';
 export { hitsInRange, mixesInRange } from './timeline';
+export { wahChangesInRange, wahLane, wahStateAt } from './wah-lane';
+export type { WahOnset, WahPoint, WahState } from './wah-lane';
 export type { HitOnset, MixOnset, TiedContinuation } from './timeline';
 
 // SFZ loader and HQ tier packs (WP-090)

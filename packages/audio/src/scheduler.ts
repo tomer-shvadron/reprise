@@ -17,7 +17,10 @@ import {
   countInTicks,
   mixesInRange,
   notesInRange,
+  passIndexAt,
 } from './timeline';
+import { wahRestores } from './wah-lane';
+import type { WahOnset } from './wah-lane';
 import type {
   HitOnset,
   MixOnset,
@@ -70,6 +73,13 @@ export interface ScheduledHit extends HitOnset {
   when: number;
 }
 
+/** A change of a track's wah pedal, or its state at a run's start, timed on the context clock. */
+export interface ScheduledWah extends WahOnset {
+  /** Never earlier than `now`: a late change still applies, from now on. */
+  when: number;
+  restore: boolean;
+}
+
 export interface LoopCrossing {
   /** Loop wraps so far, from 1. */
   pass: number;
@@ -114,6 +124,11 @@ export interface Advanced {
   mixes: ScheduledMix[];
   /** Golpe beats, rests included; a run start does not replay the ones before it. */
   hits: ScheduledHit[];
+  /**
+   * Wah changes, rests and tied continuations passed over; at a run start, first, each wah
+   * track's state there.
+   */
+  wahs: ScheduledWah[];
   clicks: ScheduledClick[];
   /** Anchors this call started, in time order; the cursor follows them. */
   anchors: Anchor[];
@@ -223,6 +238,7 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
   const notes: ScheduledNote[] = [];
   const mixes: ScheduledMix[] = [];
   const hits: ScheduledHit[] = [];
+  const wahs: ScheduledWah[] = [];
   const clicks: ScheduledClick[] = [];
   const anchors: Anchor[] = [];
   let next = run;
@@ -261,7 +277,16 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
       };
       anchors.push(wrapped);
       if (crossed)
-        return { run: next, notes, mixes, hits, clicks, anchors, loop: { pass: loopPasses, when } };
+        return {
+          run: next,
+          notes,
+          mixes,
+          hits,
+          wahs,
+          clicks,
+          anchors,
+          loop: { pass: loopPasses, when },
+        };
       continue;
     }
 
@@ -280,11 +305,28 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
       for (const mix of mixesInRange(timeline, 0, next.runStartTick, before)) {
         mixes.push({ ...mix, mix: settled(mix.mix), when, secondsPerTick });
       }
+      // The pedal too, even when off: a seek out of a passage must open the filter's wet path.
+      const pass = timeline.map.passes[passIndexAt(timeline, next.runStartTick)];
+      for (const restore of wahRestores(timeline, next.runStartTick)) {
+        wahs.push({
+          ...restore,
+          tick: next.runStartTick,
+          sequenceIndex: passIndexAt(timeline, next.runStartTick),
+          masterBarIndex: pass?.masterBarIndex ?? 0,
+          passIndex: pass?.passIndex ?? 0,
+          when,
+          restore: true,
+        });
+      }
     }
     const beatEvents = beatEventsInRange(timeline, next.cursorTick, target, range);
     for (const mix of beatEvents.mixes) {
       const when = Math.max(timeAtTick(timeline, anchor, mix.tick), now);
       mixes.push({ ...mix, when, secondsPerTick: secondsPerTickAt(mix.tick) });
+    }
+    for (const wah of beatEvents.wahs) {
+      const when = Math.max(timeAtTick(timeline, anchor, wah.tick), now);
+      wahs.push({ ...wah, when, restore: false });
     }
     for (const hit of beatEvents.hits) {
       const when = fit(timeAtTick(timeline, anchor, hit.tick));
@@ -321,5 +363,5 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
     next = { ...next, cursorTick: target };
     if (target < limit) break;
   }
-  return { run: next, notes, mixes, hits, clicks, anchors, loop: undefined };
+  return { run: next, notes, mixes, hits, wahs, clicks, anchors, loop: undefined };
 }

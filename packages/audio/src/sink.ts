@@ -1,5 +1,7 @@
 import type { Beat, Golpe, MixerChange, Note, Track } from '@reprise/model';
 
+import type { WahState } from './wah-lane';
+
 /** One note the scheduler wants sounded, with everything a sampler needs to voice it. */
 export interface NoteEvent {
   track: Track;
@@ -81,6 +83,24 @@ export interface HitEvent {
 }
 
 /**
+ * A change of a track's wah pedal: engaged closed or open from `when`, or off. Wah is state, like
+ * a mixer change, so a run start sends the state in effect there (`restore`).
+ */
+export interface WahEvent {
+  track: Track;
+  trackIndex: number;
+  state: WahState;
+  /** `AudioContext` time of the change; `currentTime` when handed out late; the run's start for a restore. */
+  when: number;
+  playbackTick: number;
+  sequenceIndex: number;
+  masterBarIndex: number;
+  passIndex: number;
+  /** The state at a run's start, set at once with no glide or fade. */
+  restore: boolean;
+}
+
+/**
  * What the scheduler drives. The sampler (WP-031) implements it with real samples; `ToneSink`
  * and `RecordingSink` are the stand-ins until then.
  *
@@ -100,6 +120,12 @@ export interface HitEvent {
  * - `hit` is called for every beat carrying a golpe, in the same window as the notes at its tick.
  *   A hit is an event, not state: it is not replayed when a run starts partway through the beat.
  *   `allNotesOff` cancels a hit like a note.
+ * - `wah` is called for every change of a fretted track's wah pedal, in the same window as the
+ *   notes at its tick. A wah is on from a marked beat (`BeatEffects.wah`) until the first played
+ *   note without a mark; rests and tied notes hold it. When a run starts (play, seek, a loop wrap)
+ *   each wah track's state there is sent first, `off` included, with `restore` set, so a seek
+ *   into a passage sounds as it does when played through. `allNotesOff` cancels the changes
+ *   scheduled after it, like a mixer change.
  * - `allNotesOff(when)` cancels every note sounding at `when` and every note already scheduled
  *   to start at or after it, by stopping their source nodes (`stop(when)` is valid before a
  *   node's start time), not only by muting them, and every mixer change scheduled after it (a
@@ -110,6 +136,7 @@ export interface InstrumentSink {
   noteOn(event: NoteEvent): void;
   mix?(event: MixEvent): void;
   hit?(event: HitEvent): void;
+  wah?(event: WahEvent): void;
   allNotesOff(when: number): void;
   dispose?(): void;
 }

@@ -8,6 +8,8 @@ import {
   tieChainOf,
   tieOriginOf,
 } from '@reprise/model';
+import { wahChangesInRange } from './wah-lane';
+import type { WahOnset } from './wah-lane';
 import type {
   Beat,
   Golpe,
@@ -345,15 +347,16 @@ export function notesInRange(
 /**
  * The beat-level events in `[from, to)`, from `runStartTick` up to `limitTick`, found in one
  * walk of the beats: every beat carrying `Beat.mix` and every beat carrying `BeatEffects.golpe`,
- * rests and tied continuations included, which send no note. The next beat-level effect joins
- * this walk rather than adding another.
+ * rests and tied continuations included, which send no note, and the wah changes. A wah is a
+ * state that depends on the beats before it, so `wahLane` walks the song once, memoised, and the
+ * window only searches it. The next beat-level effect joins this walk rather than adding another.
  */
 export function beatEventsInRange(
   timeline: Timeline,
   from: number,
   to: number,
   options: { runStartTick: number; limitTick: number },
-): { mixes: MixOnset[]; hits: HitOnset[] } {
+): { mixes: MixOnset[]; hits: HitOnset[]; wahs: WahOnset[] } {
   const mixes: MixOnset[] = [];
   const hits: HitOnset[] = [];
   const low = Math.max(from, options.runStartTick);
@@ -390,6 +393,7 @@ export function beatEventsInRange(
   return {
     mixes: mixes.sort((x, y) => x.tick - y.tick),
     hits: hits.sort((x, y) => x.tick - y.tick),
+    wahs: wahChangesInRange(timeline, from, to, options),
   };
 }
 

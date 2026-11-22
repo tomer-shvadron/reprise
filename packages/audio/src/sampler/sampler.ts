@@ -9,6 +9,7 @@ import { ChannelStrip, MasterBus, applySolo } from './channel-strip';
 import type { StripEffects } from './channel-strip';
 import type { Region, RegionMap, RegionSelection, SampleRef } from './region-map';
 import type { SampleSource } from './sample-source';
+import type { WahState } from '../wah-lane';
 import { Voice, velocityGain } from './voice';
 import type { FilterSettings } from './voice';
 import { VoicePool } from './voice-pool';
@@ -356,6 +357,11 @@ export class Sampler {
       timing?.ramp,
     );
     applySolo(this.#strips());
+  }
+
+  /** A wah pedal change on the track's strip at `at`; see `ChannelStrip.setWah`. */
+  setWah(id: Id, state: WahState, at: number, restore = false): void {
+    this.#state(id).strip.setWah(state, at, restore);
   }
 
   /** Resolves when every sample these notes need is resident. */

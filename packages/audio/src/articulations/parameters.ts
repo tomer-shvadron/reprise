@@ -85,6 +85,26 @@ export const ARTICULATION = {
     restVelocity: DYNAMICS_VELOCITY.mf,
   },
 
+  /**
+   * The wah pedal (`effects/wah.ts`): a band-pass swept between two centre frequencies, closed
+   * (heel down, dark) and open (toe down, bright). Reprise's own playback of the o and + marks:
+   * Guitar Pro 8 treats them as notation only.
+   */
+  wah: {
+    /** Centre frequency in Hz with the pedal closed (+). */
+    closed: 400,
+    /** Centre frequency in Hz with the pedal open (o). */
+    open: 2200,
+    q: 4,
+    /** Time constant of the glide between two marks, in seconds: 95% of the way in 3x this. */
+    glide: 0.04,
+    /**
+     * Gain after the band-pass, so a 110 Hz sawtooth swept to 940 Hz (the geometric middle of the
+     * sweep) keeps its level to within 1.6 dB: the filter alone leaves about -15.6 dB of it.
+     */
+    makeup: 5,
+  },
+
   staccatoFraction: 0.5,
   /** Where fade-in, fade-out and volume swell start or end. */
   fadeFloor: -48,

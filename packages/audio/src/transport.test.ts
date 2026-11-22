@@ -974,3 +974,151 @@ describe('Transport (OfflineAudioContext)', () => {
     }
   });
 });
+
+describe('Transport wah', () => {
+  const closed = { effects: { wah: 'closed' as const } };
+  const open = { effects: { wah: 'open' as const } };
+  const BAR = 4 * PPQ;
+
+  /** Bar 1 closes the pedal on beat 3, bar 2 holds it over rests and plays an open beat, bar 3 ends it. */
+  function passage(): Score {
+    return score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)], closed)
+      .beat('4', [note(1, 0)], closed)
+      .bar()
+      .rest('2')
+      .beat('4', [note(1, 0)], open)
+      .rest('4')
+      .bar()
+      .beat('2', [note(1, 0)])
+      .rest('2')
+      .build();
+  }
+
+  const summary = (h: Harness, until = Number.POSITIVE_INFINITY) =>
+    h.sink.wahs
+      .filter((w) => w.when < until)
+      .map((w) => [w.state, w.playbackTick, w.restore, +w.when.toFixed(3)]);
+
+  it('restores the pedal off at the start, then sends each change at its beat', async () => {
+    const h = await harness(passage(), 7);
+    h.engine.play();
+    await h.render();
+
+    expect(summary(h)).toEqual([
+      ['off', 0, true, 0.1],
+      ['closed', 2 * PPQ, false, 1.1],
+      ['open', BAR + 2 * PPQ, false, 3.1],
+      ['off', 2 * BAR, false, 4.1],
+    ]);
+    for (const wah of h.sink.wahs) expect(wah.when).toBeGreaterThanOrEqual(wah.calledAt);
+    expect(h.sink.wahs[1]).toMatchObject({ masterBarIndex: 0, trackIndex: 0 });
+  });
+
+  it('sends a score with no marks no wah at all', async () => {
+    const h = await harness(bars(2), 4.5);
+    h.engine.play();
+    await h.render();
+    expect(h.sink.wahs).toEqual([]);
+  });
+
+  it('restores the state in effect when playback starts inside a passage, or after one', async () => {
+    const inside = await harness(passage(), 4);
+    inside.engine.play(BAR);
+    await inside.render();
+    expect(summary(inside).slice(0, 2)).toEqual([
+      ['closed', BAR, true, 0.1],
+      ['open', BAR + 2 * PPQ, false, 1.1],
+    ]);
+
+    const after = await harness(passage(), 3);
+    after.engine.play(2 * BAR);
+    await after.render();
+    // The first note of the last bar ends the passage and is itself a change.
+    expect(summary(after)).toEqual([
+      ['open', 2 * BAR, true, 0.1],
+      ['off', 2 * BAR, false, 0.1],
+    ]);
+  });
+
+  it('restores the state again on a seek, off the passage included', async () => {
+    const h = await harness(passage(), 9);
+    h.engine.play();
+    await h.render([
+      {
+        at: 1.5,
+        run: () => {
+          h.engine.seek(BAR);
+        },
+      },
+      {
+        at: 3.2,
+        run: () => {
+          h.engine.seek(0);
+        },
+      },
+    ]);
+
+    const restores = h.sink.wahs.filter((w) => w.restore);
+    expect(restores.map((w) => w.state)).toEqual(['off', 'closed', 'off']);
+    expect(restores.map((w) => w.playbackTick)).toEqual([0, BAR, 0]);
+    // The changes the first run had scheduled but not reached are not sent before the seek.
+    for (const wah of h.sink.wahs) expect(wah.when).toBeGreaterThanOrEqual(wah.calledAt);
+  });
+
+  it('cuts the sink on stop and starts the next run with a restore', async () => {
+    const h = await harness(passage(), 7);
+    h.engine.play();
+    await h.render([
+      {
+        at: 1.5,
+        run: () => {
+          h.engine.stop();
+        },
+      },
+      {
+        at: 2,
+        run: () => {
+          h.engine.play(BAR);
+        },
+      },
+    ]);
+
+    expect(h.sink.cuts.some((cut) => cut.kind === 'notes' && cut.calledAt >= 1.5)).toBe(true);
+    // Nothing from the stopped run past the stop: the change at 3.1 s was never handed out.
+    const firstRun = h.sink.wahs.filter((w) => w.calledAt < 2);
+    expect(firstRun.map((w) => w.state)).toEqual(['off', 'closed']);
+    expect(h.sink.wahs.find((w) => w.calledAt >= 2)).toMatchObject({
+      state: 'closed',
+      restore: true,
+      playbackTick: BAR,
+    });
+  });
+
+  it('restores the state before the loop on each wrap, not the one the pass ended in', async () => {
+    const song = passage();
+    const [, second, third] = song.masterBars;
+    if (!second || !third) throw new Error('fixture');
+    const h = await harness(song, 9);
+    h.engine.setLoop({ startBar: second.id, endBar: third.id });
+    h.engine.play();
+    await h.render();
+
+    // Each pass starts with the pedal closed (bar 1 closed it) and ends with it off. The render
+    // stops at 9 s, so the third pass's change at 9.1 s is not part of it.
+    expect(summary(h, 9)).toEqual([
+      ['closed', BAR, true, 0.1],
+      ['open', BAR + 2 * PPQ, false, 1.1],
+      ['off', 2 * BAR, false, 2.1],
+      ['closed', BAR, true, 4.1],
+      ['open', BAR + 2 * PPQ, false, 5.1],
+      ['off', 2 * BAR, false, 6.1],
+      ['closed', BAR, true, 8.1],
+    ]);
+  });
+});

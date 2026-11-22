@@ -212,6 +212,19 @@ export function createTransport(options: TransportOptions): Transport {
           passIndex: mix.passIndex,
         });
       }
+      for (const wah of result.wahs) {
+        sink.wah?.({
+          track: wah.track,
+          trackIndex: wah.trackIndex,
+          state: wah.state,
+          when: wah.when,
+          playbackTick: wah.tick,
+          sequenceIndex: wah.sequenceIndex,
+          masterBarIndex: wah.masterBarIndex,
+          passIndex: wah.passIndex,
+          restore: wah.restore,
+        });
+      }
       for (const hit of result.hits) {
         sink.hit?.({
           track: hit.track,
