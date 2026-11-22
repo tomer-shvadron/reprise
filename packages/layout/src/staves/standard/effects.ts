@@ -770,7 +770,10 @@ function bendFrame(
   const { need = 0, tail = 0 } = targets ?? {};
   const ideal = Math.max(stop - tail, x0 + Math.max(min * space, need));
   // A squeezed bar gives the frame less than the heads asked for: it still stops at the next onset.
-  const xEnd = targets ? Math.min(ideal, Math.max(stop - tail, x0 + min * space)) : ideal;
+  const reach = targets ? Math.min(ideal, Math.max(stop - tail, x0 + min * space)) : ideal;
+  // The shortest length and a hold's dashes must not pass the bar's end in a squeezed bar, and
+  // the frame never ends left of where it starts, which would invert it.
+  const xEnd = Math.max(x0, Math.min(reach, placement.x + placement.width));
   const unit = space * chord.scale;
   const tops = bent.map(
     (head) => placement.top + head.y - glyphMetrics(head.glyph).bbox.top * unit,
