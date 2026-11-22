@@ -334,7 +334,8 @@ jobs:
 
       - name: Bench against main
         if: steps.gate.outputs.run == 'true'
-        # Rounds take 434-599 s on recent runs and a slow EPYC runner hit 10 minutes with every row passing (#480).
+        # The whole step took 434-599 s on recent runs: about 45 s per bench on a Xeon 6975P-C, about 60 s on an EPYC 7763,
+        # where ten benches always land near 600 s and two runs hit the old 10-minute limit with nothing wrong (#480).
         timeout-minutes: 20
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
