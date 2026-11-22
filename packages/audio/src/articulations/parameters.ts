@@ -46,6 +46,45 @@ export const ARTICULATION = {
   harmonic: { shelfFrequency: 2000, shelfGain: 6 },
   dead: { length: 0.08, sampledLength: 0.25, cutoff: 2500 },
 
+  /**
+   * A picking-hand scrape replaces the note: white noise through a bandpass whose centre sweeps
+   * from `from` to `to` Hz (reversed for an up scrape), moved every `step` seconds, at most
+   * `maxLength` long.
+   */
+  pickScrape: {
+    /** The key the noise region is rooted at; the noise is not detuned. */
+    key: 60,
+    maxLength: 1,
+    from: 3000,
+    to: 800,
+    q: 2,
+    step: 0.01,
+    attack: 0.01,
+    release: 0.05,
+    /** The noise buffer's length, at least `maxLength`. */
+    bufferLength: 1.1,
+  },
+  /**
+   * A golpe is a synthesized body hit: a sine gliding from `frequency` to `endFrequency` over its
+   * `decay`, plus a short low-passed noise burst. The thumb is the lower, rounder one.
+   */
+  golpe: {
+    thumb: { frequency: 90, endFrequency: 55, decay: 0.16, noiseCutoff: 400, noiseLength: 0.03 },
+    finger: {
+      frequency: 160,
+      endFrequency: 120,
+      decay: 0.08,
+      noiseCutoff: 3000,
+      noiseLength: 0.015,
+    },
+    /** Level of the noise burst against the sine. */
+    noiseAmplitude: 0.3,
+    /** When the voice is released after the hit. */
+    length: 0.4,
+    /** The velocity of a hit on a beat with no notes. */
+    restVelocity: DYNAMICS_VELOCITY.mf,
+  },
+
   staccatoFraction: 0.5,
   /** Where fade-in, fade-out and volume swell start or end. */
   fadeFloor: -48,

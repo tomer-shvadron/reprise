@@ -72,6 +72,17 @@ describe('trackStats', () => {
     expect(keys?.frets).toBeUndefined();
   });
 
+  it('does not name frets above the highest one played', () => {
+    const low = score()
+      .tempo(120)
+      .track('guitar', { name: 'Chords' })
+      .bar()
+      .beat('4', [note(3, 1), note(2, 2), note(1, 3)])
+      .beat('4', [note(3, 1), note(2, 2), note(1, 3)])
+      .build();
+    expect(statsOf(low)[0]?.frets?.position).toEqual({ from: 1, to: 3 });
+  });
+
   it('counts each technique and lists the most used first', () => {
     expect(lead?.techniques[0]).toEqual({ name: 'palmMute', count: 2 });
     const names = lead?.techniques.map((t) => t.name);

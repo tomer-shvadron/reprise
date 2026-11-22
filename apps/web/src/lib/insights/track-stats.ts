@@ -48,7 +48,8 @@ function positionOf(frets: readonly number[]): { from: number; to: number } | un
     const count = above.filter((fret) => fret >= from && fret < from + POSITION_FRETS).length;
     if (count > best.count) best = { from, count };
   }
-  return { from: best.from, to: best.from + POSITION_FRETS - 1 };
+  // The window is four frets wide; a track that never goes that high does not play them.
+  return { from: best.from, to: Math.min(best.from + POSITION_FRETS - 1, high) };
 }
 
 /** The range, techniques and difficulty of every track; `scales` are the whole-song scales from `trackScales`. */

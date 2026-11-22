@@ -1,4 +1,6 @@
 export { DEAD_NOTE_KEY, deadNoteInstrument } from './dead-note';
+export { GOLPE_KEY, golpeInstrument } from './golpe';
+export { scrapeInstrument } from './scrape';
 export { placeGraces } from './grace';
 export { ARTICULATION, DYNAMICS_VELOCITY, VELOCITY_STEP } from './parameters';
 export { planNote } from './plan';

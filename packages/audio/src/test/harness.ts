@@ -234,6 +234,9 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
     mix(event) {
       samplerSink.mix?.(event);
     },
+    hit(event) {
+      samplerSink.hit?.(event);
+    },
     allNotesOff(when) {
       samplerSink.allNotesOff(when);
     },

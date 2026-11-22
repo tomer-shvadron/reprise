@@ -24,8 +24,10 @@ export interface Tonality {
 
 /** Fewer notes than this and a track in a section has no scale of its own. */
 export const MIN_TRACK_NOTES = 8;
-/** A section or a track named like this is a solo. Only names say so: a texture does not. */
-export const SOLO_NAME = /\bsolo\b/i;
+/** A section named like this is a solo, whatever its texture (the fallback to `soloTrack`). */
+export const SOLO_NAME = /\bsolos?\d*\b/i;
+/** A track solos where this share of its notes are single notes (not chords) and it is the busiest. */
+export const SOLO_SINGLE_SHARE = 0.8;
 
 /**
  * The file's sections as bar spans, each running to the bar before the next section mark. Bars
@@ -49,13 +51,14 @@ export interface TrackScale {
   /** Index into `Score.tracks`. */
   track: number;
   notes: number;
-  scale?: { id: ScaleId; name: string; coverage: number };
-  /** The track's name says it is the solo (`SOLO_NAME`). */
+  /** `tonic` is the pitch class the scale was fitted on, so a fretboard overlay marks the same root. */
+  scale?: { id: ScaleId; name: string; coverage: number; tonic: number };
+  /** The track solos here (`soloTrack`): mostly single notes and the busiest part. */
   solo: boolean;
 }
 
 export interface SectionInsight extends SectionSpan {
-  /** The section's name says it is a solo (`SOLO_NAME`). */
+  /** The section's name says it is a solo (`SOLO_NAME`), or one of its tracks solos (`TrackScale.solo`). */
   solo: boolean;
   seconds: number;
   key?: { name: string; tonic: number; quality: KeyQuality | 'none'; confidence: Confidence };
@@ -79,17 +82,51 @@ function noteCounts(table: NoteTable): Map<number, { notes: number; rows: number
   return tracks;
 }
 
+/** Of the struck notes in `rows`, how many sound alone on their beat, and the median pitch. */
+function texture(table: NoteTable, rows: readonly number[]): { singles: number; median: number } {
+  const perBeat = new Map<number, number>();
+  const pitches: number[] = [];
+  for (const i of rows) {
+    if (!onsets(table, i)) continue;
+    const beat = table.beat[i] ?? 0;
+    perBeat.set(beat, (perBeat.get(beat) ?? 0) + 1);
+    pitches.push(table.pitch[i] ?? 0);
+  }
+  let singles = 0;
+  for (const count of perBeat.values()) if (count === 1) singles++;
+  pitches.sort((a, b) => a - b);
+  return { singles, median: pitches[Math.floor(pitches.length / 2)] ?? 0 };
+}
+
+/**
+ * The track that solos in `parts` (track, struck notes, single notes, median pitch): the strictly
+ * busiest of at least two parts, with `SOLO_SINGLE_SHARE` of its notes single, and not the lowest
+ * part (a bass line of eighths is the busiest part of many songs and no solo). A tie gives none.
+ */
+export function soloTrack(
+  parts: readonly { track: number; notes: number; singles: number; median: number }[],
+): number | undefined {
+  if (parts.length < 2) return undefined;
+  const ordered = [...parts].sort((a, b) => b.notes - a.notes);
+  const [busiest, next] = ordered;
+  if (!busiest || !next || busiest.notes === next.notes) return undefined;
+  if (busiest.singles < SOLO_SINGLE_SHARE * busiest.notes) return undefined;
+  const lowest = Math.min(...parts.map((part) => part.median));
+  return busiest.median > lowest ? busiest.track : undefined;
+}
+
 /** The scale of every track that plays in `table`, fitted on `tonality`. */
 export function trackScales(
   table: NoteTable,
   tonality: Tonality | undefined,
-  trackNames: readonly string[],
   fileKey?: KeySignature,
 ): TrackScale[] {
   const result: TrackScale[] = [];
+  const parts: { track: number; notes: number; singles: number; median: number }[] = [];
   for (const [track, { notes, rows }] of [...noteCounts(table)].sort((a, b) => a[0] - b[0])) {
     if (notes < MIN_TRACK_NOTES) continue;
-    const entry: TrackScale = { track, notes, solo: SOLO_NAME.test(trackNames[track] ?? '') };
+    parts.push({ track, notes, ...texture(table, rows) });
+    const entry: TrackScale = { track, notes, solo: false };
     if (tonality) {
       const histogram = pitchHistogram(subTable(table, rows), { bass: false });
       const fit = fitScale(histogram, tonality.tonic, tonality.quality);
@@ -98,11 +135,14 @@ export function trackScales(
           id: fit.scale,
           name: scaleName(tonality.tonic, fit.scale, fileKey),
           coverage: fit.coverage,
+          tonic: tonality.tonic,
         };
       }
     }
     result.push(entry);
   }
+  const soloing = soloTrack(parts);
+  for (const entry of result) entry.solo = entry.track === soloing;
   return result;
 }
 
@@ -115,7 +155,6 @@ export function sectionInsights(
   const spans = sectionSpans(outline);
   if (spans.length === 0) return [];
   const bars = rowsByBar(table, outline.bars.length);
-  const trackNames = outline.tracks.map((track) => track.name);
   return spans.map((span) => {
     const sub = subTable(table, rowsInBars(bars, span.fromBar, span.toBar));
     const fileKey = outline.bars[span.fromBar]?.keySignature;
@@ -129,10 +168,11 @@ export function sectionInsights(
       seconds += outline.bars[bar]?.seconds ?? 0;
     const insight: SectionInsight = {
       ...span,
-      solo: SOLO_NAME.test(span.name),
+      solo: false,
       seconds,
-      tracks: trackScales(sub, tonality, trackNames, fileKey),
+      tracks: trackScales(sub, tonality, fileKey),
     };
+    insight.solo = SOLO_NAME.test(span.name) || insight.tracks.some((track) => track.solo);
     if (found) {
       insight.key = {
         name: keyName(found.tonic, found.quality, fileKey),

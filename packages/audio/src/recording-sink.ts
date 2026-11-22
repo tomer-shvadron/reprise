@@ -1,4 +1,4 @@
-import type { InstrumentSink, MetronomeSink, MixEvent, NoteEvent } from './sink';
+import type { HitEvent, InstrumentSink, MetronomeSink, MixEvent, NoteEvent } from './sink';
 
 export interface RecordedNote extends NoteEvent {
   /** The clock's `currentTime` when `noteOn` was called. */
@@ -6,6 +6,10 @@ export interface RecordedNote extends NoteEvent {
 }
 
 export interface RecordedMix extends MixEvent {
+  calledAt: number;
+}
+
+export interface RecordedHit extends HitEvent {
   calledAt: number;
 }
 
@@ -26,6 +30,7 @@ export interface RecordedCut {
 export class RecordingSink implements InstrumentSink, MetronomeSink {
   readonly notes: RecordedNote[] = [];
   readonly mixes: RecordedMix[] = [];
+  readonly hits: RecordedHit[] = [];
   readonly clicks: RecordedClick[] = [];
   readonly cuts: RecordedCut[] = [];
   volume = 1;
@@ -38,6 +43,10 @@ export class RecordingSink implements InstrumentSink, MetronomeSink {
 
   mix(event: MixEvent): void {
     this.mixes.push({ ...event, calledAt: this.clock.currentTime });
+  }
+
+  hit(event: HitEvent): void {
+    this.hits.push({ ...event, calledAt: this.clock.currentTime });
   }
 
   allNotesOff(when: number): void {
