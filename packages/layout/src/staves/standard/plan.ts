@@ -630,19 +630,49 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   };
 }
 
+interface Box {
+  position: number;
+  left: number;
+  right: number;
+}
+
+/** A beat's heads, as boxes from its onset: its chord's, or its grace notes' with `graces`. */
+function boxes(beat: BeatPlan, graces: boolean): Box[] {
+  const shift = beat.shift ?? 0;
+  const of = (heads: readonly HeadPlan[], offset: number): Box[] =>
+    heads.map((h) => ({
+      position: h.position,
+      left: shift + offset + h.left,
+      right: shift + offset + h.left + h.width,
+    }));
+  if (!graces) return of(beat.chord?.heads ?? [], 0);
+  return beat.graces.flatMap(({ offset, chord }) => of(chord.heads, offset));
+}
+
+const overlap = (p: Box, q: Box): boolean =>
+  Math.abs(p.position - q.position) <= 1 &&
+  Math.min(p.right, q.right) - Math.max(p.left, q.left) > 1e-6;
+
 /** Whether a head of each chord is a unison or second from one of the other's, overlapping it. */
 function collide(a: BeatPlan, b: BeatPlan): boolean {
   if (!a.chord || !b.chord) return false;
-  const shiftA = a.shift ?? 0;
-  const shiftB = b.shift ?? 0;
-  return a.chord.heads.some((p) =>
-    (b.chord?.heads ?? []).some(
-      (q) =>
-        Math.abs(p.position - q.position) <= 1 &&
-        Math.min(shiftA + p.left + p.width, shiftB + q.left + q.width) -
-          Math.max(shiftA + p.left, shiftB + q.left) >
-          1e-6,
-    ),
+  const right = boxes(b, false);
+  return boxes(a, false).some((p) => right.some((q) => overlap(p, q)));
+}
+
+/**
+ * Whether a grace note of either beat overlaps a head of the other, as two voices' graces on
+ * different pitches beside one onset do though their chords clear each other.
+ */
+function collideGraces(a: BeatPlan, b: BeatPlan): boolean {
+  if (!a.chord || !b.chord) return false;
+  const allA = [...boxes(a, false), ...boxes(a, true)];
+  const allB = [...boxes(b, false), ...boxes(b, true)];
+  const graceA = boxes(a, true);
+  const graceB = boxes(b, true);
+  return (
+    graceA.some((p) => allB.some((q) => overlap(p, q))) ||
+    graceB.some((q) => allA.some((p) => overlap(p, q)))
   );
 }
 
@@ -731,8 +761,9 @@ function separateVoices(
         for (let e = 0; e < i; e++) {
           const earlier = onset[e];
           if (!earlier) continue;
-          if (!collide(earlier, later)) continue;
-          const shared = (later.shift ?? 0) > 0 ? undefined : sharedHeads(earlier, later);
+          const graces = collideGraces(earlier, later);
+          if (!graces && !collide(earlier, later)) continue;
+          const shared = graces || (later.shift ?? 0) > 0 ? undefined : sharedHeads(earlier, later);
           if (shared) {
             shares.push(shared);
             continue;
