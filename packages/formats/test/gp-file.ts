@@ -126,6 +126,8 @@ export interface TrackSpec {
   capo?: number;
   /** GP5 staff flags: `0x01` tab, `0x02` standard; both unless given. */
   staffFlags?: number;
+  /** GP5's bank-select byte, an MSB. */
+  bank?: number;
 }
 
 export interface FileSpec {
@@ -199,7 +201,7 @@ export function buildGpFile(spec: FileSpec): Uint8Array {
       .int(track.capo ?? 0)
       .raw([255, 0, 0, 0]);
     if (version >= 500) {
-      w.raw([track.staffFlags ?? 0x03, 0, 0, 0, 0])
+      w.raw([track.staffFlags ?? 0x03, 0, 0, track.bank ?? 0, 0])
         .int(0)
         .int(0)
         .int(0)

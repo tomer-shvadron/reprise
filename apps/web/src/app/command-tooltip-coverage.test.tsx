@@ -3,6 +3,7 @@ import { write } from '@reprise/formats';
 import { fullScore } from '@reprise/model/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { arpeggioOverlayFor } from '@/features/trainer/fretboard/arpeggio-overlay';
 import { scaleOverlayFor } from '@/features/trainer/fretboard/scale-overlay';
 import { stubViewport } from '@/features/score/test/viewport-stub';
 import type { PanelView } from '@/state/ui';
@@ -37,6 +38,8 @@ type Scenario = {
   dock?: boolean;
   /** Marks a scale on the fretboard, which shows the chip with its Hide button. */
   scale?: boolean;
+  /** Marks a chord's tones on the fretboard, which shows its chip with the Hide button beside the scale's. */
+  arpeggio?: boolean;
   /** Loops the first section from the strip, the one state where its button runs a command. */
   loop?: boolean;
   /** A song with a key, sections and a modulation, for the insights cards (`fullScore` has too few notes). */
@@ -54,6 +57,7 @@ const SCENARIOS: readonly Scenario[] = [
   { name: 'play, chords', editing: false, panel: 'chords' },
   { name: 'play, song insights', editing: false, panel: 'insights', dock: true, riff: true },
   { name: 'play, scale overlay', editing: false, dock: true, scale: true },
+  { name: 'play, arpeggio overlay', editing: false, dock: true, scale: true, arpeggio: true },
   { name: 'edit, effects', editing: true, panel: 'effects', dock: true },
   { name: 'practice mode', editing: false, practice: true },
   { name: 'practice mode, section looped', editing: false, practice: true, loop: true },
@@ -97,11 +101,13 @@ async function mount(scenario: Scenario, bindAll = false) {
     if (scenario.dock) ui.showBottomPanelView('fretboard');
     if (scenario.practice) ui.enterPracticeMode('play');
     if (scenario.scale) scaleOverlayFor(services).getState().show(9, 'minorPentatonic', 'manual');
+    if (scenario.arpeggio) arpeggioOverlayFor(services).getState().hold('Am7');
   });
   // The insights are analysed after the view opens; its cards hold the controls to check.
   if (scenario.panel === 'insights') {
     await waitFor(() => {
       expect(document.querySelector('[data-insight-card="scale"]')).not.toBeNull();
+      expect(document.querySelector('[data-insight-card="chords"]')).not.toBeNull();
     });
   }
   if (scenario.loop) {

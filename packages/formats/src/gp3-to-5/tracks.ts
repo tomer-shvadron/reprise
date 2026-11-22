@@ -85,7 +85,8 @@ export function readTrack(context: Context, header: Header, index: number): Trac
     // The high byte of the track-settings short (auto let ring, auto brush, extend rhythmic),
     // then auto-accentuation.
     reader.skip(2);
-    bank = reader.byte();
+    // The bank-select MSB; `Track.bank` is 14-bit, `(msb << 7) | lsb`, and this file has no LSB.
+    bank = (reader.byte() & 127) << 7;
     // RSE humanize, then an int whose value 12 selects the bass clef.
     reader.skip(1);
     bassClefSetting = reader.int() === GP5_BASS_CLEF;

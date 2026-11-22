@@ -10,6 +10,7 @@ import { drawsWords, wordStart } from './words';
 import { wordLanes, wordRows, wordsExtent } from '../words';
 import { MIN_ROOM, planBar, type BarPlan, type NotationOptions } from './plan';
 import { renderBar } from './render';
+import { TICK_EPSILON } from '../../ticks';
 
 export type { NotationOptions } from './plan';
 
@@ -17,7 +18,6 @@ export type { NotationOptions } from './plan';
 const DYNAMICS_SIDE = 0.2;
 
 const DEFAULTS: NotationOptions = { percussion: false, courtesyAccidentals: true };
-const TICK_EPSILON = 1e-6;
 
 /**
  * A standard staff shown alone draws the lane effects the tab draws in both mode, articulations

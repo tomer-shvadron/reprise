@@ -9,6 +9,8 @@ import { renderWithServices } from '@/test/render';
 import { createTestServices } from '@/test/services';
 
 import { ChordsPanel } from './chords-panel';
+import { arpeggioOverlayFor } from '../fretboard/arpeggio-overlay';
+
 import { STRUM_STAGGER_MS } from './strum';
 
 function song(capo = 0) {
@@ -61,6 +63,22 @@ describe('the Chords panel', () => {
       'Am, open position: x 0 2 2 1 0, suggestion',
     );
     expect(screen.getAllByText('Suggestion').length).toBeGreaterThan(1);
+  });
+
+  it('holds the typed chord on the fretboard and opens the dock', async () => {
+    const { services, user } = await setup({ name: 'F#m7' });
+    await user.click(screen.getByRole('button', { name: 'Show on fretboard' }));
+    expect(arpeggioOverlayFor(services).getState()).toMatchObject({
+      on: true,
+      follow: false,
+      held: 'F#m7',
+    });
+    expect(services.ui.getState().bottomPanel.open).toBe(true);
+  });
+
+  it('cannot show a name it does not know on the fretboard', async () => {
+    await setup({ name: 'Cfoo' });
+    expect(screen.getByRole('button', { name: 'Show on fretboard' })).toBeDisabled();
   });
 
   it('says so for a name it does not know', async () => {
