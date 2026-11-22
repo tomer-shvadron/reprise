@@ -1,4 +1,4 @@
-import type { Track } from '@reprise/model';
+import type { ChannelSettings, Track } from '@reprise/model';
 
 import type { DriveCurve } from './curves';
 import type { CabinetId } from './impulses';
@@ -161,5 +161,59 @@ export function stagesOf(
   const dropped: readonly string[] = [...bypassed];
   return Object.fromEntries(
     Object.entries(EFFECT_PRESETS[preset]).filter(([stage]) => !dropped.includes(stage)),
+  );
+}
+
+/**
+ * The send level at CC91 = 127. The SF2 2.04 default modulator of section 8.4.8 maps CC91
+ * linearly to `reverbEffectsSend` with an amount of 200 in units of 0.1%, which is 20%.
+ */
+export const REVERB_SEND_AT_FULL = 0.2;
+/**
+ * The chorus mix at CC93 = 127: the SF2 default modulator of section 8.4.9 (also 20%) times
+ * FluidSynth's default `synth.chorus.level` of 2.0.
+ */
+export const CHORUS_MIX_AT_FULL = 0.4;
+/** Rate and depth of the channel chorus, those of the `clean` preset's. */
+export const CHANNEL_CHORUS = { rate: 0.8, depth: 0.002 } as const;
+
+/**
+ * The reverb and chorus a file's channel settings (CC91, CC93: 0 to 127) ask for, linearly: a
+ * value of 0 builds nothing, so a spec of `{}` leaves the strip bit-identical to one with no
+ * effects.
+ */
+export function channelEffects(channel: Pick<ChannelSettings, 'reverb' | 'chorus'>): EffectSpec {
+  const spec: EffectSpec = {};
+  if (channel.reverb > 0) spec.reverb = { send: (REVERB_SEND_AT_FULL * channel.reverb) / 127 };
+  if (channel.chorus > 0) {
+    spec.modulation = { ...CHANNEL_CHORUS, mix: (CHORUS_MIX_AT_FULL * channel.chorus) / 127 };
+  }
+  return spec;
+}
+
+export interface EffectSpecContext extends ResolveContext {
+  /** Whether the file's channel reverb and chorus apply where no preset does. */
+  channelEffects: boolean;
+}
+
+/**
+ * The stages a track's strip gets. A preset, where `resolveEffects` gives one, owns the reverb
+ * and chorus and the file's values are ignored (as GP's RSE ignores the MIDI ones); the file's
+ * values apply only where no preset does: a GM-tier track on the automatic path with the GM tier
+ * bypass on. Stages bypassed for the session are dropped from either.
+ */
+export function effectSpecOf(
+  track: Pick<Track, 'kind' | 'program' | 'sound'> & {
+    channel: Pick<ChannelSettings, 'reverb' | 'chorus'>;
+  },
+  context: EffectSpecContext,
+  bypassed: ReadonlySet<EffectStage> = new Set(),
+): EffectSpec {
+  const { preset } = resolveEffects(track, context);
+  if (preset) return stagesOf(preset, bypassed);
+  if (!context.channelEffects) return {};
+  const dropped: readonly string[] = [...bypassed];
+  return Object.fromEntries(
+    Object.entries(channelEffects(track.channel)).filter(([stage]) => !dropped.includes(stage)),
   );
 }
