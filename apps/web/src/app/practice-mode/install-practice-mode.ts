@@ -1,11 +1,8 @@
 import { PRACTICE_ZOOM_SETTING } from '@/state/app-settings';
+import { scoreRegion } from '../score-region';
 import type { AppServices } from '../services';
 
 type Deps = Pick<AppServices, 'ui' | 'editing' | 'document' | 'settings' | 'transport'>;
-
-const scoreRegion = () =>
-  globalThis.document.querySelector<HTMLElement>('[role="region"][aria-roledescription="score"]') ??
-  globalThis.document.querySelector<HTMLElement>('main');
 
 /**
  * Where focus goes when the mode ends: the element that had it on entering, or, when it was

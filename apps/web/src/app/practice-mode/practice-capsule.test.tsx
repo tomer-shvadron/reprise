@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -44,6 +44,55 @@ describe('PracticeCapsule', () => {
     await userEvent.click(screen.getByTestId('speed-trainer-chip'));
     expect(services.ui.getState().practiceMode.on).toBe(true);
     expect(services.ui.getState().panels.rightPanel).toBe(false);
+  });
+});
+
+describe('PracticeCapsule standalone click indicator', () => {
+  const setRunning = (services: ReturnType<typeof renderHeader>['services'], running: boolean) => {
+    act(() => {
+      services.playback.setState({ click: { ...services.playback.getState().click, running } });
+    });
+  };
+
+  it('shows only while the standalone click runs, and a press stops it', async () => {
+    const { open, services } = renderHeader(<PracticeCapsule />);
+    await open();
+    expect(screen.queryByRole('button', { name: 'Click, standalone metronome on' })).toBeNull();
+    setRunning(services, true);
+    const indicator = screen.getByRole('button', { name: 'Click, standalone metronome on' });
+    expect(indicator).toHaveAttribute('aria-keyshortcuts');
+    // The capsule's own Metronome toggle stays a separate control.
+    expect(screen.getByRole('button', { name: 'Metronome' })).toBeInTheDocument();
+    await userEvent.setup().click(indicator);
+    expect(services.fakeAudio.stopClick).toHaveBeenCalledOnce();
+    expect(services.ui.getState().panels.rightPanel).toBe(false);
+    setRunning(services, false);
+    expect(screen.queryByRole('button', { name: 'Click, standalone metronome on' })).toBeNull();
+  });
+
+  it("stays hidden while only the song's metronome is on", async () => {
+    const { open, services } = renderHeader(<PracticeCapsule />);
+    await open();
+    await userEvent.click(screen.getByRole('button', { name: 'Metronome' }));
+    expect(services.playback.getState().click.running).toBe(false);
+    expect(screen.queryByRole('button', { name: /standalone metronome/ })).toBeNull();
+  });
+
+  it('moves focus to the score when a keyboard press stops it', async () => {
+    const { open, services } = renderHeader(
+      <>
+        <main aria-roledescription="score" role="region" tabIndex={-1}>
+          score
+        </main>
+        <PracticeCapsule />
+      </>,
+    );
+    await open();
+    setRunning(services, true);
+    screen.getByRole('button', { name: 'Click, standalone metronome on' }).focus();
+    await userEvent.setup().keyboard('{Enter}');
+    setRunning(services, false);
+    expect(document.activeElement).toBe(screen.getByText('score'));
   });
 });
 
