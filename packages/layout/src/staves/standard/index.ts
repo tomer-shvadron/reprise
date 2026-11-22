@@ -2,7 +2,13 @@ import type { Clef, Track } from '@reprise/model';
 
 import { analyseEffects, drawLanes } from '../effects';
 import { LANE_HEIGHT, mergeLanes, type LaneRequests } from '../lanes';
-import type { StaffBar, StaffBarMeasure, StaffBarPlacement, StaffModule } from '../staff-module';
+import type {
+  OnsetExtent,
+  StaffBar,
+  StaffBarMeasure,
+  StaffBarPlacement,
+  StaffModule,
+} from '../staff-module';
 import { defaultClef } from '../../context';
 import { glyphWidth } from '../../primitives';
 import { DYNAMICS_GLYPHS, beatDynamics, reservedDynamics, shownDynamics } from '../dynamics';
@@ -82,7 +88,7 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
       const plan = planned(input);
       const reserved = reservedDynamics(input.bar);
       const onsets = plan.beats.map((beat) => {
-        const onset = beat.rest?.centred
+        const onset: OnsetExtent = beat.rest?.centred
           ? { tick: beat.tick, left: beat.rest.width / 2, right: beat.rest.width / 2 }
           : { tick: beat.tick, left: -beat.left, right: beat.right };
         const dynamics = reserved.has(beat.beat.id) ? beatDynamics(beat.beat) : undefined;
@@ -92,6 +98,7 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
           onset.left = Math.max(onset.left, room);
           onset.right = Math.max(onset.right, room);
         }
+        onset.rigid = onset.right;
         if (drawsWords(input)) {
           const words = wordsExtent(beat.beat, wordStart(beat), input.space, input.chordDiagrams);
           onset.left = Math.max(onset.left, words.left - (beat.shift ?? 0));

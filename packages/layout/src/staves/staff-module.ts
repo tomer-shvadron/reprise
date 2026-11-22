@@ -49,6 +49,12 @@ export interface OnsetExtent {
   tick: number;
   left: number;
   right: number;
+  /**
+   * The part of `right` that is drawn whole, never cut to fit: the heads and what hangs on them,
+   * a second voice shifted off the first included. A squeezed bar keeps it clear of its end;
+   * words, which are cut with an ellipsis instead, are not in it.
+   */
+  rigid?: number;
 }
 
 export interface StaffBarMeasure {

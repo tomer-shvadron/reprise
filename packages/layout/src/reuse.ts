@@ -56,6 +56,7 @@ const PLAN_KEYS = everyKey<SystemPlan>()([
   'prefix',
   'factor',
   'squeeze',
+  'rigidScale',
   'trim',
   'width',
   'courtesy',

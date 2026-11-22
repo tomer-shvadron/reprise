@@ -46,8 +46,9 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
     if (last && beat.tick - last.tick < TICK_EPSILON) {
       last.left = Math.max(last.left, left);
       last.right = Math.max(last.right, right);
+      last.rigid = Math.max(last.rigid ?? 0, beat.right);
     } else {
-      onsets.push({ tick: beat.tick, left, right });
+      onsets.push({ tick: beat.tick, left, right, rigid: beat.right });
     }
   }
   const effects = analyseEffects(input.bar, space, { articulations: analysed.rhythm });
