@@ -170,6 +170,40 @@ describe('menu:set-history', () => {
   });
 });
 
+describe('menu:set-checked', () => {
+  it('takes a map of menu commands to booleans', () => {
+    expect(parsers['menu:set-checked']([{}])).toEqual([{}]);
+    expect(
+      parsers['menu:set-checked']([
+        { 'transport.toggleLoop': true, 'transport.toggleFixedTempo': false },
+      ]),
+    ).toEqual([{ 'transport.toggleLoop': true, 'transport.toggleFixedTempo': false }]);
+  });
+
+  it('accepts the transport ids as menu commands, for keys too', () => {
+    expect(
+      parsers['menu:set-keys']([{ 'transport.toggleCountIn': { key: 'c', alt: true } }]),
+    ).toEqual([{ 'transport.toggleCountIn': { key: 'c', alt: true } }]);
+  });
+
+  it('refuses anything else', () => {
+    for (const bad of [
+      [],
+      [null],
+      ['x'],
+      [[]],
+      [{ 'not.a.command': true }],
+      [{ 'file.save': true }],
+      [{ 'transport.playPause': false }],
+      [{ 'transport.toggleLoop': 1 }],
+      [{ 'transport.toggleLoop': null }],
+      [{}, {}],
+    ]) {
+      expect(() => parsers['menu:set-checked'](bad)).toThrow(PayloadError);
+    }
+  });
+});
+
 describe('menu:set-keys', () => {
   it('takes a map of menu commands to a key or null', () => {
     expect(parsers['menu:set-keys']([{}])).toEqual([{}]);
