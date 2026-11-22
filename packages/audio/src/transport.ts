@@ -212,6 +212,21 @@ export function createTransport(options: TransportOptions): Transport {
           passIndex: mix.passIndex,
         });
       }
+      for (const hit of result.hits) {
+        sink.hit?.({
+          track: hit.track,
+          trackIndex: hit.trackIndex,
+          voiceIndex: hit.voiceIndex,
+          beat: hit.beat,
+          beatIndex: hit.beatIndex,
+          golpe: hit.golpe,
+          when: hit.when,
+          playbackTick: hit.tick,
+          sequenceIndex: hit.sequenceIndex,
+          masterBarIndex: hit.masterBarIndex,
+          passIndex: hit.passIndex,
+        });
+      }
       for (const note of result.notes) {
         sink.noteOn({
           track: note.track,
