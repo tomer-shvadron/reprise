@@ -10,7 +10,9 @@ import {
   shortcutOn,
   shortcutParts,
   type KeyboardPlatform,
+  type Shortcut,
 } from './keyboard';
+import { readKeyEvent } from './record-key';
 
 const key = (init: Partial<KeyboardEvent>) => ({
   key: '',
@@ -30,60 +32,203 @@ describe('keyboard', () => {
     );
   });
 
-  describe('non-US layouts', () => {
-    // As a Hebrew layout reports them: the physical Slash key prints `.`, the physical Q key
-    // prints `/`, the physical Period key prints a Hebrew letter.
-    const hebrewDot = key({ key: '.', code: 'Slash' });
-    const hebrewSlash = key({ key: '/', code: 'KeyQ' });
-    const hebrewPeriodKey = key({ key: 'ץ', code: 'Period' });
-    const hebrewSemicolonKey = key({ key: 'ף', code: 'Semicolon' });
+  describe('layouts', () => {
+    const BINDINGS: readonly (readonly [string, Shortcut])[] = [
+      ...Array.from({ length: 10 }, (_, i) => String(i)).map(
+        (d) => [`fret${d}`, { key: d }] as const,
+      ),
+      ['voice1', { key: '1', mod: true }],
+      ...Array.from({ length: 9 }, (_, i) => String(i + 1)).map(
+        (d) => [`track${d}`, { key: d, alt: true }] as const,
+      ),
+      ['longer', { key: '-' }],
+      ['shorter', { key: '=' }],
+      ['dot', { key: '.' }],
+      ['triplet', { key: '/' }],
+      ['tie', { key: 'l' }],
+      ['whammyVibrato', { key: 'w' }],
+      ['accent', { key: ';' }],
+      ['accentShifted', { key: ':', shift: true }],
+      ['accentBare', { key: ':' }],
+      ['staccato', { key: '!', shift: true }],
+      ['staccatoBare', { key: '!' }],
+      ['tremolo', { key: '"', shift: true }],
+      ['tremoloBare', { key: '"' }],
+      ['slap', { key: '$', shift: true }],
+      ['slapBare', { key: '$' }],
+      ['fadeIn', { key: '<', shift: true }],
+      ['fadeInBare', { key: '<' }],
+      ['fadeOut', { key: '>', shift: true }],
+      ['fadeOutBare', { key: '>' }],
+      ['repeatStart', { key: '[' }],
+      ['repeatEnd', { key: ']' }],
+      ['lyrics', { key: 'l', alt: true }],
+      ['metronome', { key: 'b', alt: true }],
+    ];
 
-    it('matches the printed punctuation character, so Hebrew dot and triplet follow the keycap', () => {
-      expect(matchesShortcut(hebrewDot, { key: '.' }, 'mac')).toBe(true);
-      expect(matchesShortcut(hebrewSlash, { key: '/' }, 'mac')).toBe(true);
-      expect(matchesShortcut(hebrewSlash, { key: '.' }, 'mac')).toBe(false);
+    // The dispatcher's rule: what the key prints decides first, the physical key only if nothing
+    // matched by character.
+    function resolve(event: ReturnType<typeof key>, platform: KeyboardPlatform): string[] {
+      const by = (match: 'character' | 'physical') =>
+        BINDINGS.filter(([, shortcut]) => matchesShortcut(event, shortcut, platform, match)).map(
+          ([name]) => name,
+        );
+      const printed = by('character');
+      return printed.length > 0 ? printed : by('physical');
+    }
+
+    interface Sample {
+      layout: string;
+      event: ReturnType<typeof key>;
+      mac?: boolean;
+      fires: string[];
+    }
+    const e = (k: string, code: string, init: Partial<KeyboardEvent> = {}) =>
+      key({ key: k, code, ...init });
+    const SAMPLES: Sample[] = [
+      { layout: 'US dot', event: e('.', 'Period'), fires: ['dot'] },
+      { layout: 'US slash', event: e('/', 'Slash'), fires: ['triplet'] },
+      { layout: 'US L', event: e('l', 'KeyL'), fires: ['tie'] },
+      { layout: 'US 5', event: e('5', 'Digit5'), fires: ['fret5'] },
+      { layout: 'US numpad 5', event: e('5', 'Numpad5'), fires: ['fret5'] },
+      { layout: 'US bracket', event: e('[', 'BracketLeft'), fires: ['repeatStart'] },
+      { layout: 'Hebrew dot key', event: e('.', 'Slash'), fires: ['dot'] },
+      { layout: 'Hebrew slash key', event: e('/', 'KeyQ'), fires: ['triplet'] },
+      { layout: 'Hebrew W key', event: e("'", 'KeyW'), fires: ['whammyVibrato'] },
+      { layout: 'Hebrew L key', event: e('ך', 'KeyL'), fires: ['tie'] },
+      { layout: 'Hebrew period key', event: e('ץ', 'Period'), fires: ['dot'] },
+      { layout: 'Hebrew semicolon key', event: e('ף', 'Semicolon'), fires: ['accent'] },
+      { layout: 'Hebrew comma key', event: e('ת', 'Comma'), fires: [] },
+      {
+        layout: 'Hebrew shift+comma key',
+        event: e('ת', 'Comma', { shiftKey: true }),
+        fires: ['fadeIn'],
+      },
+      { layout: 'Hebrew bracket', event: e(']', 'BracketLeft'), fires: ['repeatStart'] },
+      { layout: 'AZERTY & (1)', event: e('&', 'Digit1'), fires: ['fret1'] },
+      { layout: 'AZERTY " (3)', event: e('"', 'Digit3'), fires: ['fret3', 'tremoloBare'] },
+      { layout: "AZERTY ' (4)", event: e("'", 'Digit4'), fires: ['fret4'] },
+      { layout: 'AZERTY ( (5)', event: e('(', 'Digit5'), fires: ['fret5'] },
+      { layout: 'AZERTY - (6)', event: e('-', 'Digit6'), fires: ['fret6', 'longer'] },
+      { layout: 'AZERTY _ (8)', event: e('_', 'Digit8'), fires: ['fret8'] },
+      { layout: 'AZERTY é (2)', event: e('é', 'Digit2'), fires: ['fret2'] },
+      { layout: 'AZERTY ù', event: e('ù', 'Quote'), fires: [] },
+      { layout: 'AZERTY $', event: e('$', 'BracketRight'), fires: ['slapBare', 'repeatEnd'] },
+      {
+        layout: 'AZERTY Ctrl+&',
+        event: e('&', 'Digit1', { ctrlKey: true }),
+        fires: ['voice1'],
+      },
+      {
+        layout: 'AZERTY Alt+(',
+        event: e('(', 'Digit5', { altKey: true }),
+        fires: ['track5'],
+      },
+      {
+        layout: 'Mac French ! (8)',
+        event: e('!', 'Digit8'),
+        mac: true,
+        fires: ['fret8', 'staccatoBare'],
+      },
+      { layout: 'QWERTZ Z key', event: e('z', 'KeyY'), fires: [] },
+      { layout: 'QWERTZ ß', event: e('ß', 'Minus'), fires: [] },
+      { layout: 'QWERTZ dead acute', event: e('Dead', 'Equal'), fires: [] },
+      { layout: 'QWERTZ L', event: e('l', 'KeyL'), fires: ['tie'] },
+      { layout: 'Czech + (1)', event: e('+', 'Digit1'), fires: ['fret1'] },
+      { layout: 'Czech č (4)', event: e('č', 'Digit4'), fires: ['fret4'] },
+      { layout: 'Russian L key', event: e('д', 'KeyL'), fires: ['tie'] },
+      { layout: 'Russian comma key', event: e('б', 'Comma'), fires: [] },
+      { layout: 'Russian quote key', event: e('э', 'Quote'), fires: [] },
+      { layout: 'Russian dot key', event: e('.', 'Slash'), fires: ['dot'] },
+      { layout: 'Greek Q key', event: e(';', 'KeyQ'), fires: ['accent'] },
+      { layout: 'US-International dead quote', event: e('Dead', 'Quote'), fires: [] },
+      { layout: 'IME first key', event: e('Process', 'Comma'), fires: [] },
+      {
+        layout: 'Mac US Option+L',
+        event: e('¬', 'KeyL', { altKey: true }),
+        mac: true,
+        fires: ['lyrics'],
+      },
+      {
+        layout: 'Mac US Option+B',
+        event: e('∫', 'KeyB', { altKey: true }),
+        mac: true,
+        fires: ['metronome'],
+      },
+      {
+        layout: 'Mac German Option+L',
+        event: e('@', 'KeyL', { altKey: true }),
+        mac: true,
+        fires: ['lyrics'],
+      },
+      {
+        layout: 'Mac German Option+5',
+        event: e('[', 'Digit5', { altKey: true }),
+        mac: true,
+        fires: ['track5'],
+      },
+      {
+        layout: 'Mac Nordic Option+7',
+        event: e('|', 'Digit7', { altKey: true }),
+        mac: true,
+        fires: ['track7'],
+      },
+      {
+        layout: 'Mac Spanish Option+2',
+        event: e('@', 'Digit2', { altKey: true }),
+        mac: true,
+        fires: ['track2'],
+      },
+    ];
+
+    it.each(SAMPLES)('$layout fires $fires', ({ event, mac, fires }) => {
+      expect(resolve(event, mac ? 'mac' : 'other')).toEqual(fires);
     });
 
-    it('does not let a printed punctuation character trigger the letter on its physical key', () => {
-      expect(matchesShortcut(hebrewSlash, { key: 'q' }, 'mac')).toBe(false);
-      expect(matchesShortcut(key({ key: "'", code: 'KeyW' }), { key: 'w' }, 'mac')).toBe(false);
-    });
-
-    it('falls back to the physical key when the layout prints a non-ASCII character', () => {
-      expect(matchesShortcut(hebrewPeriodKey, { key: '.' }, 'mac')).toBe(true);
-      expect(matchesShortcut(hebrewSemicolonKey, { key: ';' }, 'mac')).toBe(true);
+    it('does not run a shifted spelling from the key that prints a letter in its place', () => {
+      expect(matchesShortcut(e('ת', 'Comma'), { key: '<' }, 'other')).toBe(false);
+      expect(matchesShortcut(e('ף', 'Semicolon'), { key: ':' }, 'other')).toBe(false);
       expect(
         matchesShortcut(
-          { ...hebrewSemicolonKey, shiftKey: true },
+          e('ף', 'Semicolon', { shiftKey: true }),
           { key: ':', shift: true },
-          'mac',
+          'other',
         ),
       ).toBe(true);
-      expect(matchesShortcut(hebrewPeriodKey, { key: ',' }, 'mac')).toBe(false);
-      expect(matchesShortcut(key({ key: 'ש', code: 'KeyA' }), { key: 'a' }, 'mac')).toBe(true);
+    });
+
+    it('records the keys it then matches, so a recorded key fires when pressed', () => {
+      const recordable = SAMPLES.filter(({ event }) => event.key !== 'Process');
+      for (const { event, mac } of recordable) {
+        const platform: KeyboardPlatform = mac ? 'mac' : 'other';
+        const read = readKeyEvent({ ...event, repeat: false, isComposing: false }, platform);
+        if (read.kind !== 'key') continue;
+        expect(
+          matchesShortcut(
+            event,
+            {
+              key: read.binding.key,
+              mod: Boolean(read.binding.mod),
+              shift: Boolean(read.binding.shift),
+              alt: Boolean(read.binding.alt),
+            },
+            platform,
+          ),
+          `${event.key} ${event.code}`,
+        ).toBe(true);
+      }
       expect(
-        matchesShortcut(
-          key({ key: '≈', code: 'KeyX', altKey: true }),
-          { key: 'x', alt: true },
+        readKeyEvent({ ...e("'", 'KeyW'), repeat: false, isComposing: false }, 'other'),
+      ).toMatchObject({ kind: 'key', binding: { key: "'" } });
+      expect(
+        readKeyEvent({ ...e('&', 'Digit1'), repeat: false, isComposing: false }, 'other'),
+      ).toMatchObject({ kind: 'key', binding: { key: '1' } });
+      expect(
+        readKeyEvent(
+          { ...e('@', 'KeyL', { altKey: true }), repeat: false, isComposing: false },
           'mac',
         ),
-      ).toBe(true);
-    });
-
-    it('keeps AZERTY and QWERTZ keys by character, so $ and " do not become ] and 3', () => {
-      const azertyDollar = key({ key: '$', code: 'BracketRight' });
-      expect(matchesShortcut(azertyDollar, { key: '$' }, 'mac')).toBe(true);
-      expect(matchesShortcut(azertyDollar, { key: '4' }, 'mac')).toBe(false);
-      expect(matchesShortcut(key({ key: '"', code: 'Digit3' }), { key: '3' }, 'mac')).toBe(false);
-      expect(matchesShortcut(key({ key: 'z', code: 'KeyY' }), { key: 'z' }, 'mac')).toBe(true);
-      expect(matchesShortcut(key({ key: 'y', code: 'KeyZ' }), { key: 'z' }, 'mac')).toBe(false);
-    });
-
-    it('still matches a US layout by character', () => {
-      expect(matchesShortcut(key({ key: '.', code: 'Period' }), { key: '.' }, 'mac')).toBe(true);
-      expect(matchesShortcut(key({ key: '/', code: 'Slash' }), { key: '/' }, 'mac')).toBe(true);
-      expect(matchesShortcut(key({ key: 'q', code: 'KeyQ' }), { key: 'q' }, 'mac')).toBe(true);
-      expect(matchesShortcut(key({ key: '.', code: 'Period' }), { key: '/' }, 'mac')).toBe(false);
+      ).toMatchObject({ kind: 'key', binding: { key: 'l', alt: true } });
     });
   });
 

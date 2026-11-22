@@ -53,13 +53,15 @@ export function heldModifiers(
 }
 
 const LATIN = /^[a-z\d]$/i;
+const ASCII_PRINTABLE = /^[\x20-\x7e]$/;
 const BRACKETS: Readonly<Record<string, string>> = { BracketLeft: '[', BracketRight: ']' };
 
 /**
- * The key the matcher (`matchesKey` in keyboard.ts) would match for this keypress: a bracket by
- * its physical key, a Latin character as printed, a letter or digit by its physical key when the
- * layout printed something else (Hebrew, an Option symbol), any other printable character as
- * printed, a named key by its name.
+ * The key the matcher (`matchesKey` in keyboard.ts) matches for this keypress, so a recorded key
+ * fires when pressed: a bracket or a digit by its physical key (AZERTY's `&` records 1), a letter
+ * by its physical key under Option on a Mac, any other ASCII character as printed (Hebrew's W
+ * key, which prints `'`, records `'`), a letter by its physical key when the layout printed
+ * something else, any other printable character as printed, a named key by its name.
  */
 function characterOf(
   event: KeyEventInfo,
@@ -67,16 +69,17 @@ function characterOf(
 ): { key: string } | { reason: RefuseReason } {
   const bracket = BRACKETS[event.code];
   if (bracket !== undefined) return { key: bracket };
-  if (LATIN.test(event.key)) return { key: event.key.toLowerCase() };
-  const letter = /^Key([A-Z])$/.exec(event.code);
-  if (letter?.[1]) return { key: letter[1].toLowerCase() };
   const digit = /^Digit(\d)$/.exec(event.code);
   if (digit?.[1]) return { key: digit[1] };
-  if (isShortcutCharacter(event.key)) {
-    // An Option-symbol (⌥; gives "…") would print as a key nobody can find.
-    if (platform === 'mac' && event.altKey) return { reason: 'option-symbol' };
-    return { key: event.key.toLowerCase() };
-  }
+  const letter = /^Key([A-Z])$/.exec(event.code)?.[1]?.toLowerCase();
+  const optionOnMac = platform === 'mac' && event.altKey;
+  if (letter !== undefined && optionOnMac) return { key: letter };
+  if (LATIN.test(event.key)) return { key: event.key.toLowerCase() };
+  // An Option-symbol (⌥; gives "…") would print as a key nobody can find.
+  if (optionOnMac && isShortcutCharacter(event.key)) return { reason: 'option-symbol' };
+  if (ASCII_PRINTABLE.test(event.key)) return { key: event.key.toLowerCase() };
+  if (letter !== undefined) return { key: letter };
+  if (isShortcutCharacter(event.key)) return { key: event.key.toLowerCase() };
   return isShortcutKey(event.key) ? { key: event.key } : { reason: 'unsupported' };
 }
 
@@ -125,7 +128,8 @@ export function refusalOf(
 
 /**
  * One keydown while recording. `natives` are the keys of the commands the browser owns, which
- * the recorder refuses. A key in the recorded binding keeps `event.code` for #242.
+ * the recorder refuses. The binding keeps `event.code` beside the key for reference; the matcher
+ * does not read it.
  */
 export function readKeyEvent(
   event: KeyEventInfo,
