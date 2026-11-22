@@ -70,6 +70,20 @@ function positive(value: number, name: string): number {
   return value;
 }
 
+/**
+ * Segments an edit that changes the continuous vertical layout redraws at once (`verticalReach`):
+ * the mounted window and its neighbours at any zoom of 0.5 or more.
+ */
+export const VERTICAL_EDIT_REACH = 8;
+
+/**
+ * `verticalReach` of the follow-up calls that redraw the remaining stale segments, one per timer
+ * turn. Chosen so one call stays well inside a frame on the long score in mixed notation (see
+ * "Re-layout follow-up call, continuous" in the budgets table); every call also pays the base
+ * cost of a cached layout, so a smaller value only lengthens convergence.
+ */
+export const VERTICAL_FOLLOW_UP_REACH = 8;
+
 function reach(value: number): number {
   if (!Number.isInteger(value) || value < 0) {
     throw new RangeError(

@@ -16,7 +16,16 @@ import {
 import { beatOf, largeScore } from '@reprise/model/testing';
 import { expect, test, type TestContext } from 'vitest';
 
-import { LayoutCache, PAGE_SIZES, anchorBox, hitTest, layout, type LayoutOptions } from './index';
+import {
+  LayoutCache,
+  PAGE_SIZES,
+  VERTICAL_EDIT_REACH,
+  VERTICAL_FOLLOW_UP_REACH,
+  anchorBox,
+  hitTest,
+  layout,
+  type LayoutOptions,
+} from './index';
 import { checkBudget, recordMeasurement } from './test/budget';
 import { withChordDiagrams, withEffects, withNoteMarks } from './test/effects';
 
@@ -331,13 +340,8 @@ test('Re-layout after a segment-break-moving edit, continuous', RELAYOUT_BENCH, 
   await checkBudget(context, metric, p50, { enforced: true, note });
 });
 
-/**
- * The app's `EDIT_REACH` (`apps/web/src/state/layout.ts`), which layout cannot import: segments
- * redrawn at once when an edit changes the continuous vertical layout (#229).
- */
-const EDIT_REACH = 8;
-/** The app's follow-up reach, used untimed to converge between edits. */
-const FOLLOW_UP_REACH = 24;
+const EDIT_REACH = VERTICAL_EDIT_REACH;
+const FOLLOW_UP_REACH = VERTICAL_FOLLOW_UP_REACH;
 
 /**
  * Letting a note ring adds a lane to its track's staff in every segment, so it changes the shared
@@ -361,8 +365,11 @@ interface HeightRun {
   p50: number;
   max: number;
   rendered: number;
+  /** Calls after the edit's own until nothing was stale. */
   followUps: number;
   converge: number;
+  callP50: number;
+  callMax: number;
   stale: number;
 }
 
@@ -378,10 +385,17 @@ async function heightBench(
   layout(score, caseOptions, cache);
   let count = 0;
   let dirtyBars: string[] = [];
-  const edits: { ms: number; rendered: number; stale: number; followUps: number; ms2: number }[] =
-    [];
+  const edits: {
+    ms: number;
+    rendered: number;
+    stale: number;
+    followUps: number;
+    ms2: number;
+    calls: number[];
+  }[] = [];
   let followUps = 0;
   let convergeMs = 0;
+  let calls: number[] = [];
   await context
     .bench(
       name,
@@ -390,6 +404,7 @@ async function heightBench(
           // Untimed: the follow-up calls the app makes after an edit, until nothing is stale.
           followUps = 0;
           convergeMs = 0;
+          calls = [];
           if (verticalReach !== undefined && count > 0) {
             for (;;) {
               const began = now();
@@ -398,9 +413,11 @@ async function heightBench(
                 { ...caseOptions, verticalReach: FOLLOW_UP_REACH },
                 cache,
               );
-              convergeMs += now() - began;
-              if (metrics.staleSystems === 0) break;
+              const took = now() - began;
+              convergeMs += took;
+              calls.push(took);
               followUps += 1;
+              if (metrics.staleSystems === 0) break;
             }
           }
           const next = heightEdit(score, count);
@@ -423,6 +440,7 @@ async function heightBench(
           stale: metrics.staleSystems,
           followUps,
           ms2: convergeMs,
+          calls,
         });
       },
     )
@@ -445,10 +463,20 @@ async function heightBench(
   const stale = median(timed.map((edit) => edit.stale));
   const follow = median(timed.map((edit) => edit.followUps));
   const converge = median(timed.map((edit) => edit.ms2));
+  const callTimes = timed.flatMap((edit) => edit.calls);
   await context.annotate(
-    `${name}: p50 ${String(round(p50))} ms, max ${String(round(max))} ms, median ${String(median(rendered))} segments rendered, ${String(stale)} left stale, ${String(follow)} follow-up calls and ${String(round(converge))} ms to converge per edit (reported, no budget)`,
+    `${name}: p50 ${String(round(p50))} ms, max ${String(round(max))} ms, median ${String(median(rendered))} segments rendered, ${String(stale)} left stale, ${String(follow)} follow-up calls${verticalReach === undefined ? '' : ` (reach ${String(FOLLOW_UP_REACH)})`} and ${String(round(converge))} ms to converge per edit${callTimes.length > 0 ? `, one follow-up call p50 ${String(round(median(callTimes)))} ms, max ${String(round(Math.max(...callTimes)))} ms` : ''}`,
   );
-  return { p50, max, rendered: median(rendered), followUps: follow, converge, stale };
+  return {
+    p50,
+    max,
+    rendered: median(rendered),
+    followUps: follow,
+    converge,
+    stale,
+    callP50: callTimes.length > 0 ? median(callTimes) : 0,
+    callMax: callTimes.length > 0 ? Math.max(...callTimes) : 0,
+  };
 }
 
 const HEIGHT_CASES: readonly [string, (score: Score) => LayoutOptions][] = [
@@ -465,7 +493,25 @@ test('Re-layout after a height-changing edit, continuous', RELAYOUT_BENCH, async
   const slowest = Math.max(...runs.map(({ p50 }) => p50));
   await checkBudget(context, metric, slowest, {
     enforced: true,
-    note: `reach ${String(EDIT_REACH)}; converges in ${String(Math.max(...runs.map(({ followUps }) => followUps)))} follow-up calls`,
+    note: `reach ${String(EDIT_REACH)}; converges in ${String(Math.max(...runs.map(({ followUps }) => followUps)))} follow-up calls of reach ${String(FOLLOW_UP_REACH)}`,
+  });
+});
+
+/**
+ * One follow-up call as the app makes them after a height-changing edit: a full cached `layout()`
+ * (measure check, lanes, the shared vertical layout over every bar, breaking) that redraws the
+ * next `VERTICAL_FOLLOW_UP_REACH` stale segments, run from a timer on the main thread. It is what
+ * a scroll during convergence waits behind, so it is budgeted like an edit.
+ */
+test('Re-layout follow-up call, continuous', RELAYOUT_BENCH, async (context) => {
+  const metric = 'Re-layout follow-up call, continuous';
+  const runs: HeightRun[] = [];
+  for (const [name, build] of HEIGHT_CASES) {
+    runs.push(await heightBench(context, `${metric}, ${name}`, build, EDIT_REACH));
+  }
+  await checkBudget(context, metric, Math.max(...runs.map(({ callP50 }) => callP50)), {
+    enforced: true,
+    note: `reach ${String(FOLLOW_UP_REACH)}, max ${String(round(Math.max(...runs.map(({ callMax }) => callMax))))} ms`,
   });
 });
 
