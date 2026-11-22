@@ -26,14 +26,14 @@ import {
   type Whammy,
 } from '@reprise/model';
 
+import { scoreIndex } from '@/features/score';
+
 import {
   effectTarget,
   type EffectTarget,
   type EffectTargetInput,
   type NoteRef,
 } from './effect-targets';
-import { scoreIndex } from '@/features/score';
-
 import type { EditPlan } from './entry';
 import { nextOnString } from './next-on-string';
 
@@ -631,9 +631,11 @@ export function effectCommand(label: string, edits: EffectEdits): Command {
 /** An applied effect, with what was left out of a mixed selection, to show after it. */
 export type EffectPlan = EditPlan & {
   notice?: string;
-  /** The one beat to sound once the edit is committed (see `effectSound`). */
+  /** The one beat to sound once the edit is committed (see `beatToSound`). */
   beatSound?: EffectSound;
 };
+export type EffectResult = EffectPlan | { refused: string } | { nothing: true };
+
 export interface EffectSound {
   track: Id;
   beat: Id;
@@ -644,7 +646,7 @@ export interface EffectSound {
  * the cursor's track when it wrote one there, else on the lowest track. `previewBeat` plays one
  * beat, so a range sounds its first. Ids survive the edit, so the score from before it will do.
  */
-export function effectSound(
+export function beatToSound(
   score: Score,
   edits: EffectEdits,
   cursorTrack?: Id,
@@ -659,23 +661,17 @@ export function effectSound(
     const track = info && score.tracks[info.trackIndex];
     return info && track ? [{ beat, info, track: track.id }] : [];
   });
-  const rank = (entry: (typeof found)[number]) =>
-    [
-      entry.track === cursorTrack ? 0 : 1,
-      entry.info.trackIndex,
-      entry.info.masterBarIndex,
-      entry.info.tick,
-      entry.info.voice,
-    ] as const;
-  found.sort((a, b) => {
-    const [x, y] = [rank(a), rank(b)];
-    const at = x.findIndex((value, i) => value !== y[i]);
-    return at < 0 ? 0 : (x[at] ?? 0) - (y[at] ?? 0);
-  });
+  found.sort(
+    (a, b) =>
+      Number(a.track !== cursorTrack) - Number(b.track !== cursorTrack) ||
+      a.info.trackIndex - b.info.trackIndex ||
+      a.info.masterBarIndex - b.info.masterBarIndex ||
+      a.info.tick - b.info.tick ||
+      a.info.voice - b.info.voice,
+  );
   const [first] = found;
   return first && { track: first.track, beat: first.beat };
 }
-export type EffectResult = EffectPlan | { refused: string } | { nothing: true };
 
 type Choice<C> =
   | { refused: string }
@@ -730,7 +726,7 @@ export function planEffect(
       noteId: item.id,
       effects: removing ? item.clear : item.set,
     }));
-    const beatSound = effectSound(input.score, { notes }, input.state.cursor?.track);
+    const beatSound = beatToSound(input.score, { notes }, input.state.cursor?.track);
     return {
       command: effectCommand(named(removing), { notes }),
       ...(notice && { notice }),
@@ -744,7 +740,7 @@ export function planEffect(
     beatId: item.id,
     changes: removing ? item.clear : item.set,
   }));
-  const beatSound = effectSound(input.score, { beats }, input.state.cursor?.track);
+  const beatSound = beatToSound(input.score, { beats }, input.state.cursor?.track);
   return {
     command: effectCommand(named(removing), { beats }),
     ...(notice && { notice }),

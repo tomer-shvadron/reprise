@@ -6,7 +6,7 @@ import type { EffectSound } from './effects';
 
 /**
  * Sounds the beat an effect was just applied to, so the user hears what it did. Silent when the
- * setting is off and while the song plays or counts in (the playhead is already sounding it). The
+ * setting is off and while the song plays or counts in (a beat sounded over the playing song is noise). The
  * edit is done by now, so a failing preview is logged, never thrown.
  */
 export function soundEffect(

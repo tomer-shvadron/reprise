@@ -11,7 +11,7 @@ import {
 import { effectTarget, type EffectTarget, type NoteRef } from './effect-targets';
 import {
   effectCommand,
-  effectSound,
+  beatToSound,
   type EffectEdits,
   type EffectInput,
   type EffectResult,
@@ -163,7 +163,7 @@ export function planGrace(input: EffectInput, form: GraceForm | 'remove'): Effec
       hammerEdits(beat, new Map([...graceStrings(beat.grace)].map((string) => [string, false]))),
     );
     if (beats.length === 0) return { nothing: true };
-    const beatSound = effectSound(input.score, { beats }, input.state.cursor?.track);
+    const beatSound = beatToSound(input.score, { beats }, input.state.cursor?.track);
     return {
       command: effectCommand('Remove grace note', { beats, notes }),
       ...(beatSound && { beatSound }),
@@ -202,7 +202,7 @@ export function planGrace(input: EffectInput, form: GraceForm | 'remove'): Effec
     notes.push(...hammerEdits(beat.beat, wanted));
   });
   if (beats.length === 0) return { refused: FRETTED_ONLY };
-  const beatSound = effectSound(input.score, { beats }, input.state.cursor?.track);
+  const beatSound = beatToSound(input.score, { beats }, input.state.cursor?.track);
   return {
     command: effectCommand('Grace note', { beats, notes }),
     ...(beatSound && { beatSound }),

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { bendPreset } from './bend-presets';
 import { effectReason, effectState } from './effect-state';
-import { effectSound, planEffect, type EffectAction, type EffectMode } from './effects';
+import { beatToSound, planEffect, type EffectAction, type EffectMode } from './effects';
 import { planGrace } from './grace-form';
 import { editScore } from './test/scores';
 
@@ -794,7 +794,7 @@ describe('planEffect: wah', () => {
   });
 });
 
-describe('effectSound', () => {
+describe('beatToSound', () => {
   const beatEdit = (built: Score, ...at: [number, number][]) => ({
     beats: at.map(([bar, beat]) => ({ beatId: beatOf(built, 0, bar, beat).id, changes: {} })),
   });
@@ -804,9 +804,9 @@ describe('effectSound', () => {
     const track = built.tracks[0]?.id;
     const effects = { palmMute: true };
     expect(
-      effectSound(built, { notes: [{ noteId: noteOf(built, 0, 0, 2, 1).id, effects }] }),
+      beatToSound(built, { notes: [{ noteId: noteOf(built, 0, 0, 2, 1).id, effects }] }),
     ).toEqual({ track, beat: beatOf(built, 0, 0, 2).id });
-    expect(effectSound(built, beatEdit(built, [1, 1]))).toEqual({
+    expect(beatToSound(built, beatEdit(built, [1, 1]))).toEqual({
       track,
       beat: beatOf(built, 0, 1, 1).id,
     });
@@ -814,7 +814,7 @@ describe('effectSound', () => {
 
   it('picks the earliest beat by bar then position, however the edits are ordered', () => {
     const built = riff();
-    expect(effectSound(built, beatEdit(built, [1, 0], [0, 3], [0, 1]))?.beat).toBe(
+    expect(beatToSound(built, beatEdit(built, [1, 0], [0, 3], [0, 1]))?.beat).toBe(
       beatOf(built, 0, 0, 1).id,
     );
   });
@@ -837,12 +837,12 @@ describe('effectSound', () => {
         { beatId: beatOf(built, 0, 0, 1).id, changes: {} },
       ],
     };
-    expect(effectSound(built, edits, built.tracks[1]?.id)?.beat).toBe(beatOf(built, 1, 0, 0).id);
-    expect(effectSound(built, edits)?.beat).toBe(beatOf(built, 0, 0, 1).id);
+    expect(beatToSound(built, edits, built.tracks[1]?.id)?.beat).toBe(beatOf(built, 1, 0, 0).id);
+    expect(beatToSound(built, edits)?.beat).toBe(beatOf(built, 0, 0, 1).id);
   });
 
   it('has nothing to sound for no edits', () => {
-    expect(effectSound(riff(), {})).toBeUndefined();
+    expect(beatToSound(riff(), {})).toBeUndefined();
   });
 
   it('is on a plan for a set and a remove, and on the destination beat for a hammer-on', () => {
