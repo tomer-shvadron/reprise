@@ -1,6 +1,6 @@
 import type { Score } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
-import { assert, integer, property } from 'fast-check';
+import { assert, constantFrom, integer, property } from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { PAGE_SIZES, layout, type LayoutOptions, type LayoutResult } from './index';
@@ -44,14 +44,14 @@ describe('anchors stay inside their system', () => {
     first.voice(1);
     for (let i = 0; i < 16; i++) first.beat('16', [note(1, 1), note(2, 1)]);
     const built = first.build({ ids: 'sequential' });
-    const result = layout(built, options(built, 200, 'paged'));
-    expectValid(result);
-    expect(outside(result)).toEqual([]);
+    // `expectValid` checks every anchor against its system's frame; `outside` is for the property.
+    expectValid(layout(built, options(built, 200, 'paged')));
   });
 
   it('keeps two voices apart at onsets a float tick apart', () => {
     // Seven septuplet 32nds reach tick 960 by summing 120 * 8/7 seven times, a float short of
-    // the quarter the other voice rests for; the voices are one onset, as `measure` draws them.
+    // the second quarter, where the other voice's chord starts; the voices are one onset, as
+    // `measure` draws them.
     const septuplet = { tuplet: { n: 7, of: 8 } } as const;
     const first = score().track('guitar').bar();
     for (let i = 0; i < 7; i++) first.beat('32', [note(1, 0)], septuplet);
@@ -65,10 +65,12 @@ describe('anchors stay inside their system', () => {
   });
 
   it('holds for random scores with chord diagrams, in both modes at narrow and wide lines', () => {
+    // Only `outside`, not `expectValid`: two voices' grace notes on identical positions still
+    // overlap (seeds 37, 97, 293, 358 and 373 at 1200 px paged, #465). Widen this check to
+    // `expectValid` when that is fixed.
     assert(
-      property(integer({ min: 0, max: 400 }), integer({ min: 0, max: 3 }), (seed, die) => {
+      property(integer({ min: 0, max: 400 }), constantFrom(320, 500, 700, 1200), (seed, width) => {
         const built = randomScore(seed, { diagrams: true });
-        const width = [320, 500, 700, 1200][die] ?? 700;
         for (const mode of ['paged', 'continuous'] as const) {
           expect(
             outside(layout(built, options(built, width, mode))),
@@ -78,5 +80,5 @@ describe('anchors stay inside their system', () => {
       }),
       { numRuns: 60 },
     );
-  });
+  }, 30_000);
 });

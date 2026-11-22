@@ -40,7 +40,9 @@ export function separateAnchors(
     if (span) {
       // An anchor wholly outside its bar (a voice moved right of the last beat of a squeezed
       // bar) collapses onto the nearest edge: clamping only the far side would leave its x
-      // beyond the bar, and beyond the system.
+      // beyond the bar, and beyond the system. A collapsed anchor has no width, so `overlaps()`
+      // (which subtracts EPSILON) cannot flag stacked ones; #466 draws the glyphs inside the
+      // bar and removes the collapse.
       const spanLeft = round(span.left);
       const spanRight = round(Math.max(span.left, span.right));
       const left = Math.min(Math.max(anchor.bbox.x, spanLeft), spanRight);

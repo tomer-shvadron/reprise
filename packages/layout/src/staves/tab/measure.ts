@@ -4,8 +4,8 @@ import { DYNAMICS_GLYPHS, beatDynamics } from '../dynamics';
 import { analyseEffects } from '../effects';
 import { wordsExtent } from '../words';
 import { TAB, analyseBar, type TabBeat, type TabOptions } from './analysis';
+import { TICK_EPSILON } from '../../ticks';
 
-const TICK_EPSILON = 1e-6;
 /** Where a chord name or beat text starts: at the left edge of the beat's fret numbers. */
 export function wordStart(beat: TabBeat): number {
   return -beat.half;
