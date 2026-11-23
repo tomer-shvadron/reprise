@@ -336,4 +336,27 @@ describe('locate on a keyboard track standard staff', () => {
     const hit = atPosition(5);
     expect(hit && cursorFromHit(built, hit)).toMatchObject({ pitch: 72 });
   });
+
+  it('snaps a click on the line of a chromatic note of the beat onto that note', () => {
+    // The chord at bar 2, beat 2 holds E5 and C5; make the C a C sharp and click its line, to the
+    // left of its head so the beat is hit, not the note.
+    const sharp = structuredClone(built);
+    const chord = sharp.tracks[0]?.bars[1]?.voices[0]?.beats[1];
+    const c5 = chord?.notes.find((n) => n.fret === 72);
+    if (!chord || !c5) throw new Error('no chord');
+    c5.fret = 73;
+    const layoutResult = lay(sharp, undefined);
+    const target = layoutResult.anchors.find((a) => a.kind === 'beat' && a.id === chord.id);
+    const sys = layoutResult.systems[0]?.staves.find((s) => s.type === 'standard');
+    if (!target || !sys) throw new Error('no anchor');
+    const b = anchorBox(layoutResult, target);
+    const unit = (sys.bottom - sys.top) / 4;
+    // C5 is the space above the middle line: position 5.
+    const hit = locate(
+      layoutResult,
+      sharp,
+      pointer(layoutResult, b.x + 1, sys.bottom - (5 * unit) / 2),
+    );
+    expect(hit).toMatchObject({ pitch: 73 });
+  });
 });

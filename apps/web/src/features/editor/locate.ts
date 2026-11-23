@@ -5,7 +5,7 @@ import {
   type StaffType,
   type System,
 } from '@reprise/layout';
-import type { Id, Score, Track } from '@reprise/model';
+import { spell, staffPosition, type Id, type Note, type Score, type Track } from '@reprise/model';
 
 import { findAnchors, scoreIndex, type ScorePointerEvent } from '@/features/score';
 import type { EditCursor } from '@/state/selection';
@@ -77,18 +77,26 @@ function pitchAtY(
   trackIndex: number,
   bar: number,
   y: number,
+  beatNotes: readonly Note[] = [],
 ): number | undefined {
   const track = score.tracks[trackIndex];
   const staff = system?.staves.find((s) => s.track === track?.id && s.type === 'standard');
   if (!track || !staff || staff.bottom <= staff.top) return undefined;
   const space = (staff.bottom - staff.top) / 4;
-  return pitchAtPosition(
-    Math.round(((staff.bottom - y) / space) * 2),
-    clefOf(track, bar),
-    track.display.octaveShift,
-    score.masterBars[bar]?.keySignature ?? { fifths: 0, minor: false },
+  const position = Math.round(((staff.bottom - y) / space) * 2);
+  const clef = clefOf(track, bar);
+  const key = score.masterBars[bar]?.keySignature ?? { fifths: 0, minor: false };
+  // A chromatic note of the beat on that line or space is the one meant, as the arrows find it.
+  const onLine = beatNotes.find(
+    ({ fret, accidental }) =>
+      staffPosition(spell(fret, key, accidental), clef, track.display.octaveShift) === position,
   );
+  return onLine?.fret ?? pitchAtPosition(position, clef, track.display.octaveShift, key);
 }
+
+/** The notes of a beat of `track`, for a click's snap. */
+const notesOf = (score: Score, trackIndex: number, bar: number, voice: number, beat?: Id) =>
+  score.tracks[trackIndex]?.bars[bar]?.voices[voice]?.beats.find(({ id }) => id === beat)?.notes;
 
 /** The staff of `track` in `system` nearest `y`, or the default for the track. */
 function staffAt(
@@ -208,8 +216,14 @@ export function locate(
       } else if (track.kind === 'pitched') {
         // The height of the click is the pitch, as on a drum staff it is the drum.
         pitch =
-          pitchAtY(system(anchor), score, info.trackIndex, info.masterBarIndex, point.y) ??
-          sameTrackLane(current, track.id);
+          pitchAtY(
+            system(anchor),
+            score,
+            info.trackIndex,
+            info.masterBarIndex,
+            point.y,
+            notesOf(score, info.trackIndex, info.masterBarIndex, info.voice, beatId),
+          ) ?? sameTrackLane(current, track.id);
       }
     }
     return {
@@ -296,7 +310,14 @@ function atStop(
   const lane =
     track.kind === 'pitched'
       ? ((at.y !== undefined
-          ? pitchAtY(at.system, score, at.trackIndex, at.bar, at.y)
+          ? pitchAtY(
+              at.system,
+              score,
+              at.trackIndex,
+              at.bar,
+              at.y,
+              notesOf(score, at.trackIndex, at.bar, at.voice, beat),
+            )
           : undefined) ?? sameTrackLane(at.current, track.id))
       : track.kind !== 'drums'
         ? undefined

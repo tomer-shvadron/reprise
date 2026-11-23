@@ -1,9 +1,14 @@
+import type { Track } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { chooseString, handPosition, neckPositions, neckRange } from './string-choice';
 
-const guitar = { tuning: [40, 45, 50, 55, 59, 64], fretCount: 24, capo: 0 };
+const guitar: Pick<Track, 'tuning' | 'fretCount' | 'capo' | 'drone'> = {
+  tuning: [40, 45, 50, 55, 59, 64],
+  fretCount: 24,
+  capo: 0,
+};
 const free = new Set<number>();
 
 describe('neckPositions', () => {
@@ -64,10 +69,10 @@ describe('handPosition', () => {
       { string: 2, fret: 7 },
       { string: 3, fret: 5 },
     ];
-    expect(handPosition(guitar as never, notes, 3)).toBe(5);
-    expect(handPosition(guitar as never, notes, 1)).toBe(5);
-    expect(handPosition(guitar as never, [{ string: 1, fret: 0 }], 4)).toBe(0);
-    expect(handPosition(guitar as never, undefined, 4)).toBe(0);
+    expect(handPosition(guitar, notes, 3)).toBe(5);
+    expect(handPosition(guitar, notes, 1)).toBe(5);
+    expect(handPosition(guitar, [{ string: 1, fret: 0 }], 4)).toBe(0);
+    expect(handPosition(guitar, undefined, 4)).toBe(0);
   });
 
   it('reads the drone string as the neck prints it', () => {
