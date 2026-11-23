@@ -4,6 +4,7 @@ import { scoreIndex } from '@/features/score';
 import type { BarRange, EditCursor, EditRange, RangeEnd, SelectionState } from '@/state/selection';
 
 import { cursorAtPosition, cursorTick, resolveCursor } from './cursor';
+import { noteAtCursor } from './drum-lanes';
 import { move, moveTrack, type Step } from './navigation';
 
 const EPSILON = 1e-6;
@@ -265,7 +266,7 @@ export function extendRangeTo(
 
 /**
  * What a command acts on: the range's beats, else the notes picked, else the note on the
- * cursor's beat and string, else the cursor's beat, else nothing.
+ * cursor's beat and string (its lane on a drum track), else the cursor's beat, else nothing.
  */
 export function editTarget(
   score: Score,
@@ -284,7 +285,8 @@ export function editTarget(
   const at = resolveCursor(score, cursor);
   const beat = at && score.tracks[at.track]?.bars[at.bar]?.voices[at.voice]?.beats[at.stop];
   if (!beat) return {};
-  const note = beat.notes.find((candidate) => candidate.string === cursor.string);
+  const track = score.tracks[at.track];
+  const note = track && noteAtCursor(track, beat.notes, cursor);
   return note ? { noteIds: [note.id] } : { beatIds: [beat.id] };
 }
 

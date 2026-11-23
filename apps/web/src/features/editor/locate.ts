@@ -5,12 +5,13 @@ import {
   type StaffType,
   type System,
 } from '@reprise/layout';
-import type { Id, Score } from '@reprise/model';
+import type { Id, Score, Track } from '@reprise/model';
 
 import { findAnchors, scoreIndex, type ScorePointerEvent } from '@/features/score';
 import type { EditCursor } from '@/state/selection';
 
 import { clampString, cursorAtPosition, defaultStaff, stopCount, stringCount } from './cursor';
+import { laneNear } from './drum-lanes';
 
 /** What a pointer position means to the editor: where the cursor would go, and the note under it, if any. */
 export interface EditHit {
@@ -23,6 +24,8 @@ export interface EditHit {
   /** Set when a note anchor was hit. */
   note: Id | undefined;
   string: number;
+  /** The drum lane under the pointer, as a GM key; set on a drum track only. */
+  pitch?: number;
   /** The note is a grace note of `beat`. */
   grace: boolean;
 }
@@ -45,6 +48,22 @@ export function stringAt(
   const spacing = (staff.bottom - staff.top) / (strings - 1);
   if (spacing <= 0) return 1;
   return Math.min(Math.max(Math.round((y - staff.top) / spacing) + 1, 1), strings);
+}
+
+/**
+ * The drum lane nearest `y` on the track's percussion staff in `system`; undefined when the
+ * system holds none. Position 0 is the bottom line and each step is half a staff space.
+ */
+function laneAtY(
+  system: System | undefined,
+  track: Track,
+  y: number,
+  current: number | undefined,
+): number | undefined {
+  const staff = system?.staves.find((s) => s.track === track.id && s.type === 'percussion');
+  if (!staff || staff.bottom <= staff.top) return undefined;
+  const space = (staff.bottom - staff.top) / 4;
+  return laneNear(track, ((staff.bottom - y) / space) * 2, current);
 }
 
 /** The staff of `track` in `system` nearest `y`, or the default for the track. */
@@ -110,6 +129,15 @@ function isGrace(score: Score, noteId: Id, beatId: Id): boolean {
   return beat !== undefined && !beat.notes.some((n) => n.id === noteId);
 }
 
+/** The GM key of a drum note, from the beat that holds it. */
+function noteKey(score: Score, beatId: Id, noteId: Id): number | undefined {
+  const info = scoreIndex(score).beats.get(beatId);
+  const beat =
+    info &&
+    score.tracks[info.trackIndex]?.bars[info.masterBarIndex]?.voices[info.voice]?.beats[info.index];
+  return beat?.notes.find((n) => n.id === noteId)?.fret;
+}
+
 /** Resolves a pointer event to where the editor would put its cursor; undefined over nothing the score owns. */
 export function locate(
   layout: LayoutResult,
@@ -135,14 +163,19 @@ export function locate(
     const staff = anchor.staff ?? defaultStaff(score, info.trackIndex);
     let string: number;
     let note: Id | undefined;
+    let pitch: number | undefined;
     if (anchor.kind === 'note') {
       note = anchor.id;
       string = index.noteString.get(anchor.id) ?? 1;
+      if (track.kind === 'drums') pitch = noteKey(score, beatId, anchor.id) ?? current?.pitch;
     } else {
       const strings = stringCount(score, info.trackIndex);
       const fromLine =
         staff === 'tab' ? stringAt(system(anchor), track.id, strings, point.y) : undefined;
       string = clampString(score, info.trackIndex, fromLine ?? current?.string ?? 1);
+      if (track.kind === 'drums') {
+        pitch = laneAtY(system(anchor), track, point.y, current?.pitch) ?? current?.pitch;
+      }
     }
     return {
       track: track.id,
@@ -152,6 +185,7 @@ export function locate(
       beat: beatId,
       note,
       string: clampString(score, info.trackIndex, string),
+      ...(pitch !== undefined && { pitch }),
       grace: note !== undefined && isGrace(score, note, beatId),
     };
   }
@@ -224,6 +258,11 @@ function atStop(
     at.y !== undefined && staff === 'tab'
       ? stringAt(at.system, track.id, strings, at.y)
       : undefined;
+  const lane =
+    track.kind !== 'drums'
+      ? undefined
+      : ((at.y !== undefined ? laneAtY(at.system, track, at.y, at.current?.pitch) : undefined) ??
+        (at.current?.track === track.id ? at.current.pitch : undefined));
   return {
     track: track.id,
     masterBar: masterBar.id,
@@ -232,6 +271,7 @@ function atStop(
     beat,
     note: undefined,
     string: clampString(score, at.trackIndex, fromLine ?? at.current?.string ?? 1),
+    ...(lane !== undefined && { pitch: lane }),
     grace: false,
   };
 }
@@ -247,6 +287,6 @@ export function cursorFromHit(score: Score, hit: EditHit): EditCursor | undefine
   return cursorAtPosition(
     score,
     { track, bar, voice: hit.voice, stop },
-    { string: hit.string, staff: hit.staff },
+    { string: hit.string, staff: hit.staff, ...(hit.pitch !== undefined && { pitch: hit.pitch }) },
   );
 }

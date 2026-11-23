@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { EditCursor, EditRange } from '@/state/selection';
 
+import { drumScore } from './test/drum-scores';
 import { cursorAtPosition, firstStop, reconcile } from './cursor';
 import { move } from './navigation';
 import {
@@ -193,6 +194,33 @@ describe('editTarget', () => {
   });
 });
 
+describe('editTarget on a drum beat', () => {
+  const drums = drumScore();
+  const cursorOn = (pitch?: number) => {
+    const cursor = cursorAtPosition(
+      drums,
+      { track: 0, bar: 1, voice: 0, stop: 1 },
+      { string: 0, staff: 'percussion', ...(pitch !== undefined && { pitch }) },
+    );
+    if (!cursor) throw new Error('no stop');
+    return cursor;
+  };
+  const hits = drums.tracks[0]?.bars[1]?.voices[0]?.beats[1];
+
+  it("targets only the lane's hit on a beat with several", () => {
+    const hat = hits?.notes.find((n) => n.fret === 42);
+    expect(editTarget(drums, { cursor: cursorOn(42), range: undefined, selection: {} })).toEqual({
+      noteIds: [hat?.id],
+    });
+  });
+
+  it('falls back to the whole beat when the lane holds no hit', () => {
+    expect(editTarget(drums, { cursor: cursorOn(49), range: undefined, selection: {} })).toEqual({
+      beatIds: [hits?.id],
+    });
+  });
+});
+
 describe('reconcile', () => {
   const base = { range: undefined, selection: {} } as const;
   const cursorOn = (s: Score, track: number, b: number, stop: number): EditCursor => {
@@ -204,6 +232,18 @@ describe('reconcile', () => {
   it('changes nothing for a score that holds everything', () => {
     expect(
       reconcile(score, { ...base, cursor: cursorOn(score, 0, 0, 1), currentTrack: guitar }),
+    ).toBeUndefined();
+  });
+
+  it('keeps a drum lane through reconciling', () => {
+    const drums = cursorAtPosition(
+      score,
+      { track: 1, bar: 0, voice: 0, stop: 1 },
+      { string: 0, staff: 'percussion', pitch: 42 },
+    );
+    if (!drums) throw new Error('no stop');
+    expect(
+      reconcile(score, { ...base, cursor: drums, currentTrack: score.tracks[1]?.id }),
     ).toBeUndefined();
   });
 

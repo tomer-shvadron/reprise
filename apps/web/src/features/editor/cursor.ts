@@ -57,7 +57,7 @@ function beatAt(score: Score, p: Position): Id | undefined {
 export function cursorAtPosition(
   score: Score,
   p: Position,
-  base: Pick<EditCursor, 'string' | 'staff'>,
+  base: Pick<EditCursor, 'string' | 'staff' | 'pitch'>,
 ): EditCursor | undefined {
   const track = score.tracks[p.track];
   const masterBar = score.masterBars[p.bar];
@@ -71,6 +71,8 @@ export function cursorAtPosition(
     voice: p.voice,
     beat,
     string: clampString(score, p.track, base.string || 1),
+    // The lane belongs to a track without strings.
+    ...(base.pitch !== undefined && track.kind === 'drums' && { pitch: base.pitch }),
     staff: base.staff,
     at: { track: p.track, bar: p.bar, beat: p.stop },
   };
@@ -102,7 +104,7 @@ export function firstStop(
   track: number,
   bar: number,
   voice = 0,
-  base?: Pick<EditCursor, 'string' | 'staff'>,
+  base?: Pick<EditCursor, 'string' | 'staff' | 'pitch'>,
 ): EditCursor | undefined {
   return cursorAtPosition(
     score,
@@ -176,7 +178,7 @@ export function cursorAtTick(
   bar: number,
   tick: number,
   voice: number,
-  base?: Pick<EditCursor, 'string' | 'staff'>,
+  base?: Pick<EditCursor, 'string' | 'staff' | 'pitch'>,
 ): EditCursor | undefined {
   const beats = score.tracks[track]?.bars[bar]?.voices[voice]?.beats ?? [];
   const stops = stopCount(score, track, bar, voice);
@@ -207,6 +209,7 @@ function sameCursor(a: EditCursor, b: EditCursor): boolean {
     a.voice === b.voice &&
     a.beat === b.beat &&
     a.string === b.string &&
+    a.pitch === b.pitch &&
     a.staff === b.staff &&
     a.at.track === b.at.track &&
     a.at.bar === b.at.bar &&
@@ -244,6 +247,7 @@ export function reconcile(score: Score, state: EditState): EditPatch | undefined
       track &&
       cursorAtPosition(score, resolved, {
         string: clampString(score, resolved.track, cursor.string),
+        ...(cursor.pitch !== undefined && { pitch: cursor.pitch }),
         staff: cursor.staff,
       });
     if (!next) {

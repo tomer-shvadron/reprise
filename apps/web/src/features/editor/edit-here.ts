@@ -10,6 +10,7 @@ import { cursorAtPosition, defaultStaff, firstStop } from './cursor';
 import { rangePatch } from './range';
 import { visibleTracks, wantedNotation } from './visible';
 import { openWord } from './word-session';
+import { beatWithTrack } from './words';
 
 export type EditHereServices = Pick<
   AppServices,
@@ -38,10 +39,20 @@ function beatCursor(services: CursorServices, score: Score, target: MenuTarget) 
   const beat = index.beats.get(target.beat);
   if (!beat) return undefined;
   const string = (target.kind === 'note' && index.noteString.get(target.note)) || 1;
+  // On a drum note the cursor takes the note's key as its lane.
+  const found = target.kind === 'note' ? beatWithTrack(score, target.beat) : undefined;
+  const pitch =
+    found?.track.kind === 'drums'
+      ? found.beat.notes.find((n) => target.kind === 'note' && n.id === target.note)?.fret
+      : undefined;
   return cursorAtPosition(
     score,
     { track: beat.trackIndex, bar: beat.masterBarIndex, voice: beat.voice, stop: beat.index },
-    { string, ...stringsOf(services, beat.trackIndex, score) },
+    {
+      string,
+      ...(pitch !== undefined && { pitch }),
+      ...stringsOf(services, beat.trackIndex, score),
+    },
   );
 }
 

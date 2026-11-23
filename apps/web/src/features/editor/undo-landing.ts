@@ -1,4 +1,4 @@
-import type { Change, Id, Patch, Score } from '@reprise/model';
+import type { Change, Id, Note, Patch, Score } from '@reprise/model';
 
 import type { EditCursor } from '@/state/selection';
 
@@ -108,31 +108,39 @@ export function undoLanding(
   const bar = chosen.bar ?? chosen.masterBar;
   if (bar === undefined) return undefined;
   const voice = chosen.voice ?? (track === ownTrack ? home.voice : 0);
-  const base = { string: cursor.string, staff: cursor.staff };
+  const base = {
+    string: cursor.string,
+    staff: cursor.staff,
+    ...(cursor.pitch !== undefined && { pitch: cursor.pitch }),
+  };
   if (chosen.beat === undefined) {
     return cursorAtPosition(score, { track, bar, voice, stop: 0 }, base);
   }
   const stop = Math.min(chosen.beat, Math.max(stopCount(score, track, bar, voice) - 1, 0));
-  const noteString =
-    chosen.note === undefined ? undefined : noteStringOf(score, chosen, track, voice, change);
-  return cursorAtPosition(
-    score,
-    { track, bar, voice, stop },
-    { string: noteString ?? base.string, staff: base.staff },
-  );
+  const note =
+    chosen.note === undefined ? undefined : replayedNote(score, chosen, track, voice, change);
+  // A fretted note lands the cursor on its string, a drum hit on its key.
+  const drums = score.tracks[track]?.kind === 'drums';
+  const landing =
+    note === undefined
+      ? base
+      : drums
+        ? { ...base, pitch: note.fret }
+        : { ...base, string: note.string };
+  return cursorAtPosition(score, { track, bar, voice, stop }, landing);
 }
 
 /**
- * The string of the note a patch names: the note now at that place, or for a removal the note that
- * was removed, read from the opposite patches (the removed value is in the inverse of a `remove`).
+ * The note a patch names: the note now at that place, or for a removal the note that was
+ * removed, read from the opposite patches (the removed value is in the inverse of a `remove`).
  */
-function noteStringOf(
+function replayedNote(
   score: Score,
   spot: Spot,
   track: number,
   voice: number,
   change: Pick<Change, 'patches' | 'inverse'>,
-): number | undefined {
+): Pick<Note, 'string' | 'fret'> | undefined {
   const { patch } = spot;
   if (patch?.op === 'remove') {
     const path = JSON.stringify(patch.path);
@@ -140,12 +148,12 @@ function noteStringOf(
       (other) => other.op !== 'remove' && JSON.stringify(other.path) === path,
     );
     const value: unknown = gone?.value;
-    if (typeof value === 'object' && value !== null && 'string' in value) {
-      return typeof value.string === 'number' ? value.string : undefined;
-    }
-    return undefined;
+    if (typeof value !== 'object' || value === null) return undefined;
+    const string = 'string' in value ? value.string : undefined;
+    const fret = 'fret' in value ? value.fret : undefined;
+    return typeof string === 'number' && typeof fret === 'number' ? { string, fret } : undefined;
   }
   const bar = spot.bar ?? 0;
   const beat = score.tracks[track]?.bars[bar]?.voices[voice]?.beats[spot.beat ?? 0];
-  return beat?.notes[spot.note ?? 0]?.string;
+  return beat?.notes[spot.note ?? 0];
 }

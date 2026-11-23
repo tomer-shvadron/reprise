@@ -28,6 +28,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 - In edit mode, ⌘C, ⌘X and ⌘V (Ctrl on Windows) copy, cut and paste notes, beats or whole bars, through the browser's own clipboard events: the key is left to the browser, which is why Copy, Cut and Paste show their keys here but the dispatcher never runs them. Paste follows the status bar's insert or overwrite mode; Paste as insert and Paste over, in the palette, choose one. Text fields and dialogs keep their own copy, cut and paste, and so does selected text anywhere on the page.
 - Undo and redo in a focused text field undo the field's typing, not the score. The palette and the desktop Edit menu name the step: "Undo Insert bar", "Redo Paste"; Show history opens a panel listing every step, where a click or Enter jumps to that point.
 - In edit mode a digit that can start a two-digit fret on the track's neck (1 and 2 on 24 frets) waits 500 ms for a second digit; any other key, a click or moving the cursor commits it at once, and Escape cancels it. Digits never move the cursor, so more digits on the same beat make a chord (with ↑ and ↓ between them); → moves on, and appends a bar past the end of a full last bar.
+- On a drum track ↑ and ↓ move the cursor through the kit (the snare is where it starts, and the lanes are the default kit plus any drum the track already uses), 0 places the drum the cursor is on, and a GM number places that drum: 1 to 8 start a two-digit number with the same wait, so 3 then 8 is the snare (38) and 4 then 2 the closed hi-hat (42). A number with no drum sound (9, and 10 to 26) is refused in the status bar. Backspace removes the hit in the lane and L ties it to the previous hit of the same drum.
 - The library's song list takes its own keys while it has focus: the arrows, Home, End, Page Up and Page Down move, Enter opens, Delete or Backspace deletes, and L opens the song's practice log. Escape closes the log page first, then the Library sheet.
 - The tracks list takes its own keys while a track's name has focus: Up, Down, Home and End move between tracks, Enter selects, and M and S mute and solo that track. Shift+F6 moves focus from the score to the current track in the list and back. Alt+1 to Alt+9 jump straight to a track by the number the list shows. Alt+1 to Alt+4 depart from Guitar Pro 8, where they are Move Voice; Reprise has no voice move yet, and one that arrives takes another key. Cmd/Ctrl+1 and Cmd/Ctrl+2 are the edit voices.
 - Alt+F10 (Option+F10 on a Mac) moves focus to the selection toolbar that floats over selected bars, when it is shown; Tab from the score reaches it too. Inside it the arrow keys, Home and End move between its buttons, and Escape gives focus back without clearing the selection.
@@ -162,8 +163,8 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Show history | Editor | Global | — | — |
 | Cursor to previous beat | Editor | Editing | ← | Left |
 | Cursor to next beat | Editor | Editing | → | Right |
-| Cursor up a string | Editor | Editing | ↑ | Up |
-| Cursor down a string | Editor | Editing | ↓ | Down |
+| Cursor up a string or line | Editor | Editing | ↑ | Up |
+| Cursor down a string or line | Editor | Editing | ↓ | Down |
 | Cursor to start of bar | Editor | Editing | ↖ | Home |
 | Cursor to end of bar | Editor | Editing | ↘ | End |
 | Cursor to previous bar | Editor | Editing | ⌘← | Ctrl+Left |

@@ -3,6 +3,7 @@ import { beatTicks, type Id, type Score } from '@reprise/model';
 
 import type { EditCursor } from '@/state/selection';
 
+import { cursorLane, stepLane } from './drum-lanes';
 import {
   clampString,
   cursorAtPosition,
@@ -59,14 +60,23 @@ export function move(score: Score, cursor: EditCursor, step: Step): EditCursor |
   }
 }
 
-/** The cursor one string up (`delta` -1, towards string 1) or down (+1); undefined without strings or at the end. */
+/**
+ * The cursor one string up (`delta` -1, towards string 1) or down (+1); on a drum track one lane
+ * up or down the kit. Undefined on a track with neither, and at the end.
+ */
 export function moveString(
   score: Score,
   cursor: EditCursor,
   delta: -1 | 1,
 ): EditCursor | undefined {
   const at = resolveCursor(score, cursor);
-  if (!at || stringCount(score, at.track) === 0) return undefined;
+  if (!at) return undefined;
+  if (stringCount(score, at.track) === 0) {
+    const track = score.tracks[at.track];
+    if (track?.kind !== 'drums') return undefined;
+    const pitch = stepLane(track, cursorLane(cursor), delta);
+    return pitch === undefined ? undefined : { ...cursor, pitch };
+  }
   const string = clampString(score, at.track, cursor.string + delta);
   return string === cursor.string ? undefined : { ...cursor, string };
 }

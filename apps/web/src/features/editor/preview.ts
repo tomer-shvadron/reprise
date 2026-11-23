@@ -27,7 +27,11 @@ export function previewOptions(
   const beat =
     score.tracks[info.trackIndex]?.bars[info.masterBarIndex]?.voices[info.voice]?.beats[info.index];
   if (!beat) return {};
-  const note = beat.notes.find(({ string }) => string === sound.string);
+  // By slot, not string: a drum beat holds several string-0 notes, one per key.
+  const fretted = score.tracks[info.trackIndex]?.kind === 'fretted';
+  const note = beat.notes.find(({ string, fret }) =>
+    fretted ? string === sound.string : fret === sound.fret,
+  );
   const sequence = Array.from({ length: info.masterBarIndex + 1 }, (_, masterBarIndex) => ({
     masterBarIndex,
     passIndex: 0,
