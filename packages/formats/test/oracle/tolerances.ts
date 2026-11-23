@@ -427,6 +427,18 @@ export const TOLERANCES: readonly Tolerance[] = [
   },
 ];
 
+/*
+ * Dormant differences, deliberately without a tolerance (an entry that accepts nothing fails the
+ * oracle, and no fixture shows them yet; #76). Add the entry with the fixture that needs it:
+ * - `isGuitar`: alphaTab treats programs 24 to 39, 43 and 105 as guitars, our fretted family is
+ *   24 to 39 and 104 to 107, so a track on 43, 104, 106 or 107 can differ by an octave shift.
+ * - gpif last bar: alphaTab clears a double bar on the last master bar, we keep it (the gp writer
+ *   oracle test already carries this one for files we write).
+ * - gpif middle points: alphaTab drops a bend or whammy middle point whose offset or value is 0
+ *   (truthy checks), we keep it (#172).
+ * - the extended tolerances list `gp` beside `gpx` (same gpif code path) though no gp fixture
+ *   exercises them; drop `gp` there if evidence-only is preferred.
+ */
 export function toleranceFor(
   difference: Difference,
   format: FixtureFormat,
