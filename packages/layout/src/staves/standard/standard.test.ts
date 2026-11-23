@@ -557,6 +557,28 @@ describe('standard staff', () => {
     }
   });
 
+  it('keeps the ink of stacked fingering marks apart: a p above an i (#526)', () => {
+    for (const notation of ['standard', 'both'] as const) {
+      const built = score()
+        .track('guitar', { display: { notation, octaveShift: 1 } })
+        .bar()
+        .beat('4', [note(5, 2, { rightHandFinger: 'index' })])
+        .voice(1)
+        .beat('4', [note(2, 1, { rightHandFinger: 'thumb' })])
+        .build({ ids: 'sequential' });
+      const result = laid(built);
+      const fingers = result.primitives.flatMap((p) =>
+        p.kind === 'glyph' && p.glyph.startsWith('fingering') ? [p] : [],
+      );
+      expect(fingers, notation).toHaveLength(2);
+      expect(overlappingMarks(result), notation).toEqual([]);
+      const [upper, lower] = fingers.sort((a, b) => a.bbox.y - b.bbox.y);
+      expect((upper?.bbox.y ?? 0) + (upper?.bbox.height ?? 0), notation).toBeLessThanOrEqual(
+        (lower?.bbox.y ?? 0) - 0.05,
+      );
+    }
+  });
+
   it('anchors every note head to its note', () => {
     const built = score()
       .track('piano', piano)

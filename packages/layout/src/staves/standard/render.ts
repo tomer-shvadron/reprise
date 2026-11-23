@@ -49,7 +49,6 @@ import {
 } from './rhythm';
 
 const TIE_GAP = 0.15;
-const FINGERING_STEP = 1.1;
 
 interface Context {
   input: StaffBar;
@@ -447,9 +446,9 @@ export function renderBar(
         }),
       );
     }
-    for (const { glyph: name, note, row } of beat.fingering) {
+    for (const { glyph: name, note, lift } of beat.fingering) {
       const width = glyphWidth(name, space);
-      const y = top + plan.fingeringY - row * FINGERING_STEP * space;
+      const y = top + plan.fingeringY - lift * space;
       sink.primitives.push(glyph(name, x - width / 2, y, space, { node: note.id }));
     }
   }
