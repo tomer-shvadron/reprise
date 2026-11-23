@@ -1,6 +1,7 @@
 import { transportCommands } from '@/features/transport';
 // The phase 3 features by their command files, for the same reason as the tracks below.
 import { editorCommands } from '@/features/editor/commands';
+import { onNotatedStaff } from '@/features/editor/standard-staff';
 import { libraryCommands } from '@/features/library/commands';
 import { soundsCommands } from '@/features/sounds/commands';
 import { trainerCommands } from '@/features/trainer/commands';
@@ -27,7 +28,16 @@ export function createAppRegistry(
   // recomputes, still conflict-free.
   const keymap = createKeymapResolver(services.settings, keyboard, () => registry);
   const registry = new CommandRegistry(
-    () => services.editing.getState().editing,
+    (context) => {
+      // Every context refines edit mode. The standard staff's letters stay out of a word field,
+      // where they are text.
+      if (!services.editing.getState().editing) return false;
+      if (context === 'editing') return true;
+      return (
+        services.entry.getState().word === undefined &&
+        onNotatedStaff(services.document.getState().score, services.selection.getState().cursor)
+      );
+    },
     (command) => keymap(command),
   );
   for (const command of [

@@ -19,6 +19,9 @@ import {
   type BeatInput,
   type Command,
   type Id,
+  type KeySignature,
+  type Letter,
+  type Note,
   type Score,
   type Track,
 } from '@reprise/model';
@@ -28,6 +31,7 @@ import type { EditCursor, SelectionState } from '@/state/selection';
 
 import { resolveCursor, stopCount, type Resolved } from './cursor';
 import { cursorLane, LAST_DRUM_KEY, laneLabel, noteAtCursor } from './drum-lanes';
+import { chordPitch, clefOf, letterPitch, middleLine, pitchName } from './pitch-entry';
 import { rangeBeats } from './range';
 import {
   longer,
@@ -46,6 +50,8 @@ export type EntryAction =
   | { kind: 'fret'; fret: number }
   /** A hit on the cursor's lane, typed as 0 on a drum track. */
   | { kind: 'lane' }
+  /** A note typed by letter on a pitched track; `chord` adds it to the beat instead of replacing the lane's. */
+  | { kind: 'pitch'; letter: Letter; chord: boolean }
   | { kind: 'rest' }
   | { kind: 'tie' }
   | { kind: 'insertAfter' }
@@ -76,7 +82,7 @@ export interface EditPlan {
   land?: Landing;
   /** The beat to remember as just inserted; absent forgets it. */
   inserted?: Id;
-  /** The drum lane the cursor lands on, as a GM key. */
+  /** The lane the cursor lands on: a GM key on drums, a MIDI key on a pitched track. */
   lane?: number;
   /** The note to sound once the edit has been applied. */
   sound?: { track: Id; beat: Id; string: number; fret: number };
@@ -103,14 +109,25 @@ interface Where {
   beats: readonly Beat[];
   voiceId: Id;
   beat: Beat | undefined;
+  /** The bar's key signature, which spells and picks letters on a pitched track. */
+  key: KeySignature;
 }
+
+const C_MAJOR: KeySignature = { fifths: 0, minor: false };
 
 function whereOf(score: Score, cursor: EditCursor): Where | undefined {
   const at = resolveCursor(score, cursor);
   const track = at && score.tracks[at.track];
   const voice = at && track?.bars[at.bar]?.voices[at.voice];
   if (!at || !track || !voice) return undefined;
-  return { at, track, beats: voice.beats, voiceId: voice.id, beat: voice.beats[at.stop] };
+  return {
+    at,
+    track,
+    beats: voice.beats,
+    voiceId: voice.id,
+    beat: voice.beats[at.stop],
+    key: score.masterBars[at.bar]?.keySignature ?? C_MAJOR,
+  };
 }
 
 /** Ticks a voice has not used yet in its bar; negative for an over-full bar. */
@@ -135,9 +152,11 @@ export function planEntry(input: EntryInput, action: EntryAction): EntryPlan {
     case 'fret':
       return planFret(input, where, action.fret);
     case 'lane':
-      return where.track.kind === 'drums'
-        ? planFret(input, where, cursorLane(input.cursor))
-        : refuse('A hit is placed on a drum track only');
+      return where.track.kind === 'fretted'
+        ? refuse('A note on the lane is placed on a drum or keyboard track only')
+        : planFret(input, where, laneOf(where, input.cursor));
+    case 'pitch':
+      return planPitch(input, where, action.letter, action.chord);
     case 'rest':
       return planRest(input, where);
     case 'tie':
@@ -161,13 +180,24 @@ export function planEntry(input: EntryInput, action: EntryAction): EntryPlan {
   }
 }
 
-/** Fretted tracks with strings and drum tracks take notes; pitched tracks wait for pitch entry. */
+/** The lane of the cursor on a track that has one: its key, else where the track's cursor starts. */
+function laneOf(where: Where, cursor: EditCursor): number {
+  if (where.track.kind === 'drums') return cursorLane(cursor);
+  const { track, at } = where;
+  return cursor.pitch ?? middleLine(clefOf(track, at.bar), track.display.octaveShift);
+}
+
+/** "Acoustic Snare (38)" on drums, "F♯4" on a pitched track. */
+function laneName(where: Where, lane: number): string {
+  return where.track.kind === 'drums' ? laneLabel(lane) : pitchName(lane, where.key);
+}
+
+/** Fretted tracks with strings, drum tracks and pitched tracks take notes. */
 function guardNotes(where: Where): EntryPlan | undefined {
   const { track } = where;
-  if (track.kind === 'drums') return undefined;
-  return track.kind === 'fretted' && track.tuning.length > 0
-    ? undefined
-    : refuse('Note entry works on fretted and drum tracks only');
+  return track.kind === 'fretted' && track.tuning.length === 0
+    ? refuse('Note entry works on tracks with strings, drums or keys only')
+    : undefined;
 }
 
 /** Refuses an insertion of `rhythm` into the cursor's bar when it does not fit. */
@@ -208,6 +238,12 @@ function planFret(input: EntryInput, where: Where, written: number): EntryPlan {
   const refusal = guardNotes(where);
   if (refusal) return refusal;
   if (where.track.kind === 'drums') return planHit(input, where, written);
+  if (where.track.kind === 'pitched') {
+    // 0 is the lane's own pitch, as it is the drum's; every other digit means nothing here.
+    return written === 0
+      ? planKey(input, where, laneOf(where, input.cursor), 'add')
+      : refuse('Type a note name, A to G');
+  }
   const { string } = input.cursor;
   const fret = storedFret(where.track, string, written);
   if (fret === undefined) {
@@ -246,6 +282,86 @@ function planHit(input: EntryInput, where: Where, key: number): EntryPlan {
     lane: key,
     ...(input.inserted === beat.id && { inserted: beat.id }),
     sound: { track: where.track.id, beat: beat.id, ...note },
+  };
+}
+
+/** The beat the new note goes on is a fresh one, not the beat under the cursor. */
+const startsBeat = (input: EntryInput, where: Where): boolean =>
+  !where.beat || (input.mode === 'insert' && input.inserted !== where.beat.id);
+
+/**
+ * The key a note's letter sounds at: the nearest octave to the note before the cursor in this
+ * voice, else to the clef's middle line; or, for a chord note, the first above the beat's highest.
+ */
+function keyForLetter(
+  input: EntryInput,
+  where: Where,
+  letter: Letter,
+  chord: boolean,
+): number | undefined {
+  const { beat } = where;
+  if (chord && beat && beat.notes.length > 0 && !startsBeat(input, where)) {
+    return chordPitch(letter, Math.max(...beat.notes.map(({ fret }) => fret)), where.key);
+  }
+  return letterPitch(letter, referenceKey(where), where.key);
+}
+
+/** The top key of the nearest earlier played beat of this voice, across bars; else the middle line. */
+function referenceKey(where: Where): number {
+  const { track, at } = where;
+  for (let bar = at.bar; bar >= 0; bar -= 1) {
+    const beats = track.bars[bar]?.voices[at.voice]?.beats ?? [];
+    for (let i = bar === at.bar ? at.stop - 1 : beats.length - 1; i >= 0; i -= 1) {
+      const notes = beats[i]?.notes ?? [];
+      if (notes.length > 0) return Math.max(...notes.map(({ fret }) => fret));
+    }
+  }
+  return middleLine(clefOf(track, at.bar), track.display.octaveShift);
+}
+
+/** A letter typed on a pitched track, A to G, or ⇧A to ⇧G to add to the chord. */
+function planPitch(input: EntryInput, where: Where, letter: Letter, chord: boolean): EntryPlan {
+  if (where.track.kind !== 'pitched') {
+    return refuse('Typing a note name works on keyboard tracks only');
+  }
+  const midi = keyForLetter(input, where, letter, chord);
+  if (midi === undefined) return refuse(`No ${letter} in the range of the keys`);
+  return planKey(input, where, midi, chord ? 'add' : 'replace');
+}
+
+/**
+ * A pitched note at `midi`, held as `fret` on string 0. `replace`, in overwrite mode, swaps the
+ * note in the cursor's lane for it in one chain, keeping what the note had but its tie and
+ * accidental; with no note in the lane it adds one. `add` only adds, which is a chord note.
+ */
+function planKey(input: EntryInput, where: Where, midi: number, how: 'replace' | 'add'): EntryPlan {
+  const note = { string: 0, fret: midi };
+  const { beat } = where;
+  if (!beat) return insertion(input, where, where.beats.length, input.rhythm, note, midi);
+  if (startsBeat(input, where)) {
+    return insertion(input, where, where.at.stop, input.rhythm, note, midi);
+  }
+  const justInserted = input.inserted === beat.id;
+  const old = how === 'replace' && !justInserted ? noteInSlot(where, input.cursor) : undefined;
+  const sound = { track: where.track.id, beat: beat.id, ...note };
+  if (!old || old.fret === midi) {
+    return {
+      command: chain('enterNote', [setNote({ beatId: beat.id }, note)]),
+      lane: midi,
+      ...(justInserted && { inserted: beat.id }),
+      sound,
+    };
+  }
+  const kept: Partial<Note> = { ...old };
+  delete kept.id;
+  delete kept.accidental;
+  return {
+    command: chain('enterNote', [
+      removeNote({ noteId: old.id }),
+      setNote({ beatId: beat.id, id: old.id }, { ...kept, ...note, tie: false }),
+    ]),
+    lane: midi,
+    sound,
   };
 }
 
@@ -358,14 +474,19 @@ function planRhythm(
 }
 
 const noteInSlot = (where: Where, cursor: EditCursor) =>
-  where.beat && noteAtCursor(where.track, where.beat.notes, cursor);
+  where.beat &&
+  noteAtCursor(
+    where.track,
+    where.beat.notes,
+    where.track.kind === 'pitched' ? { ...cursor, pitch: laneOf(where, cursor) } : cursor,
+  );
 
 function planTie(input: EntryInput, where: Where): EntryPlan {
   const refusal = guardNotes(where);
   if (refusal) return refusal;
-  const drums = where.track.kind === 'drums';
-  const string = drums ? 0 : input.cursor.string;
-  const lane = drums ? cursorLane(input.cursor) : undefined;
+  const onLane = where.track.kind !== 'fretted';
+  const string = onLane ? 0 : input.cursor.string;
+  const lane = onLane ? laneOf(where, input.cursor) : undefined;
   const { beat, track, at } = where;
   const existing = noteInSlot(where, input.cursor);
   if (beat && existing?.tie) {
@@ -382,7 +503,7 @@ function planTie(input: EntryInput, where: Where): EntryPlan {
     return refuse(
       lane === undefined
         ? `Nothing to tie to on string ${String(string)}`
-        : `Nothing to tie to on ${laneLabel(lane)}`,
+        : `Nothing to tie to on ${laneName(where, lane)}`,
     );
   }
   const note = { string, fret: origin.note.fret, tie: true } as const;
@@ -403,10 +524,14 @@ function planDeleteNote(input: EntryInput, where: Where): EntryPlan {
         return note ? [note.id] : [];
       })();
   if (ids.length === 0) {
+    if (where.track.kind === 'fretted') {
+      return refuse(`No note on string ${String(input.cursor.string)} to delete`);
+    }
+    const lane = laneOf(where, input.cursor);
     return refuse(
       where.track.kind === 'drums'
-        ? `No ${percussionInstrument(cursorLane(input.cursor))?.name ?? 'hit'} on this beat`
-        : `No note on string ${String(input.cursor.string)} to delete`,
+        ? `No ${percussionInstrument(lane)?.name ?? 'hit'} on this beat`
+        : `No ${pitchName(lane, where.key)} on this beat`,
     );
   }
   return {

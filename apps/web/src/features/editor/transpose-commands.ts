@@ -2,6 +2,8 @@ import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
 
 import { commitEdit } from './commit';
+import { resolveCursor } from './cursor';
+import { noteAtCursor } from './drum-lanes';
 import { dialogsOf } from './dialogs';
 import { entryController } from './entry-controller';
 import type { EffectOutcome } from './effect-commands';
@@ -57,6 +59,7 @@ export function applyTranspose(
 
 /** The semitone keys: the selected notes only, with no chord names or key. Returns whether the score changed. */
 export function nudgeNotes(services: TransposeServices, semitones: 1 | -1): boolean {
+  const follows = laneNoteMoves(services);
   const outcome = applyTranspose(services, {
     semitones,
     scope: 'selection',
@@ -65,7 +68,30 @@ export function nudgeNotes(services: TransposeServices, semitones: 1 | -1): bool
   });
   if ('refused' in outcome) services.entry.getState().setMessage(outcome.refused);
   else if ('nothing' in outcome) services.entry.getState().setMessage('Select a note first');
+  const { cursor } = services.selection.getState();
+  if ('applied' in outcome && follows && cursor?.pitch !== undefined) {
+    // The lane goes with its note, as the string goes with a note moved to another string.
+    const pitch = Math.min(Math.max(cursor.pitch + semitones, 0), 127);
+    services.selection.getState().setEdit({ cursor: { ...cursor, pitch } });
+  }
   return 'applied' in outcome;
+}
+
+/** Whether a semitone key moves only the note in a pitched track's lane, so the lane follows it. */
+function laneNoteMoves(services: TransposeServices): boolean {
+  const { score } = services.document.getState();
+  const { cursor, range, selection } = services.selection.getState();
+  if (!score || !cursor || range || selection.noteIds?.length || selection.beatIds?.length) {
+    return false;
+  }
+  const at = resolveCursor(score, cursor);
+  const track = at && score.tracks[at.track];
+  const beat = at && track?.bars[at.bar]?.voices[at.voice]?.beats[at.stop];
+  return (
+    track?.kind === 'pitched' &&
+    beat !== undefined &&
+    noteAtCursor(track, beat.notes, cursor) !== undefined
+  );
 }
 
 /** Moves the selected notes to the neighbouring string; the cursor follows a single note. */

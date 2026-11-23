@@ -7,7 +7,7 @@ import type { TrackCommandId } from '@/features/tracks/commands';
 import type { TrainerCommandId } from '@/features/trainer/commands';
 import type { TransportCommandId } from '@/features/transport/commands';
 
-import { runCommand, type Command, type CommandRegistry } from './command-registry';
+import { contextRank, runCommand, type Command, type CommandRegistry } from './command-registry';
 import type { AppCommandId } from './commands';
 import type { EditCommandId } from './edit-commands';
 import type { PracticeCommandId } from './practice-mode/commands';
@@ -140,14 +140,15 @@ function indexOf(registry: CommandRegistry): GroupIndex {
  * palette's version, which also asks for `enabled` and does not filter by platform.
  */
 function takenOver(source: CommandSource, command: Command, shortcut: Shortcut): boolean {
-  if (command.context !== undefined) return false;
   const id = shortcutId(shortcut);
+  const rank = contextRank(command.context);
   return indexOf(source.registry).contextual.some((other) => {
     const theirs = shortcutOn(source.registry.shortcutOf(other), source.keyboard);
     return (
       theirs !== undefined &&
       shortcutId(theirs) === id &&
       other.context !== undefined &&
+      contextRank(other.context) < rank &&
       source.registry.isActive(other.context)
     );
   });

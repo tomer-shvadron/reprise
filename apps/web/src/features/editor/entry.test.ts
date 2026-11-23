@@ -16,6 +16,7 @@ import { historyLabel } from './history-labels';
 import { QUARTER, type Rhythm } from './rhythm';
 import { drumScore } from './test/drum-scores';
 import { entryScore, fullBarScore, mixedScore } from './test/entry-scores';
+import { keysScore } from './test/key-scores';
 
 const EIGHTH: Rhythm = { duration: 8, dots: 0, tuplet: undefined };
 
@@ -163,7 +164,7 @@ describe('a fret digit', () => {
     expect(insert).toEqual({ refused: 'Bar 2 has an eighth left: a quarter does not fit' });
   });
 
-  it('is refused on a pitched track', () => {
+  it('is refused as a digit on a pitched track, which takes letters', () => {
     const built = score().track('piano');
     built.bar();
     const keys = built.build({ ids: 'sequential' });
@@ -173,11 +174,10 @@ describe('a fret digit', () => {
       { string: 0, staff: 'standard' },
     );
     if (!cursor) throw new Error('no cursor');
-    for (const action of [{ kind: 'fret', fret: 1 }, { kind: 'tie' }] as const) {
-      expect(plan(keys, cursor, action)).toEqual({
-        refused: 'Note entry works on fretted and drum tracks only',
-      });
-    }
+    expect(plan(keys, cursor, { kind: 'fret', fret: 1 })).toEqual({
+      refused: 'Type a note name, A to G',
+    });
+    expect(plan(keys, cursor, { kind: 'tie' })).toEqual({ refused: 'Nothing to tie to on B4' });
   });
 });
 
@@ -572,7 +572,7 @@ describe('drum entry', () => {
   it('is refused as a lane hit on a fretted track', () => {
     const guitar = entryScore();
     expect(plan(guitar, cursorAt(guitar, 0, 0), { kind: 'lane' })).toEqual({
-      refused: 'A hit is placed on a drum track only',
+      refused: 'A note on the lane is placed on a drum or keyboard track only',
     });
   });
 
@@ -599,5 +599,130 @@ describe('drum entry', () => {
     expect(plan(tied, { ...cursor, pitch: 42 }, { kind: 'tie' })).toEqual({
       refused: 'Nothing to tie to on Closed Hi-Hat (42)',
     });
+  });
+});
+
+describe('pitch entry on a keyboard track', () => {
+  const keys = keysScore();
+  const at = (bar: number, stop: number, pitch?: number, score: Score = keys): EditCursor => {
+    const found = cursorAtPosition(
+      score,
+      { track: 0, bar, voice: 0, stop },
+      { string: 0, staff: 'standard', ...(pitch !== undefined && { pitch }) },
+    );
+    if (!found) throw new Error('no such stop');
+    return found;
+  };
+  const letter = (
+    cursor: EditCursor,
+    name: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G',
+    over: Partial<EntryInput> = {},
+    chord = false,
+    score: Score = keys,
+  ) => plan(score, cursor, { kind: 'pitch', letter: name, chord }, over);
+
+  it('starts the cursor on the middle line, B4 in treble', () => {
+    expect(at(0, 0).pitch).toBe(71);
+  });
+
+  it('enters a letter at the end slot near the clef middle line when nothing precedes it', () => {
+    const planned = letter(at(0, 0), 'C');
+    expect(frets(beatsOf(after(keys, planned), 0)[0])).toEqual([[0, 72]]);
+    expect(planned).toMatchObject({ lane: 72, sound: { string: 0, fret: 72 } });
+  });
+
+  it('takes its octave from the note before the cursor, and the alteration from the key', () => {
+    // After the chord E5/C5 the top note is E5; F in G major is F sharp 5.
+    expect(frets(beatsOf(after(keys, letter(at(1, 2), 'F')), 1)[2])).toEqual([[0, 78]]);
+    // Across the barline: the last beat of bar 2 leads bar 3's first note.
+    expect(frets(beatsOf(after(keys, letter(at(2, 0), 'A')), 2)[0])).toEqual([[0, 81]]);
+  });
+
+  it('replaces the note in the lane in overwrite mode, keeping its effects but not its accidental', () => {
+    const built = score().track('piano');
+    built.bar().beat('4', [note(0, 67, { staccato: true, accidental: 'sharp' })]);
+    const staccato = built.build({ ids: 'sequential' });
+    const planned = letter(at(0, 0, 67, staccato), 'A', {}, false, staccato);
+    const next = after(staccato, planned);
+    const [beat] = beatsOf(next, 0);
+    expect(beat?.notes).toHaveLength(1);
+    expect(beat?.notes[0]).toMatchObject({ string: 0, fret: 69, staccato: true });
+    expect(beat?.notes[0]?.accidental).toBeUndefined();
+    expect(beat?.notes[0]?.id).toBe(beatsOf(staccato, 0)[0]?.notes[0]?.id);
+    expect(planned).toMatchObject({ lane: 69 });
+  });
+
+  it('adds a note when the lane holds none', () => {
+    const next = after(keys, letter(at(1, 0, 60), 'C'));
+    expect(beatsOf(next, 1)[0]?.notes.map((n) => n.fret)).toEqual([67, 72]);
+  });
+
+  it('adds a chord note above the highest note of the beat with a shifted letter', () => {
+    const chord = letter(at(1, 0, 67), 'B', {}, true);
+    // The beat holds G4: B in G major is B natural, first above G4 is B4.
+    expect(beatsOf(after(keys, chord), 1)[0]?.notes.map((n) => n.fret)).toEqual([67, 71]);
+    const top = letter(at(1, 1, 76), 'C', {}, true);
+    expect(beatsOf(after(keys, top), 1)[1]?.notes.map((n) => n.fret)).toEqual([76, 72, 84]);
+  });
+
+  it('types a chord letter on an end slot as a plain note', () => {
+    const planned = letter(at(1, 2), 'D', {}, true);
+    expect(frets(beatsOf(after(keys, planned), 1)[2])).toEqual([[0, 74]]);
+  });
+
+  it('inserts a beat in insert mode, and adds further letters to that beat', () => {
+    const insert = letter(at(1, 0, 67), 'D', { mode: 'insert' });
+    const next = after(keys, insert);
+    expect(beatsOf(next, 1)).toHaveLength(3);
+    expect(frets(beatsOf(next, 1)[0])).toEqual([[0, 74]]);
+    const inserted = 'command' in insert ? insert.inserted : undefined;
+    const again = letter(at(1, 0, 74, next), 'F', { mode: 'insert', inserted }, false, next);
+    expect(beatsOf(after(next, again), 1)[0]?.notes.map((n) => n.fret)).toEqual([74, 66]);
+  });
+
+  it('is refused when the bar has no room for an inserted beat', () => {
+    const full = score().track('piano');
+    full
+      .bar()
+      .beat('4', [note(0, 60)])
+      .beat('4', [note(0, 62)])
+      .beat('4', [note(0, 64)])
+      .beat('4', [note(0, 65)]);
+    const built = full.build({ ids: 'sequential' });
+    const planned = letter(at(0, 0, 60, built), 'C', { mode: 'insert' }, false, built);
+    expect('refused' in planned && planned.refused).toContain('Bar 1');
+  });
+
+  it('enters the lane with 0, which repeats a note', () => {
+    const planned = plan(keys, at(1, 2, 76), { kind: 'fret', fret: 0 });
+    expect(frets(beatsOf(after(keys, planned), 1)[2])).toEqual([[0, 76]]);
+  });
+
+  it('refuses the other digits, and a letter on a fretted or drum track', () => {
+    expect(plan(keys, at(0, 0), { kind: 'fret', fret: 4 })).toEqual({
+      refused: 'Type a note name, A to G',
+    });
+    const guitar = entryScore();
+    expect(letter(cursorAt(guitar, 0, 0), 'C', {}, false, guitar)).toEqual({
+      refused: 'Typing a note name works on keyboard tracks only',
+    });
+    const kit = drumScore();
+    expect(letter(cursorAt(kit, 0, 0), 'C', {}, false, kit)).toEqual({
+      refused: 'Typing a note name works on keyboard tracks only',
+    });
+  });
+
+  it('deletes and ties by the lane', () => {
+    const removed = after(keys, plan(keys, at(1, 1, 72), { kind: 'deleteNote' }));
+    expect(beatsOf(removed, 1)[1]?.notes.map((n) => n.fret)).toEqual([76]);
+    expect(plan(keys, at(1, 1, 60), { kind: 'deleteNote' })).toEqual({
+      refused: 'No C4 on this beat',
+    });
+    expect(plan(keys, at(1, 2, 60), { kind: 'tie' })).toEqual({
+      refused: 'Nothing to tie to on C4',
+    });
+    const tied = plan(keys, at(1, 2, 76), { kind: 'tie' });
+    expect(tied).toMatchObject({ lane: 76 });
+    expect(frets(beatsOf(after(keys, tied), 1)[2])).toEqual([[0, 76]]);
   });
 });

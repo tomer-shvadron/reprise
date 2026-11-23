@@ -119,12 +119,12 @@ export function undoLanding(
   const stop = Math.min(chosen.beat, Math.max(stopCount(score, track, bar, voice) - 1, 0));
   const note =
     chosen.note === undefined ? undefined : replayedNote(score, chosen, track, voice, change);
-  // A fretted note lands the cursor on its string, a drum hit on its key.
-  const drums = score.tracks[track]?.kind === 'drums';
+  // A fretted note lands the cursor on its string, a drum hit or a keyboard note on its key.
+  const onLane = score.tracks[track]?.kind === 'drums' || score.tracks[track]?.kind === 'pitched';
   const landing =
     note === undefined
       ? base
-      : drums
+      : onLane
         ? { ...base, pitch: note.fret }
         : { ...base, string: note.string };
   return cursorAtPosition(score, { track, bar, voice, stop }, landing);

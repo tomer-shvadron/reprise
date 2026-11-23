@@ -8,10 +8,14 @@ import {
   type Notation,
   type Score,
   type Selection,
+  type Track,
 } from '@reprise/model';
 
 import { scoreIndex } from '@/features/score';
 import type { EditCursor, EditRange, RangeEnd, SelectionState } from '@/state/selection';
+
+import { hasLane } from './drum-lanes';
+import { clefOf, middleLine } from './pitch-entry';
 
 const EPSILON = 1e-6;
 
@@ -53,6 +57,12 @@ function beatAt(score: Score, p: Position): Id | undefined {
   return score.tracks[p.track]?.bars[p.bar]?.voices[p.voice]?.beats[p.stop]?.id;
 }
 
+function laneOn(track: Track, bar: number, wanted: number | undefined): number | undefined {
+  if (!hasLane(track)) return undefined;
+  if (wanted !== undefined || track.kind === 'drums') return wanted;
+  return middleLine(clefOf(track, bar), track.display.octaveShift);
+}
+
 /** The cursor at `p`, keeping the string and staff of `base`; undefined when `p` names no stop. */
 export function cursorAtPosition(
   score: Score,
@@ -65,14 +75,16 @@ export function cursorAtPosition(
     return undefined;
   }
   const beat = beatAt(score, p);
+  const lane = laneOn(track, p.bar, base.pitch);
   return {
     track: track.id,
     masterBar: masterBar.id,
     voice: p.voice,
     beat,
     string: clampString(score, p.track, base.string || 1),
-    // The lane belongs to a track without strings.
-    ...(base.pitch !== undefined && track.kind === 'drums' && { pitch: base.pitch }),
+    // The lane belongs to a track without strings; a pitched one always has it, on the clef's
+    // middle line until the cursor picks another.
+    ...(lane !== undefined && { pitch: lane }),
     staff: base.staff,
     at: { track: p.track, bar: p.bar, beat: p.stop },
   };

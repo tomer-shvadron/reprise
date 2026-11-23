@@ -177,4 +177,12 @@ describe('joinKeys', () => {
     expect(joinKeys(['=', '+', '+'])).toBe('= or +');
     expect(joinKeys([])).toBe('—');
   });
+
+  it('writes a run of letters as a range, shifted or not, and never joins them with digits', () => {
+    expect(joinKeys(['A', 'B', 'C', 'D', 'E', 'F', 'G'])).toBe('A–G');
+    expect(joinKeys(['⇧A', '⇧B', '⇧C'])).toBe('⇧A–C');
+    expect(joinKeys(['Shift+A', 'Shift+B', 'Shift+C', 'Shift+D'])).toBe('Shift+A–D');
+    expect(joinKeys(['A', 'B', '⇧C', '⇧D'])).toBe('A or B or ⇧C or ⇧D');
+    expect(joinKeys(['B', 'C', '1', '2'])).toBe('B or C or 1 or 2');
+  });
 });

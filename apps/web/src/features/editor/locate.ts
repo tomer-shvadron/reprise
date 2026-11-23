@@ -129,6 +129,10 @@ function isGrace(score: Score, noteId: Id, beatId: Id): boolean {
   return beat !== undefined && !beat.notes.some((n) => n.id === noteId);
 }
 
+/** The lane the cursor already holds on `track`; a lane on another track means nothing here. */
+const sameTrackLane = (current: EditCursor | undefined, track: Id): number | undefined =>
+  current?.track === track ? current.pitch : undefined;
+
 /** The GM key of a drum note, from the beat that holds it. */
 function noteKey(score: Score, beatId: Id, noteId: Id): number | undefined {
   const info = scoreIndex(score).beats.get(beatId);
@@ -167,7 +171,9 @@ export function locate(
     if (anchor.kind === 'note') {
       note = anchor.id;
       string = index.noteString.get(anchor.id) ?? 1;
-      if (track.kind === 'drums') pitch = noteKey(score, beatId, anchor.id) ?? current?.pitch;
+      if (track.kind !== 'fretted') {
+        pitch = noteKey(score, beatId, anchor.id) ?? sameTrackLane(current, track.id);
+      }
     } else {
       const strings = stringCount(score, info.trackIndex);
       const fromLine =
@@ -175,6 +181,8 @@ export function locate(
       string = clampString(score, info.trackIndex, fromLine ?? current?.string ?? 1);
       if (track.kind === 'drums') {
         pitch = laneAtY(system(anchor), track, point.y, current?.pitch) ?? current?.pitch;
+      } else if (track.kind === 'pitched') {
+        pitch = sameTrackLane(current, track.id);
       }
     }
     return {
@@ -259,10 +267,12 @@ function atStop(
       ? stringAt(at.system, track.id, strings, at.y)
       : undefined;
   const lane =
-    track.kind !== 'drums'
-      ? undefined
-      : ((at.y !== undefined ? laneAtY(at.system, track, at.y, at.current?.pitch) : undefined) ??
-        (at.current?.track === track.id ? at.current.pitch : undefined));
+    track.kind === 'pitched'
+      ? sameTrackLane(at.current, track.id)
+      : track.kind !== 'drums'
+        ? undefined
+        : ((at.y !== undefined ? laneAtY(at.system, track, at.y, at.current?.pitch) : undefined) ??
+          (at.current?.track === track.id ? at.current.pitch : undefined));
   return {
     track: track.id,
     masterBar: masterBar.id,

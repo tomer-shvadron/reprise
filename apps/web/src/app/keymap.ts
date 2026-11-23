@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { defineSetting, type SettingsStore } from '@/state/settings';
 
-import { findConflicts, type Command, type CommandRegistry } from './command-registry';
+import { contextRank, findConflicts, type Command, type CommandRegistry } from './command-registry';
 import { shortcutId, shortcutOn, type KeyboardPlatform, type Shortcut } from './keyboard';
 
 const NAMED_KEYS: ReadonlySet<string> = new Set([
@@ -251,8 +251,8 @@ export function planChange(
     commands.find(holds);
   if (!holder) return { kind: 'ok', overrides: applied };
   if (holder.context !== command.context) {
-    // The editing binding wins while editing; the global one is untouched.
-    const over = command.context === 'editing';
+    // The more specific context wins while it holds; the other binding is untouched.
+    const over = contextRank(command.context) < contextRank(holder.context);
     return {
       kind: 'ok',
       overrides: applied,

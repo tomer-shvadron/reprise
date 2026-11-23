@@ -48,7 +48,7 @@ export function createMenuRegistry(
       for (const id of commands) {
         const known = registry.get(id);
         if (!known) throw new Error(`The ${surface} menu names unknown command "${id}"`);
-        if (known.context === 'editing') editing = true;
+        if (known.context !== undefined) editing = true;
       }
       if (editing && modes?.includes('play')) {
         throw new Error(

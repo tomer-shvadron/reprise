@@ -1,4 +1,4 @@
-import type { Command } from '@/app/command-registry';
+import { contextLabel, type Command, type ContextLabel } from '@/app/command-registry';
 import { effectiveKeys, fixedReason, type ShortcutOverrides } from '@/app/keymap';
 import {
   formatShortcut,
@@ -34,7 +34,7 @@ export interface Row {
   id: string;
   title: string;
   category: string;
-  context: 'Global' | 'Editing';
+  context: ContextLabel;
   slots: Slot[];
 }
 
@@ -56,7 +56,7 @@ export function buildRows(
     .sort((a, b) => categoryRank(a.category) - categoryRank(b.category) || a.index - b.index);
   for (const { command, category } of sorted) {
     if (command.shortcut?.only !== undefined && command.shortcut.only !== platform) continue;
-    const context = command.context === 'editing' ? 'Editing' : 'Global';
+    const context = contextLabel(command.context);
     const id = bindingGroup(command);
     const row = rows.get(id) ?? { id, title: command.title, category, context, slots: [] };
     rows.set(id, row);

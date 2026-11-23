@@ -5,7 +5,7 @@ import {
   type StaffPlacement,
   type WordLane,
 } from '@reprise/layout';
-import { beatTicks, type Id, type Score } from '@reprise/model';
+import { beatTicks, spell, staffPosition, type Id, type Score } from '@reprise/model';
 
 import {
   columnAnchor,
@@ -19,6 +19,7 @@ import type { EditCursor, EditRange, RangeEnd } from '@/state/selection';
 
 import { stringCount } from './cursor';
 import { cursorLane, lanePosition } from './drum-lanes';
+import { clefOf } from './pitch-entry';
 import { endSpan, rangeSpan, type TimePoint } from './range';
 
 /** A tab or standard staff has five or six lines to a staff `height`; this is one gap of the standard five. */
@@ -58,6 +59,8 @@ function caretOn(
   width: number,
   system: number,
   drawsOwn: boolean,
+  /** The staff position a pitched track's lane is drawn at, when this staff shows one. */
+  pitchedPosition?: number,
 ): OverlayBox {
   // Muted only beside the staff the cursor holds; where that is not drawn, this one is the cursor.
   const muted = staff.type !== cursor.staff && drawsOwn;
@@ -72,10 +75,16 @@ function caretOn(
     };
   }
   const wide = Math.max(width, staffSpace(staff) * MIN_CARET_SPACES);
-  if (staff.type === 'percussion') {
+  const position =
+    staff.type === 'percussion'
+      ? lanePosition(cursorLane(cursor))
+      : staff.type === 'standard'
+        ? pitchedPosition
+        : undefined;
+  if (position !== undefined) {
     // One space tall on the lane's line or space; position 0 is the bottom line, two to a space.
     const space = staffSpace(staff);
-    const y = staff.bottom - (lanePosition(cursorLane(cursor)) * space) / 2;
+    const y = staff.bottom - (position * space) / 2;
     return {
       system,
       box: { x: x - wide / 2, y: y - space / 2, width: wide, height: space },
@@ -91,7 +100,7 @@ function caretOn(
 
 /**
  * The boxes of the edit cursor: on a tab staff one line-spacing tall on the string's line, on a
- * percussion staff one space tall on the lane's line, on a standard staff a column over the staff. In `both` the staff the cursor holds
+ * percussion staff, and on a pitched track's standard staff, one space tall on the lane's line, on any other standard staff a column over the staff. In `both` the staff the cursor holds
  * gets the strong one and the other a muted column. The end slot sits where `playheadAt` puts
  * the end of the voice, and in an empty bar one staff space in from the column's left edge.
  */
@@ -102,6 +111,16 @@ export function caretBoxes(layout: LayoutResult, score: Score, cursor: EditCurso
   if (!track) return [];
   const strings = stringCount(score, trackIndex);
   const boxes: OverlayBox[] = [];
+  const barOf = scoreIndex(score).barIndex.get(cursor.masterBar);
+  // A pitched track's lane sits where its key is written, in the bar's clef.
+  const pitchedPosition =
+    track.kind === 'pitched' && cursor.pitch !== undefined && barOf !== undefined
+      ? staffPosition(
+          spell(cursor.pitch, score.masterBars[barOf]?.keySignature ?? { fifths: 0, minor: false }),
+          clefOf(track, barOf),
+          track.display.octaveShift,
+        )
+      : undefined;
 
   if (cursor.beat !== undefined) {
     const anchors = findAnchors(layout, cursor.beat, 'beat').filter((a) => a.track === trackId);
@@ -120,6 +139,7 @@ export function caretBoxes(layout: LayoutResult, score: Score, cursor: EditCurso
           rect.width,
           anchor.system,
           drawsStaff(layout, anchor.system, trackId, cursor),
+          pitchedPosition,
         ),
       );
     }
@@ -145,6 +165,7 @@ export function caretBoxes(layout: LayoutResult, score: Score, cursor: EditCurso
         0,
         head.bar.system,
         drawsStaff(layout, head.bar.system, trackId, cursor),
+        pitchedPosition,
       ),
     );
   }

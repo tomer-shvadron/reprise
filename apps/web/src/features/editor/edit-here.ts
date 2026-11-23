@@ -39,10 +39,10 @@ function beatCursor(services: CursorServices, score: Score, target: MenuTarget) 
   const beat = index.beats.get(target.beat);
   if (!beat) return undefined;
   const string = (target.kind === 'note' && index.noteString.get(target.note)) || 1;
-  // On a drum note the cursor takes the note's key as its lane.
+  // On a drum or keyboard note the cursor takes the note's key as its lane.
   const found = target.kind === 'note' ? beatWithTrack(score, target.beat) : undefined;
   const pitch =
-    found?.track.kind === 'drums'
+    found && found.track.kind !== 'fretted'
       ? found.beat.notes.find((n) => target.kind === 'note' && n.id === target.note)?.fret
       : undefined;
   return cursorAtPosition(

@@ -4,6 +4,7 @@ import { beatTicks, type Id, type Score } from '@reprise/model';
 import type { EditCursor } from '@/state/selection';
 
 import { cursorLane, stepLane } from './drum-lanes';
+import { clefOf, middleLine, stepPitch } from './pitch-entry';
 import {
   clampString,
   cursorAtPosition,
@@ -62,7 +63,7 @@ export function move(score: Score, cursor: EditCursor, step: Step): EditCursor |
 
 /**
  * The cursor one string up (`delta` -1, towards string 1) or down (+1); on a drum track one lane
- * up or down the kit. Undefined on a track with neither, and at the end.
+ * up or down the kit, and on a pitched track one line or space up or down the staff. Undefined on a track with neither, and at the end.
  */
 export function moveString(
   score: Score,
@@ -73,6 +74,13 @@ export function moveString(
   if (!at) return undefined;
   if (stringCount(score, at.track) === 0) {
     const track = score.tracks[at.track];
+    if (track?.kind === 'pitched') {
+      const beat = track.bars[at.bar]?.voices[at.voice]?.beats[at.stop];
+      const lane = cursor.pitch ?? middleLine(clefOf(track, at.bar), track.display.octaveShift);
+      const key = score.masterBars[at.bar]?.keySignature ?? { fifths: 0, minor: false };
+      const pitch = stepPitch(lane, key, delta, beat?.notes);
+      return pitch === undefined ? undefined : { ...cursor, pitch };
+    }
     if (track?.kind !== 'drums') return undefined;
     const pitch = stepLane(track, cursorLane(cursor), delta);
     return pitch === undefined ? undefined : { ...cursor, pitch };

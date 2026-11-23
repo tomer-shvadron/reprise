@@ -10,6 +10,7 @@ import { cursorAtPosition } from './cursor';
 import { EditStatusLine } from './status-line';
 import { drumScore } from './test/drum-scores';
 import { entryScore } from './test/entry-scores';
+import { keysScore } from './test/key-scores';
 
 function Line() {
   const services = useAppServices();
@@ -90,6 +91,30 @@ describe('EditStatusLine', () => {
       if (cursor) entry.getState().setPending({ fret: 3, cursor });
     });
     expect(status.textContent).toContain('Drum 3…');
+  });
+
+  it('names the pitch of the lane on a keyboard track, in the bar key', async () => {
+    const { services } = await setup();
+    await act(async () => {
+      await services.document
+        .getState()
+        .openBytes('keys.reprise', (await write(keysScore(), 'reprise')).bytes);
+    });
+    const score = services.document.getState().score;
+    const cursor =
+      score &&
+      cursorAtPosition(
+        score,
+        { track: 0, bar: 1, voice: 0, stop: 1 },
+        { string: 0, staff: 'standard', pitch: 66 },
+      );
+    act(() => {
+      services.editing.getState().setEditing(true);
+      services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
+    });
+    expect(screen.getByTestId('edit-status').textContent).toBe(
+      'Overwrite · Voice 1 · Quarter · Bar 2 · Beat 2 · F♯4',
+    );
   });
 
   it('shows a waiting digit and the last refusal', async () => {
