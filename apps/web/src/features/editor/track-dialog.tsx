@@ -48,10 +48,10 @@ const KINDS: readonly { kind: TrackKind; label: string; percussion?: true }[] = 
 /** A banjo's fifth string starts at the fifth fret, as Guitar Pro's Banjo Drone does. */
 const SHORT_FIFTH: Drone = { string: 5, fret: 5 };
 
-/** The checkbox is for a 5-string banjo: five strings, and not a bass, whose program is 32 to 39. */
+/** The checkbox is for a 5-string banjo: five strings, and not a bass, whose program is 32 to 39, or a bowed string (40 to 43). */
 const offersDrone = (form: TrackForm): boolean =>
   form.drone !== undefined ||
-  (form.strings.length === 5 && !(form.program >= 32 && form.program <= 39));
+  (form.strings.length === 5 && !(form.program >= 32 && form.program <= 43));
 
 const SELECT_CLASS =
   'border-input bg-background h-8 w-full min-w-0 rounded-lg border px-2 text-sm aria-invalid:border-destructive';
@@ -62,7 +62,14 @@ const INSTRUMENTS = [
   ['ukulele', 'Ukulele'],
   ['twelveString', '12-string'],
   ['mandolin', 'Mandolin'],
+  ['mandola', 'Mandola'],
+  ['octaveMandolin', 'Octave mandolin'],
   ['banjo', 'Banjo'],
+  ['violin', 'Violin'],
+  ['viola', 'Viola'],
+  ['cello', 'Cello'],
+  ['doubleBass', 'Double bass'],
+  ['shamisen', 'Shamisen'],
 ] as const;
 
 function Field({
