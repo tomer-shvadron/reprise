@@ -14,6 +14,7 @@ import type { EditingStore } from '@/state/editing';
 import type { SelectionStore } from '@/state/selection';
 
 import { resolveCursor } from './cursor';
+import { cursorLane, laneLabel } from './drum-lanes';
 import { DurationStepItems } from './duration-steps';
 import type { EntryStore } from './entry-store';
 import { rhythmLabel } from './rhythm';
@@ -65,12 +66,14 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
   if (!isEditing) return null;
   const at = cursor && score && resolveCursor(score, cursor);
   const voice = cursor?.voice ?? 0;
+  const drums = at !== undefined && score?.tracks[at.track]?.kind === 'drums';
   const position =
     at &&
     [
       `Bar ${String(at.bar + 1)}`,
       cursor.beat === undefined ? 'End of bar' : `Beat ${String(at.stop + 1)}`,
       ...(cursor.string > 0 ? [`String ${String(cursor.string)}`] : []),
+      ...(drums ? [laneLabel(cursorLane(cursor))] : []),
     ].join(' · ');
   const segments = [
     <StatusSegment
@@ -140,7 +143,11 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
         ))}
       </span>
       {word && <span className="text-foreground font-medium">{wordLabel(word)}</span>}
-      {pending && <span className="text-foreground font-medium">Fret {String(pending.fret)}…</span>}
+      {pending && (
+        <span className="text-foreground font-medium">
+          {drums ? 'Drum' : 'Fret'} {String(pending.fret)}…
+        </span>
+      )}
       {/* Only the message is announced; the position changes with every key. The visible text
           truncates in a narrow window and `title` carries it whole. */}
       <span

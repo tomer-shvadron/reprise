@@ -113,13 +113,13 @@ export function navigationCommands(deps: NavigationDeps): NavigationCommand[] {
     command('editor.nextBeat', 'Cursor to next beat', { key: 'ArrowRight' }, next),
     command(
       'editor.stringUp',
-      'Cursor up a string',
+      'Cursor up a string or line',
       { key: 'ArrowUp' },
       go((c) => moveString(c.score, c.cursor, -1)),
     ),
     command(
       'editor.stringDown',
-      'Cursor down a string',
+      'Cursor down a string or line',
       { key: 'ArrowDown' },
       go((c) => moveString(c.score, c.cursor, 1)),
     ),

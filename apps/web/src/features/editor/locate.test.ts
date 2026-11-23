@@ -12,9 +12,12 @@ import { describe, expect, it } from 'vitest';
 
 import { nearestColumn } from '@/features/score';
 
+import type { EditCursor } from '@/state/selection';
+
 import { firstStop } from './cursor';
 import { cursorFromHit, locate, stringAt } from './locate';
 import { editTarget } from './range';
+import { drumScore } from './test/drum-scores';
 import { editScore } from './test/scores';
 
 const paged: LayoutOptions = {
@@ -271,5 +274,37 @@ describe('locate', () => {
     if (!later) throw new Error('no later note');
     const b = anchorBox(flowing, later);
     expect(locate(flowing, flat, pointer(flowing, b.x + 1, b.y + 1))).toBeDefined();
+  });
+});
+
+describe('locate on a percussion staff', () => {
+  const built = drumScore();
+  const result = lay(built, undefined);
+  const track = built.tracks[0]?.id ?? '';
+  const staff = result.systems[0]?.staves.find((s) => s.track === track && s.type === 'percussion');
+  const beat = built.tracks[0]?.bars[1]?.voices[0]?.beats[0];
+  const anchor = result.anchors.find((a) => a.kind === 'beat' && a.id === beat?.id);
+  if (!staff || !anchor) throw new Error('no drum staff');
+  const space = (staff.bottom - staff.top) / 4;
+  const box = anchorBox(result, anchor);
+  const x = box.x + box.width / 2;
+  const atPosition = (position: number, current?: EditCursor) =>
+    locate(result, built, pointer(result, x, staff.bottom - (position * space) / 2), current);
+
+  it('picks the lane nearest the click, as a click on tab picks the string', () => {
+    expect(atPosition(9)).toMatchObject({ pitch: 42, string: 0, staff: 'percussion' });
+    expect(atPosition(4)).toMatchObject({ pitch: 47 });
+    expect(atPosition(-1)).toMatchObject({ pitch: 44 });
+  });
+
+  it('keeps the current lane where several share the line', () => {
+    const current = firstStop(built, 0, 1, 0, { string: 0, staff: 'percussion', pitch: 37 });
+    expect(atPosition(5, current)).toMatchObject({ pitch: 37 });
+  });
+
+  it('puts the lane on the cursor it makes', () => {
+    const hit = atPosition(9);
+    const cursor = hit && cursorFromHit(built, hit);
+    expect(cursor).toMatchObject({ pitch: 42, string: 0 });
   });
 });

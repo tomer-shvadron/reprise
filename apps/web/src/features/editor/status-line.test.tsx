@@ -8,6 +8,7 @@ import { useAppServices } from '@/app/services-context';
 
 import { cursorAtPosition } from './cursor';
 import { EditStatusLine } from './status-line';
+import { drumScore } from './test/drum-scores';
 import { entryScore } from './test/entry-scores';
 
 function Line() {
@@ -56,6 +57,39 @@ describe('EditStatusLine', () => {
       entry.getState().setRhythm({ duration: 8, dots: 1, tuplet: undefined });
     });
     expect(status.textContent).toContain('Insert · Voice 1 · Dotted eighth');
+  });
+
+  it('names the drum lane on a drum track, and a waiting digit as a drum number', async () => {
+    const { services, entry } = await setup();
+    await act(async () => {
+      await services.document
+        .getState()
+        .openBytes('drums.reprise', (await write(drumScore(), 'reprise')).bytes);
+    });
+    const score = services.document.getState().score;
+    const cursor =
+      score &&
+      cursorAtPosition(
+        score,
+        { track: 0, bar: 1, voice: 0, stop: 1 },
+        { string: 0, staff: 'percussion' },
+      );
+    act(() => {
+      services.editing.getState().setEditing(true);
+      services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
+    });
+    const status = screen.getByTestId('edit-status');
+    expect(status.textContent).toBe(
+      'Overwrite · Voice 1 · Quarter · Bar 2 · Beat 2 · Acoustic Snare (38)',
+    );
+    act(() => {
+      if (cursor) services.selection.getState().setEdit({ cursor: { ...cursor, pitch: 42 } });
+    });
+    expect(status.textContent).toContain('Closed Hi-Hat (42)');
+    act(() => {
+      if (cursor) entry.getState().setPending({ fret: 3, cursor });
+    });
+    expect(status.textContent).toContain('Drum 3…');
   });
 
   it('shows a waiting digit and the last refusal', async () => {

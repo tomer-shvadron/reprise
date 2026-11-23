@@ -18,6 +18,7 @@ import {
 import type { EditCursor, EditRange, RangeEnd } from '@/state/selection';
 
 import { stringCount } from './cursor';
+import { cursorLane, lanePosition } from './drum-lanes';
 import { endSpan, rangeSpan, type TimePoint } from './range';
 
 /** A tab or standard staff has five or six lines to a staff `height`; this is one gap of the standard five. */
@@ -71,6 +72,16 @@ function caretOn(
     };
   }
   const wide = Math.max(width, staffSpace(staff) * MIN_CARET_SPACES);
+  if (staff.type === 'percussion') {
+    // One space tall on the lane's line or space; position 0 is the bottom line, two to a space.
+    const space = staffSpace(staff);
+    const y = staff.bottom - (lanePosition(cursorLane(cursor)) * space) / 2;
+    return {
+      system,
+      box: { x: x - wide / 2, y: y - space / 2, width: wide, height: space },
+      muted,
+    };
+  }
   return {
     system,
     box: { x: x - wide / 2, y: staff.top, width: wide, height: staff.bottom - staff.top },
@@ -80,7 +91,7 @@ function caretOn(
 
 /**
  * The boxes of the edit cursor: on a tab staff one line-spacing tall on the string's line, on a
- * standard or percussion staff a column over the staff. In `both` the staff the cursor holds
+ * percussion staff one space tall on the lane's line, on a standard staff a column over the staff. In `both` the staff the cursor holds
  * gets the strong one and the other a muted column. The end slot sits where `playheadAt` puts
  * the end of the voice, and in an empty bar one staff space in from the column's left edge.
  */
