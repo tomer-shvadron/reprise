@@ -45,28 +45,40 @@ export interface Spring {
    * for its line draws scaled by `rigidScale`. It shrinks before the fixed part does.
    */
   movable?: number;
+  /**
+   * The fingering clearance: room, beyond the rigid and movable parts, that keeps the marks of
+   * this onset and the next marked one apart. `squeeze` leaves it whole; `markScale` shrinks it
+   * once the line cannot hold it, before the voice shifts do (#523).
+   */
+  marks?: number;
 }
 
 /**
- * A spring's minimum width in a bar squeezed by `squeeze`: only the part above `rigid` and
- * `movable` shrinks. `rigidScale` scales the movable part and is below 1 only when the rigid and
- * movable parts alone overflow the line; `fixedScale` scales the rigid part and is below 1 only
- * when the rigid parts alone overflow it.
+ * A spring's minimum width in a bar squeezed by `squeeze`: only the part above `rigid`, `movable`
+ * and `marks` shrinks. `markScale` scales the fingering clearance and is below 1 only when the
+ * rigid and movable parts plus it overflow the line. `rigidScale` scales the movable part and is
+ * below 1 only when the rigid and movable parts alone overflow the line; `fixedScale` scales the
+ * rigid part and is below 1 only when the rigid parts alone overflow it.
  */
 export function squeezedMin(
-  { min, rigid = 0, movable = 0 }: Spring,
+  { min, rigid = 0, movable = 0, marks = 0 }: Spring,
   squeeze: number,
   rigidScale = 1,
   fixedScale = 1,
+  markScale = 1,
 ): number {
   return squeeze >= 1
     ? min
-    : rigid * fixedScale + movable * rigidScale + Math.max(0, min - rigid - movable) * squeeze;
+    : rigid * fixedScale +
+        movable * rigidScale +
+        marks * markScale +
+        Math.max(0, min - rigid - movable - marks) * squeeze;
 }
 
 /**
  * Each spring at `factor` times its natural width, never below its minimum, which `squeeze`,
- * `rigidScale` and `fixedScale` shrink only in a bar whose minimums alone overflow its line.
+ * `markScale`, `rigidScale` and `fixedScale` shrink only in a bar whose minimums alone overflow
+ * its line.
  */
 export function stretch(
   springs: readonly Spring[],
@@ -74,9 +86,13 @@ export function stretch(
   squeeze = 1,
   rigidScale = 1,
   fixedScale = 1,
+  markScale = 1,
 ): number[] {
   return springs.map((spring) =>
-    Math.max(squeezedMin(spring, squeeze, rigidScale, fixedScale), spring.natural * factor),
+    Math.max(
+      squeezedMin(spring, squeeze, rigidScale, fixedScale, markScale),
+      spring.natural * factor,
+    ),
   );
 }
 
@@ -96,4 +112,27 @@ export function rigidShares(extents: readonly number[]): number[] {
     reach = next;
   }
   return shares;
+}
+
+/**
+ * The fingering clearance each spring adds: for a pair of marked onsets `from` and `to` needing
+ * `need` between them, spring `from` takes what the springs `from` to `to - 1` do not already hold
+ * of the onsets' rigid extents. Those springs' parts add up to `reach[from] - reach[to]`, `reach`
+ * being the suffix maxima `rigidShares` splits, so the room is not reserved twice.
+ */
+export function clearanceParts(
+  pairs: readonly { from: number; to: number; need: number }[],
+  rigid: readonly number[],
+): number[] {
+  const reach: number[] = [];
+  let widest = 0;
+  for (let i = rigid.length - 1; i >= 0; i--) {
+    widest = Math.max(widest, rigid[i] ?? 0);
+    reach[i] = widest;
+  }
+  const parts = rigid.map(() => 0);
+  for (const { from, to, need } of pairs) {
+    parts[from] = Math.max(parts[from] ?? 0, need - ((reach[from] ?? 0) - (reach[to] ?? 0)));
+  }
+  return parts;
 }
