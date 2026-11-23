@@ -129,6 +129,12 @@ describe('GmBank', () => {
       expect(gm.instrumentId(createTrack('fretted', { program: 24 }), 24)).toBe('gm:0:0');
     });
 
+    it('counts an LSB-only bank as no bank, as a GS synth ignores the LSB', () => {
+      const resolve = vi.spyOn(font, 'resolve');
+      bank().instrumentId({ ...ukulele, bank: 1 }, 24);
+      expect(resolve).toHaveBeenCalledWith(8, 24);
+    });
+
     it('leaves five strings, courses, another program and a chosen bank alone', () => {
       const resolve = vi.spyOn(font, 'resolve');
       const gm = bank();

@@ -1,5 +1,5 @@
 import { ScoreSchema, validateScore, type MixerChange, type Score } from '@reprise/model';
-import { fullScore, largeScore, note, score } from '@reprise/model/testing';
+import { fullScore, largeScore, midi, note, score } from '@reprise/model/testing';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
@@ -846,7 +846,21 @@ describe('bowed strings and the shamisen', () => {
   it('writes a three-string shamisen as Shamisen and keeps its tuning', () => {
     const source = build({ tuning: [48, 55, 60], program: 106 }, 'shamisen');
     expect(xmlOf(source)).toContain('<Instrument>Shamisen</Instrument>');
-    expect(readGp(writeGp(source).bytes).score.tracks[0]?.tuning).toEqual([48, 55, 60]);
+    const track = readGp(writeGp(source).bytes).score.tracks[0];
+    expect(track).toMatchObject({ kind: 'fretted', program: 106, tuning: [48, 55, 60] });
+  });
+
+  it('names a pitched violin by its program in both places, as a standard-only gp3 one reads', () => {
+    const source = score()
+      .track('piano', { program: 40, tuning: [55, 62, 69, 76], name: 'Violin' })
+      .bar()
+      .beat('4', [midi(62)])
+      .build();
+    const xml = xmlOf(source);
+    expect(xml).toContain('<Name>Violin</Name>');
+    expect(xml).toContain('<Type>violin</Type>');
+    expect(xml).toContain('<Instrument>Violin</Instrument>');
+    expect(xml).not.toContain('Acoustic Piano');
   });
 
   it('still reports the courses of a mandola as dropped', () => {

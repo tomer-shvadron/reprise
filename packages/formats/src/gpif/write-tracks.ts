@@ -478,7 +478,7 @@ function articulation(
   xml.close('Articulation');
 }
 
-/** The bowed strings' instrument sets, keyed by General MIDI program. */
+/** The bowed strings' instrument sets, keyed by General MIDI program, whatever the track's kind. */
 const BOWED_SETS: ReadonlyMap<number, [name: string, type: string]> = new Map([
   [40, ['Violin', 'violin']],
   [41, ['Viola', 'viola']],
@@ -498,7 +498,7 @@ function instrumentSet(track: Track): [name: string, type: string] {
   if (program === 105) return ['Banjo', 'banjo'];
   // The names alphaTab's gpif writer uses (GpifSoundMapper); the reader ignores them.
   const bowed = BOWED_SETS.get(program);
-  if (bowed && track.kind === 'fretted') return bowed;
+  if (bowed) return bowed;
   return track.kind === 'pitched'
     ? ['Acoustic Piano', 'acousticPiano']
     : ['Steel Guitar', 'steelGuitar'];

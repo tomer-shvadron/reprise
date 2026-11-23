@@ -1,5 +1,5 @@
 import { PPQ, beatStartTicks, type Score } from '@reprise/model';
-import { fullScore, largeScore } from '@reprise/model/testing';
+import { fullScore, largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { automationBarStarts } from '../src/gpif/automation-bars';
@@ -140,6 +140,47 @@ const explained = (difference: Difference, written: Written): boolean =>
   toleranceFor(difference, 'gp', written.projections) !== undefined ||
   WRITER_TOLERANCES.some((tolerance) => tolerance.applies(difference, written));
 
+function bowedStrings(): Score {
+  const tab = { notation: 'tab', octaveShift: 0 } as const;
+  return score()
+    .track('violin', { tuning: [55, 62, 69, 76], program: 40 })
+    .bar()
+    .beat('4', [note(1, 0), note(3, 7)])
+    .beat('4', [note(2, 5)])
+    .track('violin', {
+      name: 'Viola',
+      program: 41,
+      tuning: [48, 55, 62, 69],
+      display: { ...tab, clef: 'alto' },
+    })
+    .bar()
+    .beat('4', [note(2, 3)])
+    .beat('4', [note(4, 0)])
+    .track('violin', {
+      name: 'Cello',
+      program: 42,
+      tuning: [36, 43, 50, 57],
+      display: { ...tab, clef: 'bass' },
+    })
+    .bar()
+    .beat('4', [note(3, 2)])
+    .beat('4', [note(1, 5)])
+    .track('violin', {
+      name: 'Double Bass',
+      program: 43,
+      tuning: [28, 33, 38, 43],
+      display: { notation: 'tab', clef: 'bass', octaveShift: 1 },
+    })
+    .bar()
+    .beat('4', [note(4, 0)])
+    .beat('4', [note(2, 3)])
+    .track('shamisen')
+    .bar()
+    .beat('4', [note(1, 3), note(3, 0)])
+    .beat('4', [note(2, 5)])
+    .build();
+}
+
 const sources: [string, () => Score][] = [
   ...manifestEntries(['gp']).map((entry): [string, () => Score] => [
     entry.path,
@@ -153,6 +194,7 @@ const sources: [string, () => Score][] = [
     `${entry.path} exported to gp`,
     () => readGpx(fixtureBytes(entry.path)).score,
   ]),
+  ['bowed strings and a shamisen', bowedStrings],
   ['fullScore()', fullScore],
   ['the kitchen sink', kitchenSink],
   ['largeScore(4, 32, { structure: true })', () => largeScore(4, 32, { structure: true })],

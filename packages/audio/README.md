@@ -639,9 +639,10 @@ soloed one; it still goes through the insert, the fader and the panner.
 - **The Mandolin variation.** `GmBank` plays GeneralUser's Mandolin (bank 16, program 25) for a
   mandolin on program 25 in bank 0, chosen at play time and never stored in `Track.bank` (#411);
   a soundfont without it falls back to program 25 in bank 0.
-- **The Ukulele variation.** Likewise a ukulele (`stringInstrumentOf`: four single strings, program 24) in bank 0 plays GeneralUser's Ukulele (bank 8, program 24), at play time and never stored in
-  `Track.bank` (#432); a font without it falls back to program 24 in bank 0. A mandola and an
-  octave mandolin are mandolins and take the Mandolin variation.
+- **The Ukulele variation.** Likewise a ukulele (`stringInstrumentOf`: four single strings,
+  program 24) in bank 0 plays GeneralUser's Ukulele (bank 8, program 24), at play time and never
+  stored in `Track.bank` (#432); a font without it falls back to program 24 in bank 0. A mandola
+  and an octave mandolin are mandolins and take the Mandolin variation.
 - **Two gains per voice.** The envelope and the articulation automation (dB) live on separate
   `GainNode`s, so a gain ramp from an articulation never cancels the ADSR, and the release can
   `cancelAndHoldAtTime` the envelope alone. The plan's order (source, gain, filter) holds; the
