@@ -128,7 +128,8 @@ export interface BeatPlan {
   tuplet?: number;
   /**
    * Fingering, top to bottom within the beat. `y` is the head's, which orders an onset's
-   * entries across voices, and `row` counts up from the stack's bottom once they are merged.
+   * entries across voices, and `lift` is the baseline's height in spaces above `fingeringY`,
+   * set once they are merged.
    */
   fingering: { glyph: GlyphName; note: Note; y: number; lift: number }[];
   articulation?: ArticulationPlan;
@@ -662,8 +663,9 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     if (entries) entries.push(...fingering);
     else onsets.set(key, [...fingering]);
   }
-  // Rows are placed by their ink: the step is at least FINGERING_STEP, and more when the mark
-  // below reaches higher than the one above hangs (the `i` is 1.54 tall, the `p` hangs 0.61).
+  // Rows are placed by their ink: the step is FINGERING_STEP, and the ink plus a little air
+  // when the mark below reaches higher than the one above hangs (the `i` is 1.54 tall, the `p`
+  // hangs 0.61).
   let fingers = 0;
   let reach = 0;
   const fingeringY = top - FINGERING_GAP * space;
@@ -675,16 +677,12 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     for (const entry of entries.slice().reverse()) {
       if (below !== undefined) {
         const clear = glyphMetrics(below).bbox.top - glyphMetrics(entry.glyph).bbox.bottom;
-        lift += Math.max(FINGERING_STEP, clear + FINGERING_INK_GAP);
+        // Air only where the inks would meet at the usual step, so a digit stack keeps its 1.1.
+        lift += clear > FINGERING_STEP ? clear + FINGERING_INK_GAP : FINGERING_STEP;
       }
       entry.lift = lift;
       below = entry.glyph;
       reach = Math.max(reach, lift + glyphMetrics(entry.glyph).bbox.top);
-    }
-  }
-  for (const { fingering } of beats) {
-    for (const { glyph, lift } of fingering) {
-      reach = Math.max(reach, lift + glyphMetrics(glyph).bbox.top);
     }
   }
   // The room a step per row always took stays, so stacks of left-hand digits keep their height.

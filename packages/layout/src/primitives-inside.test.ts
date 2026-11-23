@@ -238,8 +238,8 @@ describe('primitives stay inside their system', () => {
     // Seeds 116, 215, 218 and 384 stacked the fingering of two voices at one onset in one row.
     // Every width and notation guards the same-onset case, on the seeds that have one, by ink
     // box (#526). At 480 px and A4 no two fingering marks overlap at all, neighbouring onsets
-    // included, in any notation (#523). At 320 px neighbouring onsets may touch: a bar too dense for its line gives the
-    // clearance up (`markScale`, notation.md, Bars wider than the line).
+    // included, in any notation (#523). At 320 px neighbouring onsets may touch: a bar too dense
+    // for its line gives the clearance up (`markScale`, notation.md, Bars wider than the line).
     for (let seed = 0; seed <= 400; seed++) {
       const built = randomScore(seed, { diagrams: true });
       const notes = new Map<string, { note: Note; onset: string }>();
@@ -253,8 +253,9 @@ describe('primitives stay inside their system', () => {
               const onset = `${track.id} ${String(index)} ${String(Math.round(tick / TICK_EPSILON))}`;
               for (const note of beat.notes) {
                 notes.set(note.id, { note, onset });
-                if (fingering(note) !== undefined)
-                  fingered.set(onset, (fingered.get(onset) ?? 0) + 1);
+                // Marks, not notes: one note with both hands is a two-mark stack on standard.
+                const marks = (note.leftHandFinger ? 1 : 0) + (note.rightHandFinger ? 1 : 0);
+                if (marks > 0) fingered.set(onset, (fingered.get(onset) ?? 0) + marks);
               }
               tick += beatTicks(beat);
             }

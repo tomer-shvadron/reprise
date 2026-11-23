@@ -557,26 +557,62 @@ describe('standard staff', () => {
     }
   });
 
-  it('keeps the ink of stacked fingering marks apart: a p above an i (#526)', () => {
+  it('keeps the ink of stacked fingering marks apart, with 0.15 spaces of air (#526)', () => {
+    const marks = (result: LayoutResult) =>
+      result.primitives
+        .flatMap((p) => (p.kind === 'glyph' && p.glyph.startsWith('fingering') ? [p] : []))
+        .sort((a, b) => a.bbox.y - b.bbox.y);
     for (const notation of ['standard', 'both'] as const) {
-      const built = score()
-        .track('guitar', { display: { notation, octaveShift: 1 } })
-        .bar()
-        .beat('4', [note(5, 2, { rightHandFinger: 'index' })])
-        .voice(1)
-        .beat('4', [note(2, 1, { rightHandFinger: 'thumb' })])
-        .build({ ids: 'sequential' });
-      const result = laid(built);
-      const fingers = result.primitives.flatMap((p) =>
-        p.kind === 'glyph' && p.glyph.startsWith('fingering') ? [p] : [],
-      );
-      expect(fingers, notation).toHaveLength(2);
-      expect(overlappingMarks(result), notation).toEqual([]);
-      const [upper, lower] = fingers.sort((a, b) => a.bbox.y - b.bbox.y);
-      expect((upper?.bbox.y ?? 0) + (upper?.bbox.height ?? 0), notation).toBeLessThanOrEqual(
-        (lower?.bbox.y ?? 0) - 0.05,
-      );
+      // The upper note's mark is a p or a c, the lower note's an i: the stack the fixed 1.1 step
+      // overlapped.
+      for (const upper of ['thumb', 'little'] as const) {
+        const built = score()
+          .track('guitar', { display: { notation, octaveShift: 1 } })
+          .bar()
+          .beat('4', [note(5, 2, { rightHandFinger: 'index' })])
+          .voice(1)
+          .beat('4', [note(2, 1, { rightHandFinger: upper })])
+          .build({ ids: 'sequential' });
+        const result = laid(built);
+        const [top, bottom] = marks(result);
+        expect(marks(result), notation).toHaveLength(2);
+        expect(overlappingMarks(result), `${notation} ${upper}`).toEqual([]);
+        const air = (bottom?.bbox.y ?? 0) - ((top?.bbox.y ?? 0) + (top?.bbox.height ?? 0));
+        expect(air, `${notation} ${upper}`).toBeGreaterThanOrEqual(0.15 * 7 - 0.01);
+      }
     }
+  });
+
+  it('keeps a note with both hands on one staff stack apart (#526)', () => {
+    const built = score()
+      .track('guitar', { display: { notation: 'standard', octaveShift: 1 } })
+      .bar()
+      .beat('4', [note(3, 2, { leftHandFinger: 'ring', rightHandFinger: 'thumb' })])
+      .build({ ids: 'sequential' });
+    expect(overlappingMarks(laid(built))).toEqual([]);
+  });
+
+  it('keeps the 1.1 step between digits: the room does not change (#526)', () => {
+    const built = score()
+      .track('guitar', { display: { notation: 'standard', octaveShift: 1 } })
+      .bar()
+      .beat('4', [
+        note(5, 2, { leftHandFinger: 'index' }),
+        note(3, 2, { leftHandFinger: 'middle' }),
+        note(2, 1, { leftHandFinger: 'ring' }),
+      ])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    // Bottoms of the ink: the digits' hang below the baseline is under 0.02 spaces.
+    const bottoms = result.primitives
+      .flatMap((p) =>
+        p.kind === 'glyph' && p.glyph.startsWith('fingering') ? [p.bbox.y + p.bbox.height] : [],
+      )
+      .sort((a, b) => a - b);
+    expect(bottoms).toHaveLength(3);
+    const [a = 0, b = 0, c = 0] = bottoms;
+    expect(b - a).toBeCloseTo(1.1 * 7, 0);
+    expect(c - b).toBeCloseTo(1.1 * 7, 0);
   });
 
   it('anchors every note head to its note', () => {

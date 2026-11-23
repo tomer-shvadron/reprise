@@ -98,7 +98,9 @@ export function randomScore(
       ...(chance(0.05) && {
         leftHandFinger: pick(['thumb', 'index', 'middle', 'ring', 'little'] as const),
       }),
-      ...(chance(0.05) && { rightHandFinger: pick(['index', 'middle', 'ring'] as const) }),
+      ...(chance(0.05) && {
+        rightHandFinger: pick(['thumb', 'index', 'middle', 'ring', 'little'] as const),
+      }),
       ...(chance(0.04) && { bend: pick(BENDS) }),
       ...(chance(0.04) && { vibrato: pick(['slight', 'wide'] as const) }),
       ...(chance(0.05) && { palmMute: true }),
