@@ -13,8 +13,10 @@ import { describe, expect, it } from 'vitest';
 
 import { createTestServices } from '@/test/services';
 
+import { cursorAtPosition } from './cursor';
 import { copySelection, pasteClip } from './clipboard-actions';
 import { barsRange, clipboardScore, cursorAt } from './test/clip-scores';
+import { drumScore } from './test/drum-scores';
 import { must } from './test/must';
 
 async function setup() {
@@ -159,5 +161,46 @@ describe('the cursor after an undo or a redo', () => {
     apply(removeBeat({ beatId: must(score().tracks[0]?.bars[0]?.voices[0]?.beats[0]).id }));
     services.document.getState().undo();
     expect(state().cursor).toBeUndefined();
+  });
+});
+
+describe('the cursor after an undo on a drum track', () => {
+  async function drums() {
+    const services = createTestServices();
+    await services.document
+      .getState()
+      .openBytes('drums.reprise', (await write(drumScore(), 'reprise')).bytes);
+    services.editing.getState().setEditing(true);
+    const score = (): Score => must(services.document.getState().score, 'score');
+    const goTo = (stop: number, pitch?: number) => {
+      const cursor = cursorAtPosition(
+        score(),
+        { track: 0, bar: 1, voice: 0, stop },
+        { string: 0, staff: 'percussion', ...(pitch !== undefined && { pitch }) },
+      );
+      services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
+    };
+    return { services, score, goTo, state: () => services.selection.getState() };
+  }
+
+  it('lands on the key of an undone hit, and of a redone removal', async () => {
+    const { services, score, goTo, state } = await drums();
+    const beat = must(score().tracks[0]?.bars[1]?.voices[0]?.beats[0]).id;
+    services.document.getState().apply(setNote({ beatId: beat }, { string: 0, fret: 49 }));
+    goTo(1, 38);
+    services.document.getState().undo();
+    expect(state().cursor?.pitch).toBe(49);
+    goTo(1, 38);
+    services.document.getState().redo();
+    expect(state().cursor?.pitch).toBe(49);
+  });
+
+  it('keeps the lane through an undo that names no hit', async () => {
+    const { services, score, goTo, state } = await drums();
+    const beat = must(score().tracks[0]?.bars[1]?.voices[0]?.beats[1]).id;
+    services.document.getState().apply(removeBeat({ beatId: beat }));
+    goTo(0, 42);
+    services.document.getState().undo();
+    expect(state().cursor?.pitch).toBe(42);
   });
 });

@@ -5,6 +5,7 @@ import type { EditingStore } from '@/state/editing';
 import type { EditCursor, SelectionStore } from '@/state/selection';
 
 import { commitEdit } from './commit';
+import { LAST_DRUM_KEY } from './drum-lanes';
 import { cursorAtTick, cursorTick, resolveCursor } from './cursor';
 import {
   planAppendBar,
@@ -77,7 +78,8 @@ const sameSpot = (a: EditCursor, b: EditCursor) =>
   a.masterBar === b.masterBar &&
   a.voice === b.voice &&
   a.beat === b.beat &&
-  a.string === b.string;
+  a.string === b.string &&
+  a.pitch === b.pitch;
 
 /**
  * Turns the edit cursor and the entry keys into edits. It owns the two-digit timer, applies every
@@ -148,6 +150,7 @@ export function installEntry(deps: EntryDeps): () => void {
       moveCursor: current !== undefined && sameSpot(current, cursor),
       ...(plan.land && { land: plan.land }),
       ...(plan.inserted && { inserted: plan.inserted }),
+      ...(plan.lane !== undefined && { lane: plan.lane }),
     });
     // Last, so a throw from the audio side cannot skip the edit.
     if (applied && plan.sound) {
@@ -160,9 +163,13 @@ export function installEntry(deps: EntryDeps): () => void {
     if (c) run(planEntry(inputFor(cursor, c.score), { kind: 'fret', fret }), cursor);
   };
 
-  const fretCountOf = (trackId: Id): number => {
-    const track = document.getState().score?.tracks.find(({ id }) => id === trackId);
-    return track?.kind === 'fretted' ? track.fretCount : 0;
+  const track = (trackId: Id) => document.getState().score?.tracks.find(({ id }) => id === trackId);
+
+  /** The largest number a track takes: its frets, or the highest GM key; none on a pitched track. */
+  const maxValueOf = (trackId: Id): number => {
+    const found = track(trackId);
+    if (found?.kind === 'drums') return LAST_DRUM_KEY;
+    return found?.kind === 'fretted' ? found.fretCount : 0;
   };
 
   const clearPending = () => {
@@ -180,7 +187,13 @@ export function installEntry(deps: EntryDeps): () => void {
   };
 
   const start = (digit: number, cursor: EditCursor) => {
-    if (digit > 0 && digit * 10 <= fretCountOf(cursor.track)) {
+    // A 0 on a drum track is the lane's own hit, as it is the open string on a fretted one.
+    if (digit === 0 && track(cursor.track)?.kind === 'drums') {
+      const c = context(false);
+      if (c) run(planEntry(inputFor(cursor, c.score), { kind: 'lane' }), cursor);
+      return;
+    }
+    if (digit > 0 && digit * 10 <= maxValueOf(cursor.track)) {
       entry.getState().setPending({ fret: digit, cursor });
       stopTimer();
       timer = clock.set(() => {
@@ -199,7 +212,13 @@ export function installEntry(deps: EntryDeps): () => void {
       const { pending } = entry.getState();
       if (pending) {
         const value = pending.fret * 10 + digit;
-        if (value <= fretCountOf(pending.cursor.track)) {
+        if (value <= maxValueOf(pending.cursor.track)) {
+          clearPending();
+          enter(value, pending.cursor);
+          return;
+        }
+        if (track(pending.cursor.track)?.kind === 'drums') {
+          // Two digits typed: refuse the number as typed, not the first digit and then the second.
           clearPending();
           enter(value, pending.cursor);
           return;

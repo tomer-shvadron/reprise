@@ -1,6 +1,6 @@
 import { layout, PAGE_SIZES, type LayoutOptions } from '@reprise/layout';
 import { beatTicks, barTicks } from '@reprise/model';
-import { beatOf, largeScore } from '@reprise/model/testing';
+import { beatOf, largeScore, score as scoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import type { EditCursor } from '@/state/selection';
@@ -127,8 +127,20 @@ describe('moveString', () => {
     expect(moveString(score, { ...cursor, string: 6 }, 1)).toBeUndefined();
   });
 
-  it('does nothing on a track without strings', () => {
-    expect(moveString(score, at(1, 0, 0), 1)).toBeUndefined();
+  it('does nothing on a track without strings or lanes', () => {
+    const keys = scoreBuilder().track('piano').bar().build();
+    const cursor = firstStop(keys, 0, 0);
+    if (!cursor) throw new Error('no stop');
+    expect(moveString(keys, cursor, 1)).toBeUndefined();
+  });
+
+  it('steps the lane up and down the kit on a drum track, from the snare by default', () => {
+    const cursor = at(1, 0, 0);
+    expect(cursor.pitch).toBeUndefined();
+    const up = moveString(score, cursor, -1);
+    expect(up).toMatchObject({ pitch: 48, string: 0 });
+    expect(moveString(score, { ...cursor, pitch: 36 }, 1)?.pitch).toBe(41);
+    expect(moveString(score, { ...cursor, pitch: 44 }, 1)).toBeUndefined();
   });
 
   it('knows a seven-string track has one more', () => {
@@ -150,6 +162,12 @@ describe('moveTrack', () => {
     expect(place(next)).toEqual([1, 0, 0, 2]);
     expect(next?.staff).toBe('percussion');
     expect(place(moveTrack(score, next ?? cursor, visible, -1))).toEqual([0, 0, 0, 2]);
+  });
+
+  it('drops the drum lane when the cursor changes track', () => {
+    const cursor = { ...at(1, 0, 1), pitch: 42 };
+    expect(moveTrack(score, cursor, visible, -1)?.pitch).toBeUndefined();
+    expect(moveTrack(score, { ...at(0, 0, 1), pitch: 42 }, visible, 1)?.pitch).toBeUndefined();
   });
 
   it('goes to the end slot when the other track is shorter there', () => {

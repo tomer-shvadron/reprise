@@ -9,7 +9,7 @@ import { timelineOf } from '@/state/timeline';
 
 import type { AppServices } from '../services';
 
-/** The edit cursor on the first stop of bar `index` in the current track, keeping its voice, string and staff. */
+/** The edit cursor on the first stop of bar `index` in the current track, keeping its voice, string, drum lane and staff. */
 function caretAt(services: AppServices, score: Score, index: number) {
   const { selection } = services;
   const { cursor, currentTrack } = selection.getState();
@@ -24,7 +24,11 @@ function caretAt(services: AppServices, score: Score, index: number) {
     index,
     0,
     cursor?.voice ?? 0,
-    cursor && { string: cursor.string, staff: cursor.staff },
+    cursor && {
+      string: cursor.string,
+      staff: cursor.staff,
+      ...(cursor.pitch !== undefined && { pitch: cursor.pitch }),
+    },
   );
   return next && track ? { cursor: next, track } : undefined;
 }

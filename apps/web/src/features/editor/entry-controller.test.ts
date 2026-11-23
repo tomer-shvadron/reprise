@@ -9,6 +9,8 @@ import type { EditCursor } from '@/state/selection';
 import { cursorAtPosition } from './cursor';
 import { entryController, installEntry, TWO_DIGIT_MS } from './entry-controller';
 import { createEntryStore } from './entry-store';
+import { move } from './navigation';
+import { drumScore } from './test/drum-scores';
 import { entryScore } from './test/entry-scores';
 
 async function setup(built: Score = entryScore()) {
@@ -492,5 +494,81 @@ describe('installEntry on a banjo drone string', () => {
     controller().fret(4);
     vi.advanceTimersByTime(TWO_DIGIT_MS);
     expect(beats(0)).toHaveLength(0);
+  });
+});
+
+describe('installEntry on a drum track', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const drums = async () => {
+    const made = await setup(drumScore());
+    const cursor = cursorAtPosition(
+      made.score(),
+      { track: 0, bar: 0, voice: 0, stop: 0 },
+      { string: 0, staff: 'percussion' },
+    );
+    made.services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
+    return made;
+  };
+
+  it('places the lane on 0: the snare first, sounding with its own key', async () => {
+    const { controller, beats, preview, score } = await drums();
+    controller().fret(0);
+    expect(beats(0)[0]?.notes[0]).toMatchObject({ string: 0, fret: 38 });
+    expect(preview).toHaveBeenCalledWith(
+      score().tracks[0]?.id,
+      { string: 0, fret: 38 },
+      expect.anything(),
+    );
+  });
+
+  it('waits after a 3, and 3 then 8 is one undo step on the snare', async () => {
+    const { controller, doc, beats, entry, services } = await drums();
+    const before = doc().revision;
+    controller().fret(3);
+    expect(entry.getState().pending?.fret).toBe(3);
+    expect(doc().revision).toBe(before);
+    controller().fret(8);
+    expect(doc().revision).toBe(before + 1);
+    expect(beats(0)[0]?.notes[0]).toMatchObject({ string: 0, fret: 38 });
+    expect(services.selection.getState().cursor?.pitch).toBe(38);
+    doc().undo();
+    expect(beats(0)).toHaveLength(0);
+  });
+
+  it('commits a 9 at once, with the reason it is no drum', async () => {
+    const { controller, entry, beats } = await drums();
+    controller().fret(9);
+    expect(entry.getState().pending).toBeUndefined();
+    expect(beats(0)).toHaveLength(0);
+    expect(entry.getState().message).toBe('No drum sound on key 9: drums are 27 to 87');
+  });
+
+  it('refuses 8 then 8 once, as 88', async () => {
+    const { controller, entry, beats } = await drums();
+    controller().fret(8);
+    controller().fret(8);
+    expect(entry.getState().pending).toBeUndefined();
+    expect(beats(0)).toHaveLength(0);
+    expect(entry.getState().message).toBe('No drum sound on key 88: drums are 27 to 87');
+  });
+
+  it('moves the lane to the key typed, so 0 then repeats it', async () => {
+    const { controller, services, beats, score } = await drums();
+    controller().fret(4);
+    controller().fret(2);
+    const cursor = services.selection.getState().cursor;
+    const next = cursor && move(score(), cursor, 'next');
+    if (!next) throw new Error('no next stop');
+    // The lane stays on the closed hi-hat as the cursor moves along.
+    expect(next.pitch).toBe(42);
+    services.selection.getState().setEdit({ cursor: next });
+    controller().fret(0);
+    expect(beats(0).map((beat) => beat.notes.map((n) => n.fret))).toEqual([[42], [42]]);
   });
 });
