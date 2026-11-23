@@ -207,6 +207,18 @@ describe('reconcile', () => {
     ).toBeUndefined();
   });
 
+  it('keeps a drum lane through reconciling', () => {
+    const drums = cursorAtPosition(
+      score,
+      { track: 1, bar: 0, voice: 0, stop: 1 },
+      { string: 0, staff: 'percussion', pitch: 42 },
+    );
+    if (!drums) throw new Error('no stop');
+    expect(
+      reconcile(score, { ...base, cursor: drums, currentTrack: score.tracks[1]?.id }),
+    ).toBeUndefined();
+  });
+
   it('moves to the neighbour when its beat is removed, and stays there when the removal is undone', () => {
     const history = createHistory();
     const cursor = cursorOn(score, 0, 0, 1);

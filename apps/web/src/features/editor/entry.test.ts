@@ -14,8 +14,8 @@ import {
 } from './entry';
 import { historyLabel } from './history-labels';
 import { QUARTER, type Rhythm } from './rhythm';
+import { drumScore } from './test/drum-scores';
 import { entryScore, fullBarScore, mixedScore } from './test/entry-scores';
-import { editScore } from './test/scores';
 
 const EIGHTH: Rhythm = { duration: 8, dots: 0, tuplet: undefined };
 
@@ -163,17 +163,21 @@ describe('a fret digit', () => {
     expect(insert).toEqual({ refused: 'Bar 2 has an eighth left: a quarter does not fit' });
   });
 
-  it('is refused on a track without strings', () => {
-    const score = editScore();
-    const drums = cursorAtPosition(
-      score,
-      { track: 1, bar: 0, voice: 0, stop: 0 },
-      { string: 0, staff: 'percussion' },
+  it('is refused on a pitched track', () => {
+    const built = score().track('piano');
+    built.bar();
+    const keys = built.build({ ids: 'sequential' });
+    const cursor = cursorAtPosition(
+      keys,
+      { track: 0, bar: 0, voice: 0, stop: 0 },
+      { string: 0, staff: 'standard' },
     );
-    if (!drums) throw new Error('no cursor');
-    expect(plan(score, drums, { kind: 'fret', fret: 1 })).toEqual({
-      refused: 'Note entry works on fretted tracks only',
-    });
+    if (!cursor) throw new Error('no cursor');
+    for (const action of [{ kind: 'fret', fret: 1 }, { kind: 'lane' }, { kind: 'tie' }] as const) {
+      expect(plan(keys, cursor, action)).toEqual({
+        refused: 'Note entry works on fretted and drum tracks only',
+      });
+    }
   });
 });
 
@@ -478,6 +482,115 @@ describe('a toggle over a mixed pick in a full bar', () => {
     expect('command' in planned).toBe(true);
     expect(plan(over, cursorAt(over, 0, 0), { kind: 'longer' })).toEqual({
       refused: 'Bar 1 is full: a half does not fit',
+    });
+  });
+});
+
+describe('drum entry', () => {
+  const drums = drumScore();
+  const at = (bar: number, stop: number, pitch?: number): EditCursor => {
+    const cursor = cursorAtPosition(
+      drums,
+      { track: 0, bar, voice: 0, stop },
+      { string: 0, staff: 'percussion', ...(pitch !== undefined && { pitch }) },
+    );
+    if (!cursor) throw new Error('no such stop');
+    return cursor;
+  };
+  const hits = (beat: Beat | undefined) => beat?.notes.map((n) => [n.string, n.fret]);
+
+  it('0 at the end slot makes a beat of the current rhythm holding the lane, the snare by default', () => {
+    const planned = plan(drums, at(0, 0), { kind: 'lane' });
+    const next = after(drums, planned);
+    expect(hits(beatsOf(next, 0)[0])).toEqual([[0, 38]]);
+    if (!('command' in planned)) throw new Error('refused');
+    expect(planned.lane).toBe(38);
+    expect(planned.sound).toMatchObject({ string: 0, fret: 38 });
+  });
+
+  it('0 on another lane places that drum', () => {
+    const next = after(drums, plan(drums, at(0, 0, 42), { kind: 'lane' }));
+    expect(hits(beatsOf(next, 0)[0])).toEqual([[0, 42]]);
+  });
+
+  it('in overwrite mode adds the hit to the beat, and a duplicate changes nothing', () => {
+    const added = after(drums, plan(drums, at(1, 0, 49), { kind: 'lane' }));
+    expect(hits(beatsOf(added, 1)[0])).toEqual([
+      [0, 36],
+      [0, 49],
+    ]);
+    const again = after(drums, plan(drums, at(1, 0, 36), { kind: 'lane' }));
+    expect(hits(beatsOf(again, 1)[0])).toEqual([[0, 36]]);
+    const planned = plan(drums, at(1, 0, 36), { kind: 'lane' });
+    if (!('command' in planned)) throw new Error('refused');
+    expect(planned.sound).toMatchObject({ fret: 36 });
+  });
+
+  it('in insert mode inserts a beat before, and a further hit joins the inserted beat as a chord', () => {
+    const first = plan(drums, at(1, 1, 51), { kind: 'lane' }, { mode: 'insert' });
+    const inserted = after(drums, first);
+    expect(beatsOf(inserted, 1).map(hits)).toEqual([
+      [[0, 36]],
+      [[0, 51]],
+      [
+        [0, 38],
+        [0, 42],
+      ],
+    ]);
+    if (!('command' in first) || !first.inserted) throw new Error('no insert');
+    const onInserted = cursorAtPosition(
+      inserted,
+      { track: 0, bar: 1, voice: 0, stop: 1 },
+      { string: 0, staff: 'percussion', pitch: 49 },
+    );
+    if (!onInserted) throw new Error('no cursor');
+    const second = plan(
+      inserted,
+      onInserted,
+      { kind: 'lane' },
+      { mode: 'insert', inserted: first.inserted },
+    );
+    expect(hits(beatsOf(after(inserted, second), 1)[1])).toEqual([
+      [0, 51],
+      [0, 49],
+    ]);
+  });
+
+  it('takes a GM number as the key, and lands the lane on it', () => {
+    const planned = plan(drums, at(0, 0), { kind: 'fret', fret: 42 });
+    expect(hits(beatsOf(after(drums, planned), 0)[0])).toEqual([[0, 42]]);
+    if (!('command' in planned)) throw new Error('refused');
+    expect(planned.lane).toBe(42);
+  });
+
+  it.each([9, 26, 88])('refuses %i, which no drum sound sits on', (key) => {
+    expect(plan(drums, at(0, 0), { kind: 'fret', fret: key })).toEqual({
+      refused: `No drum sound on key ${String(key)}: drums are 27 to 87`,
+    });
+  });
+
+  it('deletes the hit in the lane, and names the drum when there is none', () => {
+    const next = after(drums, plan(drums, at(1, 1, 42), { kind: 'deleteNote' }));
+    expect(hits(beatsOf(next, 1)[1])).toEqual([[0, 38]]);
+    expect(plan(drums, at(1, 1, 49), { kind: 'deleteNote' })).toEqual({
+      refused: 'No Crash Cymbal 1 on this beat',
+    });
+  });
+
+  it('ties the hit in the lane to the previous hit of the same key', () => {
+    const built = score().track('drums');
+    built.bar().beat('4', [note(0, 38)]);
+    const tied = built.build({ ids: 'sequential' });
+    const cursor = cursorAtPosition(
+      tied,
+      { track: 0, bar: 0, voice: 0, stop: 1 },
+      { string: 0, staff: 'percussion', pitch: 38 },
+    );
+    if (!cursor) throw new Error('no cursor');
+    const next = after(tied, plan(tied, cursor, { kind: 'tie' }));
+    expect(beatsOf(next, 0)[1]?.notes[0]).toMatchObject({ string: 0, fret: 38, tie: true });
+    expect(plan(tied, { ...cursor, pitch: 42 }, { kind: 'tie' })).toEqual({
+      refused: 'Nothing to tie to on Closed Hi-Hat (42)',
     });
   });
 });

@@ -22,6 +22,11 @@ export interface EditCursor {
   beat: Id | undefined;
   /** 1 = highest-pitched string, as `Note.string`; 0 on a track without strings. */
   string: number;
+  /**
+   * The lane on a drum track: the GM key a hit would take. Absent on a fretted track, and on a
+   * drum track until the cursor picks one, which reads as the snare.
+   */
+  pitch?: number;
   /** Which of the track's staves holds the cursor; decides where it is drawn in `both`. */
   staff: StaffType;
   at: { track: number; bar: number; beat: number };

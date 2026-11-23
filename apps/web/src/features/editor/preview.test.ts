@@ -1,3 +1,4 @@
+import { DYNAMICS_VELOCITY } from '@reprise/audio';
 import { note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -71,5 +72,26 @@ describe('previewOptions', () => {
 
   it('returns no options for a beat the score lost', () => {
     expect(previewOptions(built, { track: 'x', beat: 'gone', string: 1, fret: 0 })).toEqual({});
+  });
+});
+
+describe('previewOptions on a drum beat', () => {
+  it('finds each hit by its key, not by the string they all share', () => {
+    const drums = score()
+      .track('drums')
+      .bar()
+      .beat('4', [note(0, 38, { dynamics: 'pp' }), note(0, 42, { dynamics: 'ff' })])
+      .build();
+    const beat = drums.tracks[0]?.bars[0]?.voices[0]?.beats[0];
+    const sound = (fret: number) => ({
+      track: drums.tracks[0]?.id ?? '',
+      beat: beat?.id ?? '',
+      string: 0,
+      fret,
+    });
+    const quiet = previewOptions(drums, sound(38)).velocity;
+    const loud = previewOptions(drums, sound(42)).velocity;
+    expect(quiet).toBe(DYNAMICS_VELOCITY.pp);
+    expect(loud).toBe(DYNAMICS_VELOCITY.ff);
   });
 });

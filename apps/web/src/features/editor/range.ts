@@ -4,6 +4,7 @@ import { scoreIndex } from '@/features/score';
 import type { BarRange, EditCursor, EditRange, RangeEnd, SelectionState } from '@/state/selection';
 
 import { cursorAtPosition, cursorTick, resolveCursor } from './cursor';
+import { DEFAULT_LANE } from './drum-lanes';
 import { move, moveTrack, type Step } from './navigation';
 
 const EPSILON = 1e-6;
@@ -284,7 +285,12 @@ export function editTarget(
   const at = resolveCursor(score, cursor);
   const beat = at && score.tracks[at.track]?.bars[at.bar]?.voices[at.voice]?.beats[at.stop];
   if (!beat) return {};
-  const note = beat.notes.find((candidate) => candidate.string === cursor.string);
+  // On a drum track the cursor's lane picks the hit, as its string picks the note on a fretted one.
+  const lane =
+    score.tracks[at.track]?.kind === 'drums' ? (cursor.pitch ?? DEFAULT_LANE) : undefined;
+  const note = beat.notes.find((candidate) =>
+    lane === undefined ? candidate.string === cursor.string : candidate.fret === lane,
+  );
   return note ? { noteIds: [note.id] } : { beatIds: [beat.id] };
 }
 

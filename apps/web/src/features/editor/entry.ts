@@ -6,6 +6,7 @@ import {
   insertBar,
   insertBeat,
   newId,
+  percussionInstrument,
   removeBeat,
   removeNote,
   setBeatDurations,
@@ -26,6 +27,7 @@ import { scoreIndex } from '@/features/score';
 import type { EditCursor, SelectionState } from '@/state/selection';
 
 import { resolveCursor, stopCount, type Resolved } from './cursor';
+import { DEFAULT_LANE, LAST_DRUM_KEY, laneLabel } from './drum-lanes';
 import { rangeBeats } from './range';
 import {
   longer,
@@ -42,6 +44,8 @@ import type { EntryMode } from './entry-store';
 
 export type EntryAction =
   | { kind: 'fret'; fret: number }
+  /** A hit on the cursor's lane, typed as 0 on a drum track. */
+  | { kind: 'lane' }
   | { kind: 'rest' }
   | { kind: 'tie' }
   | { kind: 'insertAfter' }
@@ -72,6 +76,8 @@ export interface EditPlan {
   land?: Landing;
   /** The beat to remember as just inserted; absent forgets it. */
   inserted?: Id;
+  /** The drum lane the cursor lands on, as a GM key. */
+  lane?: number;
   /** The note to sound once the edit has been applied. */
   sound?: { track: Id; beat: Id; string: number; fret: number };
 }
@@ -128,6 +134,8 @@ export function planEntry(input: EntryInput, action: EntryAction): EntryPlan {
   switch (action.kind) {
     case 'fret':
       return planFret(input, where, action.fret);
+    case 'lane':
+      return planFret(input, where, laneOf(input.cursor));
     case 'rest':
       return planRest(input, where);
     case 'tie':
@@ -151,10 +159,15 @@ export function planEntry(input: EntryInput, action: EntryAction): EntryPlan {
   }
 }
 
-function guardFretted(where: Where): EntryPlan | undefined {
-  return where.track.kind === 'fretted' && where.track.tuning.length > 0
+const laneOf = (cursor: EditCursor): number => cursor.pitch ?? DEFAULT_LANE;
+
+/** Fretted tracks with strings and drum tracks take notes; pitched tracks wait for pitch entry. */
+function guardNotes(where: Where): EntryPlan | undefined {
+  const { track } = where;
+  if (track.kind === 'drums') return undefined;
+  return track.kind === 'fretted' && track.tuning.length > 0
     ? undefined
-    : refuse('Note entry works on fretted tracks only');
+    : refuse('Note entry works on fretted and drum tracks only');
 }
 
 /** Refuses an insertion of `rhythm` into the cursor's bar when it does not fit. */
@@ -172,6 +185,7 @@ function insertion(
   index: number,
   rhythm: Rhythm,
   note?: { string: number; fret: number; tie?: true },
+  lane?: number,
 ): EntryPlan {
   const full = noRoom(input, where, rhythm);
   if (full) return full;
@@ -184,14 +198,16 @@ function insertion(
       insertBeat({ voiceId: where.voiceId, index, id }, beat),
     ]),
     land: { beat: id },
+    ...(lane !== undefined && { lane }),
     ...(note && { inserted: id, sound: { track: where.track.id, beat: id, ...note } }),
   };
 }
 
 /** Typed frets are the ones the tab shows; the model keeps the drone string's from its own nut. */
 function planFret(input: EntryInput, where: Where, written: number): EntryPlan {
-  const refusal = guardFretted(where);
+  const refusal = guardNotes(where);
   if (refusal) return refusal;
+  if (where.track.kind === 'drums') return planHit(input, where, written);
   const { string } = input.cursor;
   const fret = storedFret(where.track, string, written);
   if (fret === undefined) {
@@ -211,6 +227,25 @@ function planFret(input: EntryInput, where: Where, written: number): EntryPlan {
     command: chain('enterNote', [setNote({ beatId: beat.id }, note)]),
     ...(input.inserted === beat.id && { inserted: beat.id }),
     ...(sound && { sound }),
+  };
+}
+
+/** A drum hit: the typed number is the GM key, kept as the note's `fret` on string 0. */
+function planHit(input: EntryInput, where: Where, key: number): EntryPlan {
+  if (!percussionInstrument(key)) {
+    return refuse(`No drum sound on key ${String(key)}: drums are 27 to ${String(LAST_DRUM_KEY)}`);
+  }
+  const note = { string: 0, fret: key };
+  const { beat } = where;
+  if (!beat) return insertion(input, where, where.beats.length, input.rhythm, note, key);
+  if (input.mode === 'insert' && input.inserted !== beat.id) {
+    return insertion(input, where, where.at.stop, input.rhythm, note, key);
+  }
+  return {
+    command: chain('enterNote', [setNote({ beatId: beat.id }, note)]),
+    lane: key,
+    ...(input.inserted === beat.id && { inserted: beat.id }),
+    sound: { track: where.track.id, beat: beat.id, ...note },
   };
 }
 
@@ -322,12 +357,20 @@ function planRhythm(
   };
 }
 
+/** The note of a beat in the cursor's slot: its string, or its lane on a drum track. */
+const noteInSlot = (where: Where, cursor: EditCursor) =>
+  where.beat?.notes.find((note) =>
+    where.track.kind === 'drums' ? note.fret === laneOf(cursor) : note.string === cursor.string,
+  );
+
 function planTie(input: EntryInput, where: Where): EntryPlan {
-  const refusal = guardFretted(where);
+  const refusal = guardNotes(where);
   if (refusal) return refusal;
-  const { string } = input.cursor;
+  const drums = where.track.kind === 'drums';
+  const string = drums ? 0 : input.cursor.string;
+  const lane = drums ? laneOf(input.cursor) : undefined;
   const { beat, track, at } = where;
-  const existing = beat?.notes.find((note) => note.string === string);
+  const existing = noteInSlot(where, input.cursor);
   if (beat && existing?.tie) {
     return {
       command: chain('toggleTie', [setNoteEffect({ noteId: existing.id }, { tie: false })]),
@@ -336,13 +379,20 @@ function planTie(input: EntryInput, where: Where): EntryPlan {
   const origin = tieOriginOf(
     track,
     { bar: at.bar, voice: at.voice, beat: at.stop },
-    { string, fret: 0 },
+    { string, fret: lane ?? 0 },
   );
-  if (!origin) return refuse(`Nothing to tie to on string ${String(string)}`);
+  if (!origin) {
+    return refuse(
+      lane === undefined
+        ? `Nothing to tie to on string ${String(string)}`
+        : `Nothing to tie to on ${laneLabel(lane)}`,
+    );
+  }
   const note = { string, fret: origin.note.fret, tie: true } as const;
-  if (!beat) return insertion(input, where, where.beats.length, input.rhythm, note);
+  if (!beat) return insertion(input, where, where.beats.length, input.rhythm, note, lane);
   return {
     command: chain('toggleTie', [setNote({ beatId: beat.id }, note)]),
+    ...(lane !== undefined && { lane }),
     sound: { track: track.id, beat: beat.id, string, fret: note.fret },
   };
 }
@@ -352,12 +402,16 @@ function planDeleteNote(input: EntryInput, where: Where): EntryPlan {
   const ids = picked?.length
     ? [...picked]
     : (() => {
-        const note = where.beat?.notes.find(
-          (candidate) => candidate.string === input.cursor.string,
-        );
+        const note = noteInSlot(where, input.cursor);
         return note ? [note.id] : [];
       })();
-  if (ids.length === 0) return refuse(`No note on string ${String(input.cursor.string)} to delete`);
+  if (ids.length === 0) {
+    return refuse(
+      where.track.kind === 'drums'
+        ? `No ${percussionInstrument(laneOf(input.cursor))?.name ?? 'hit'} on this beat`
+        : `No note on string ${String(input.cursor.string)} to delete`,
+    );
+  }
   return {
     command: chain(
       'deleteNote',

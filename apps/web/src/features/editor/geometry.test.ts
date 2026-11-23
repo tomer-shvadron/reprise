@@ -58,6 +58,31 @@ describe('caretBoxes', () => {
     expect(box?.muted).toBe(false);
   });
 
+  it('draws one space tall on the lane of a percussion staff, from the bottom line', () => {
+    const drums = lay(score, 'tab');
+    const drumTrack = score.tracks[1]?.id ?? '';
+    const staff = drums.systems[0]?.staves.find(
+      (s) => s.track === drumTrack && s.type === 'percussion',
+    );
+    if (!staff) throw new Error('no percussion staff');
+    const space = (staff.bottom - staff.top) / 4;
+    const at = (pitch?: number) => {
+      const found = cursorAtPosition(
+        score,
+        { track: 1, bar: 0, voice: 0, stop: 1 },
+        { string: 0, staff: 'percussion', ...(pitch !== undefined && { pitch }) },
+      );
+      if (!found) throw new Error('no stop');
+      return caretBoxes(drums, score, found)[0]?.box;
+    };
+    // The snare sits on position 5, the middle line: half a space per position from the bottom.
+    const snare = at();
+    expect(snare?.height).toBeCloseTo(space);
+    expect((snare?.y ?? 0) + space / 2).toBeCloseTo(staff.bottom - (5 * space) / 2);
+    // The kick is on position 1, lower on the page.
+    expect((at(36)?.y ?? 0) + space / 2).toBeCloseTo(staff.bottom - space / 2);
+  });
+
   it('draws a column over a standard staff', () => {
     const standard = lay(score, 'standard');
     const staff = standard.systems[0]?.staves.find((s) => s.track === guitar);

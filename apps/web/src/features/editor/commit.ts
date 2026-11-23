@@ -52,6 +52,8 @@ export function commitEdit(
     land?: Landing;
     base?: EditCursor;
     inserted?: EditPlan['inserted'];
+    /** The drum lane the cursor ends on. */
+    lane?: number;
     moveCursor?: boolean;
   } = {},
 ): boolean {
@@ -70,6 +72,12 @@ export function commitEdit(
   if (options.moveCursor !== false && options.land && score && base) {
     const cursor = landingCursor(score, options.land, base);
     if (cursor) selection.getState().setEdit({ cursor, currentTrack: cursor.track });
+  }
+  if (options.moveCursor !== false && options.lane !== undefined) {
+    const { cursor } = selection.getState();
+    if (cursor && cursor.pitch !== options.lane) {
+      selection.getState().setEdit({ cursor: { ...cursor, pitch: options.lane } });
+    }
   }
   // Only where the cursor is: an entry committed after the cursor moved away names no beat it sits on.
   if (options.moveCursor !== false) entry.getState().setInserted(options.inserted);
