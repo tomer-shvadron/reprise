@@ -30,10 +30,13 @@ const { AutomationType, BendType, GolpeType, HarmonicType, SlideInType, SlideOut
 
 type Score = alphaTab.model.Score;
 
+// `Settings.core.logLevel` reaches the static `Logger` only through alphaTab's API and player
+// classes, never through `ScoreLoader`, so the level is set on the `Logger` itself at module load,
+// as the oracle does (`packages/formats/test/oracle/project-alphatab.ts`).
+alphaTab.Logger.logLevel = alphaTab.LogLevel.None;
+
 function settings(): alphaTab.Settings {
-  const result = new alphaTab.Settings();
-  result.core.logLevel = alphaTab.LogLevel.None;
-  return result;
+  return new alphaTab.Settings();
 }
 
 /** General MIDI programs of fretted instruments: guitars and basses, then sitar to koto. */

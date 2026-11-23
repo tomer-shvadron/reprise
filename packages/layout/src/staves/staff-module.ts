@@ -69,6 +69,12 @@ export interface OnsetExtent {
    * stretches it with its spring, so it is kept small (a bend's labels ask for at most 6 spaces).
    */
   ideal?: number;
+  /**
+   * Room either side of the onset, in px, taken by marks drawn in a row the neighbouring onsets
+   * share (fingering). The engine keeps it clear of the neighbours' `marks` at any `squeeze` and
+   * lets it go only through `markScale`. Separate from `rigid`, `fixed` and `ideal`.
+   */
+  marks?: { left: number; right: number };
 }
 
 export interface StaffBarMeasure {

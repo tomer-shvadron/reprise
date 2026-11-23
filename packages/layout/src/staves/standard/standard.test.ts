@@ -21,6 +21,8 @@ import {
 import { expectValid, overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
+import { glyphWidth } from '../../primitives';
+import { standardModule } from './index';
 import { MARGIN, planBar, type BarPlan } from './plan';
 
 const paged: LayoutOptions = {
@@ -473,6 +475,62 @@ describe('standard staff', () => {
     expect(glyphNames(result, /^dynamic/)).toEqual(['dynamicPP', 'dynamicMF']);
     expect(glyphNames(result, /^fingering/)).toEqual(['fingering3', 'fingeringILower']);
     expect(content(result)).toMatchSnapshot();
+  });
+
+  it('keeps the fingering of neighbouring onsets apart in a squeezed bar (#523)', () => {
+    const fingers = ['thumb', 'index', 'middle', 'ring'] as const;
+    const finger = (i: number) => fingers[i % 4] ?? 'thumb';
+    for (const notation of ['standard', 'both'] as const) {
+      const bar = score()
+        .track('guitar', { display: { notation, octaveShift: 0 } })
+        .bar();
+      for (let i = 0; i < 16; i++) {
+        bar.beat('16', [
+          note(1 + (i % 4), 3, { leftHandFinger: finger(i), rightHandFinger: 'middle' }),
+        ]);
+      }
+      const built = bar.build({ ids: 'sequential' });
+      const result = laid(built, { width: 420 });
+      const marks = result.primitives.filter(
+        (p) => (p.kind === 'glyph' && p.glyph.startsWith('fingering')) || p.kind === 'text',
+      );
+      const fingering = overlappingMarks(result).filter(
+        ([a, b]) => marks.includes(a) && marks.includes(b),
+      );
+      expect(fingering.map(([a, b]) => `${describePrimitive(a)} ${describePrimitive(b)}`)).toEqual(
+        [],
+      );
+    }
+  });
+
+  it('reserves the fingering around the drawn mark, a shifted head included (#523)', () => {
+    const built = score()
+      .track('guitar', { display: { notation: 'standard', octaveShift: 0 } })
+      .bar()
+      .beat('4', [note(1, 0, { leftHandFinger: 'index', rightHandFinger: 'middle' })])
+      .voice(1)
+      .beat('4', [note(1, 1, { leftHandFinger: 'index' })])
+      .build({ ids: 'sequential' });
+    // The second voice's head moves right and its mark follows it: the beats' extents merge in
+    // `measureBar`, so each beat reports its own.
+    const shifted = standardModule()
+      .measure(staffBar(built, 0))
+      .onsets.map((extent) => extent.marks);
+    // The first voice's mark is centred on its head, the second one's is not.
+    expect(shifted[0]?.right).toBeCloseTo(shifted[0]?.left ?? 0, 9);
+    expect((shifted[1]?.right ?? 0) - (shifted[1]?.left ?? 0)).toBeGreaterThan(1e-6);
+    // Left and right add up to the widest glyph, whichever side the shift moved.
+    const sum = (m: { left: number; right: number } | undefined) =>
+      (m?.left ?? 0) + (m?.right ?? 0);
+    expect(sum(shifted[0])).toBeCloseTo(glyphWidth('fingeringMLower', 7), 9);
+    expect(sum(shifted[1])).toBeCloseTo(glyphWidth('fingering1', 7), 9);
+    // A bar with no fingering reserves nothing.
+    const plain = score()
+      .track('guitar', { display: { notation: 'standard', octaveShift: 0 } })
+      .bar()
+      .beat('4', [note(1, 0)])
+      .build({ ids: 'sequential' });
+    expect(standardModule().measure(staffBar(plain, 0)).onsets[0]?.marks).toBeUndefined();
   });
 
   it('stacks the fingering of voices that start together, the higher head on top (#511)', () => {
