@@ -149,3 +149,19 @@ describe('installEditor, as the services wire it', () => {
     expect(state().cursor).toBeUndefined();
   });
 });
+
+describe('installEditor, when the view changes a track notation', () => {
+  it("moves a cursor off a tab staff the view stopped drawing, and not out of 'both'", async () => {
+    const { services, state, score } = await setup();
+    services.editing.getState().setEditing(true);
+    const track = score().tracks[0]?.id ?? '';
+    const cursor = state().cursor;
+    expect(cursor?.staff).toBe('tab');
+    services.document.getState().setNotation(track, 'both');
+    expect(state().cursor?.staff).toBe('tab');
+    services.document.getState().setNotation(track, 'standard');
+    expect(state().cursor?.staff).toBe('standard');
+    services.document.getState().setNotation(track, 'tab');
+    expect(state().cursor?.staff).toBe('tab');
+  });
+});

@@ -1,13 +1,27 @@
-import type { Score } from '@reprise/model';
+import { shownNotation, type Score } from '@reprise/model';
 
+import type { DocumentView } from '@/state/document';
 import type { EditCursor } from '@/state/selection';
+
+import { wantedNotation } from './visible';
 
 /**
  * Whether the "Standard staff" key context holds: the cursor is on a standard staff of a track
- * that takes notes by name. Today that is a keyboard (pitched) track; a guitar's standard staff
- * joins it with pitch entry on strings (#221, part C), by widening this one test.
+ * that takes notes by name: a keyboard track's, or a fretted track's, whether it is shown as
+ * standard notation alone or beside its tab, and the view draws that staff. A drum track's staff is a percussion one.
  */
-export function onNotatedStaff(score: Score | undefined, cursor: EditCursor | undefined): boolean {
+export function onNotatedStaff(
+  score: Score | undefined,
+  cursor: EditCursor | undefined,
+  view?: DocumentView,
+): boolean {
   if (!score || !cursor || cursor.staff !== 'standard') return false;
-  return score.tracks.find(({ id }) => id === cursor.track)?.kind === 'pitched';
+  const index = score.tracks.findIndex(({ id }) => id === cursor.track);
+  const track = score.tracks[index];
+  if (track?.kind !== 'pitched' && !(track?.kind === 'fretted' && track.tuning.length > 0)) {
+    return false;
+  }
+  // The staff must be drawn: a guitar shown as tab only has none, whatever the cursor remembers.
+  const wanted = view ? wantedNotation(score, view, index) : track.display.notation;
+  return wanted === undefined || shownNotation(track, wanted) !== 'tab';
 }

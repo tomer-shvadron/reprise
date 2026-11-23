@@ -726,17 +726,13 @@ describe('pitch entry on a keyboard track', () => {
     expect(frets(beatsOf(after(keys, planned), 1)[2])).toEqual([[0, 76]]);
   });
 
-  it('refuses the other digits, and a letter on a fretted or drum track', () => {
+  it('refuses the other digits, and a letter on a drum track', () => {
     expect(plan(keys, at(0, 0), { kind: 'fret', fret: 4 })).toEqual({
       refused: 'Type a note name, A to G',
     });
-    const guitar = entryScore();
-    expect(letter(cursorAt(guitar, 0, 0), 'C', {}, false, guitar)).toEqual({
-      refused: 'Typing a note name works on keyboard tracks only',
-    });
     const kit = drumScore();
     expect(letter(cursorAt(kit, 0, 0), 'C', {}, false, kit)).toEqual({
-      refused: 'Typing a note name works on keyboard tracks only',
+      refused: 'Typing a note name works on keyboard and fretted tracks only',
     });
   });
 
@@ -752,5 +748,170 @@ describe('pitch entry on a keyboard track', () => {
     const tied = plan(keys, at(1, 2, 76), { kind: 'tie' });
     expect(tied).toMatchObject({ lane: 76 });
     expect(frets(beatsOf(after(keys, tied), 1)[2])).toEqual([[0, 76]]);
+  });
+});
+
+describe('pitch entry on a fretted track', () => {
+  /** A guitar in standard tuning (string 1 is E4): one bar holding a quarter on string 2, fret 7 (F#4). */
+  const phrase = (...notes: [number, number][]): Score => {
+    const built = score().track('guitar');
+    const bar = built.bar();
+    for (const [string, fret] of notes) bar.beat('4', [note(string, fret)]);
+    built.bar();
+    return built.build({ ids: 'sequential' });
+  };
+  const letter = (
+    built: Score,
+    cursor: EditCursor,
+    name: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G',
+    chord = false,
+    over: Partial<EntryInput> = {},
+  ) => plan(built, cursor, { kind: 'pitch', letter: name, chord }, over);
+  const placed = (planned: EntryPlan, built: Score, bar: number, stop: number) =>
+    frets(beatsOf(after(built, planned), bar)[stop]);
+
+  it('with no note before it, takes the fret nearest the nut', () => {
+    const empty = score().track('guitar');
+    empty.bar();
+    const built = empty.build({ ids: 'sequential' });
+    const planned = letter(built, cursorAt(built, 0, 0), 'E');
+    if (!('command' in planned) || !planned.sound) throw new Error('no entry');
+    const { string, fret } = planned.sound;
+    const opens = [64, 59, 55, 50, 45, 40];
+    const pitch = (opens[string - 1] ?? 0) + fret;
+    // No other string plays the same pitch at a lower fret.
+    for (const open of opens) expect(pitch - open < 0 || pitch - open >= fret).toBe(true);
+    expect(planned.string).toBe(string);
+  });
+
+  it('stays in position: the fret nearest the one before, a tie going to the higher string', () => {
+    // F#4 on string 2, fret 7; E4 is string 2 fret 5 or string 3 fret 9, both two frets away.
+    const built = phrase([2, 7]);
+    const planned = letter(built, cursorAt(built, 0, 1, 1), 'E');
+    expect(placed(planned, built, 0, 1)).toEqual([[2, 5]]);
+    expect(planned).toMatchObject({ string: 2, sound: { string: 2, fret: 5 } });
+  });
+
+  it("breaks a tie for the cursor's string first", () => {
+    const built = phrase([2, 7]);
+    const planned = letter(built, cursorAt(built, 0, 1, 3), 'E');
+    expect(placed(planned, built, 0, 1)).toEqual([[3, 9]]);
+    expect(planned).toMatchObject({ string: 3 });
+  });
+
+  it('adds a chord note on a string the beat does not use', () => {
+    // G3 is open on string 3; a shifted D goes above it, on any other string.
+    const built = phrase([3, 0]);
+    const added = letter(built, cursorAt(built, 0, 0, 1), 'D', true);
+    const [kept, put] = beatsOf(after(built, added), 0)[0]?.notes ?? [];
+    expect(kept).toMatchObject({ string: 3, fret: 0 });
+    expect(put?.string).not.toBe(3);
+    expect(put).toBeDefined();
+  });
+
+  it("replaces the note on the cursor's string and frees that string, keeping the note's id and effects", () => {
+    // A3 on string 3 and G2 on string 6; G typed on string 6 is G3, which string 3 would play
+    // open but holds A3, so it moves to string 4 fret 5 and the note keeps its id and its palm mute.
+    const built = score().track('guitar');
+    built.bar().beat('4', [note(3, 2), note(6, 3, { palmMute: true })]);
+    const two = built.build({ ids: 'sequential' });
+    const before = beatsOf(two, 0)[0]?.notes.find((n) => n.string === 6);
+    const planned = letter(two, cursorAt(two, 0, 0, 6), 'G');
+    const result = beatsOf(after(two, planned), 0)[0]?.notes ?? [];
+    expect(result).toHaveLength(2);
+    expect(result.find((n) => n.id === before?.id)).toMatchObject({
+      string: 4,
+      fret: 5,
+      palmMute: true,
+    });
+    expect(planned).toMatchObject({ string: 4 });
+  });
+
+  it('corrects a lone melody note that sits on another string, and moves the cursor to it', () => {
+    // E4 on string 1 with the cursor left on string 2 by an earlier string move: D replaces it.
+    const built = phrase([1, 0], [1, 0]);
+    const planned = letter(built, cursorAt(built, 0, 0, 2), 'D');
+    const notes = beatsOf(after(built, planned), 0)[0]?.notes ?? [];
+    expect(notes).toHaveLength(1);
+    expect(planned).toMatchObject({ string: notes[0]?.string });
+  });
+
+  it('adds to a chord when the cursor string is empty, and a shifted letter always adds', () => {
+    const built = score().track('guitar');
+    built.bar().beat('4', [note(1, 0), note(3, 0)]);
+    const two = built.build({ ids: 'sequential' });
+    expect(beatsOf(after(two, letter(two, cursorAt(two, 0, 0, 2), 'D')), 0)[0]?.notes).toHaveLength(
+      3,
+    );
+    const lone = phrase([1, 0]);
+    expect(
+      beatsOf(after(lone, letter(lone, cursorAt(lone, 0, 0, 2), 'D', true)), 0)[0]?.notes,
+    ).toHaveLength(2);
+  });
+
+  it('refuses a pitch the beat already holds on another string', () => {
+    // A3 is string 3 fret 2; the cursor is on string 1, whose own note is E4, and A lands on A3.
+    const built = score().track('guitar');
+    built.bar().beat('4', [note(1, 0), note(3, 2)]);
+    const chordScore = built.build({ ids: 'sequential' });
+    expect(letter(chordScore, cursorAt(chordScore, 0, 0, 1), 'A')).toEqual({
+      refused: 'A3 is already on this beat',
+    });
+  });
+
+  it('keeps the note when its own pitch is typed again, and sounds it', () => {
+    const built = phrase([1, 5], [1, 5]);
+    const planned = letter(built, cursorAt(built, 0, 1, 1), 'A');
+    expect(placed(planned, built, 0, 1)).toEqual([[1, 5]]);
+    expect(planned).toMatchObject({ string: 1, sound: { string: 1, fret: 5 } });
+  });
+
+  it('refuses a pitch no string can play, naming the track and the letter', () => {
+    // The chord note must sit above E6 on the highest fret of string 1; no F up there is on the neck.
+    const built = phrase([1, 24]);
+    expect(letter(built, cursorAt(built, 0, 0, 2), 'F', true)).toEqual({
+      refused: "No F that this track's strings can play above the chord",
+    });
+  });
+
+  it('refuses a pitch whose strings are all in use', () => {
+    // E2 is only on string 6, which holds G2 on this beat.
+    const built = score().track('guitar');
+    built
+      .bar()
+      .beat('4', [note(6, 0)])
+      .beat('4', [note(6, 3), note(2, 0)]);
+    const low = built.build({ ids: 'sequential' });
+    expect(letter(low, cursorAt(low, 0, 1, 1), 'E')).toEqual({
+      refused: 'No free string plays E2',
+    });
+  });
+
+  it('counts frets from the capo and the capo as the lowest note', () => {
+    const built = score().track('guitar', { capo: 2 });
+    built.bar().beat('4', [note(1, 0)]);
+    const capoed = built.build({ ids: 'sequential' });
+    // Open string 1 sounds F#4 under the capo. G4 is its fret 1, and E4, below it, is string 2 fret 3.
+    const g = letter(capoed, cursorAt(capoed, 0, 1, 1), 'G');
+    expect(g).toMatchObject({ sound: { string: 1, fret: 1 } });
+    const e = letter(capoed, cursorAt(capoed, 0, 1, 1), 'E');
+    expect(e).toMatchObject({ sound: { string: 2, fret: 3 } });
+  });
+
+  it('takes a replaced tied note off its tie', () => {
+    const built = score().track('guitar');
+    built
+      .bar()
+      .beat('4', [note(1, 5)])
+      .beat('4', [note(1, 5, { tie: true })]);
+    const tied = built.build({ ids: 'sequential' });
+    const planned = letter(tied, cursorAt(tied, 0, 1, 1), 'C');
+    expect(beatsOf(after(tied, planned), 0)[1]?.notes[0]?.tie).toBeFalsy();
+  });
+
+  it('still types a digit as a fret on the cursor string', () => {
+    const built = phrase([2, 7]);
+    const planned = plan(built, cursorAt(built, 0, 1, 4), { kind: 'fret', fret: 3 });
+    expect(placed(planned, built, 0, 1)).toEqual([[4, 3]]);
   });
 });

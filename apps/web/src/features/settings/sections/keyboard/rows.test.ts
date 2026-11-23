@@ -69,13 +69,13 @@ describe('shadowNote', () => {
     const note = find('editor.noteC');
     const bend = find('editor.effect.bendPicker');
     expect(shadowNote('C', bend, [note])).toBe(
-      "On a keyboard track's standard staff, C runs Type note name instead.",
+      'On a standard staff, C runs Type note name instead.',
     );
     expect(shadowNote('C', note, [bend])).toBe(
-      "On a keyboard track's standard staff, C runs Type note name instead of Bend….",
+      'On a standard staff, C runs Type note name instead of Bend….',
     );
     expect(shadowNote('A', bend, [find('editor.chordName'), find('editor.noteA')])).toContain(
-      "On a keyboard track's standard staff",
+      'On a standard staff',
     );
   });
 

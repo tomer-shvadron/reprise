@@ -35,7 +35,11 @@ export function createAppRegistry(
       if (context === 'editing') return true;
       return (
         services.entry.getState().word === undefined &&
-        onNotatedStaff(services.document.getState().score, services.selection.getState().cursor)
+        onNotatedStaff(
+          services.document.getState().score,
+          services.selection.getState().cursor,
+          services.document.getState().view,
+        )
       );
     },
     (command) => keymap(command),

@@ -7,6 +7,7 @@ import { noteAtCursor } from './drum-lanes';
 import { dialogsOf } from './dialogs';
 import { entryController } from './entry-controller';
 import type { EffectOutcome } from './effect-commands';
+import { planRespell } from './respell';
 import { planShift, type StringDirection } from './string-shift';
 import { planTranspose, type TransposeInput, type TransposeOptions } from './transpose';
 import { visibleTracks } from './visible';
@@ -15,6 +16,9 @@ export type TransposeCommandId =
   | 'editor.transposeDialog'
   | 'editor.transposeUp'
   | 'editor.transposeDown'
+  | 'editor.transposeOctaveUp'
+  | 'editor.transposeOctaveDown'
+  | 'editor.respell'
   | 'editor.moveNoteUp'
   | 'editor.moveNoteDown';
 
@@ -57,8 +61,11 @@ export function applyTranspose(
   return { applied: true };
 }
 
-/** The semitone keys: the selected notes only, with no chord names or key. Returns whether the score changed. */
-export function nudgeNotes(services: TransposeServices, semitones: 1 | -1): boolean {
+/**
+ * The semitone and octave keys: the selected notes only, with no chord names or key. Returns
+ * whether the score changed.
+ */
+export function nudgeNotes(services: TransposeServices, semitones: 1 | -1 | 12 | -12): boolean {
   const follows = laneNoteMoves(services);
   const outcome = applyTranspose(services, {
     semitones,
@@ -92,6 +99,20 @@ function laneNoteMoves(services: TransposeServices): boolean {
     beat !== undefined &&
     noteAtCursor(track, beat.notes, cursor) !== undefined
   );
+}
+
+/** Flips the enharmonic spelling of the selected notes, or of the note under the cursor, as one undo step. */
+export function respellNotes(services: TransposeServices): boolean {
+  entryController(services.entry)?.flush();
+  const input = transposeInput(services);
+  if (!input) return false;
+  const plan = planRespell(input);
+  const { document, selection, entry } = services;
+  if ('refused' in plan) {
+    entry.getState().setMessage(plan.refused);
+    return false;
+  }
+  return commitEdit({ document, selection, entry }, plan.command, { moveCursor: false });
 }
 
 /** Moves the selected notes to the neighbouring string; the cursor follows a single note. */
@@ -167,6 +188,33 @@ export function transposeCommands(services: TransposeServices): TransposeCommand
       context: 'editing',
       run: () => {
         nudgeNotes(services, -1);
+      },
+    },
+    {
+      id: 'editor.transposeOctaveUp',
+      title: 'Transpose up an octave',
+      shortcut: { key: 'ArrowUp', mod: true, shift: true },
+      context: 'editing',
+      run: () => {
+        nudgeNotes(services, 12);
+      },
+    },
+    {
+      id: 'editor.transposeOctaveDown',
+      title: 'Transpose down an octave',
+      shortcut: { key: 'ArrowDown', mod: true, shift: true },
+      context: 'editing',
+      run: () => {
+        nudgeNotes(services, -12);
+      },
+    },
+    {
+      id: 'editor.respell',
+      title: 'Respell note',
+      shortcut: { key: 'j' },
+      context: 'editing',
+      run: () => {
+        respellNotes(services);
       },
     },
     {

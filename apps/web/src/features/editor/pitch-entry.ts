@@ -44,9 +44,10 @@ export function letterPitch(
   letter: Letter,
   reference: number,
   key: KeySignature,
+  playable: (midi: number) => boolean = () => true,
 ): number | undefined {
   let best: number | undefined;
-  for (const midi of occurrences(letter, key)) {
+  for (const midi of occurrences(letter, key).filter(playable)) {
     if (best === undefined) {
       best = midi;
       continue;
@@ -59,8 +60,13 @@ export function letterPitch(
 }
 
 /** The nearest occurrence of a letter above `highest`, for adding a note to a chord. */
-export function chordPitch(letter: Letter, highest: number, key: KeySignature): number | undefined {
-  return occurrences(letter, key).find((midi) => midi > highest);
+export function chordPitch(
+  letter: Letter,
+  highest: number,
+  key: KeySignature,
+  playable: (midi: number) => boolean = () => true,
+): number | undefined {
+  return occurrences(letter, key).find((midi) => midi > highest && playable(midi));
 }
 
 /** A staff's clef; a percussion clef never reaches a pitched track, so it reads as treble. */
@@ -78,6 +84,25 @@ export function middleLine(clef: Clef, octaveShift: number): number {
     if (spelling.alter === 0 && staffPosition(spelling, shown, octaveShift) === 4) return midi;
   }
   return 71;
+}
+
+/**
+ * The key written `position` steps above a staff's bottom line (0 is the line, 1 the space above;
+ * negative below), in the bar's key: what a click at that height means. The inverse of
+ * `staffPosition` for a natural letter. Undefined past MIDI.
+ */
+export function pitchAtPosition(
+  position: number,
+  clef: PitchedClef,
+  octaveShift: number,
+  key: KeySignature,
+): number | undefined {
+  const bottom = -staffPosition({ letter: 'C', octave: 0 }, clef, 0);
+  const line = position + bottom;
+  const letter = LETTERS[((line % 7) + 7) % 7];
+  if (!letter) return undefined;
+  const midi = keyOf(letter, Math.floor(line / 7) - octaveShift, keyAlter(key, letter));
+  return midi >= 0 && midi <= MIDI_TOP ? midi : undefined;
 }
 
 const indexOfLetter = (letter: Letter): number => LETTERS.indexOf(letter);

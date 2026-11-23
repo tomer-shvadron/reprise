@@ -1,4 +1,4 @@
-import type { Score } from '@reprise/model';
+import { shownNotation, type Score } from '@reprise/model';
 
 import type { AppServices } from '@/app/services';
 import { passIndexAt } from '@/features/transport/seek';
@@ -55,7 +55,7 @@ export function installEditor(deps: InstallDeps): () => void {
     const { cursor, currentTrack } = state;
     if (!score || !cursor || state.currentTrack === previous.currentTrack) return;
     if (currentTrack === undefined || cursor.track === currentTrack) return;
-    const next = cursorOnTrack(score, cursor, currentTrack);
+    const next = cursorOnTrack(score, cursor, currentTrack, document.getState().view);
     if (next) selection.getState().setEdit({ cursor: next });
   });
 
@@ -76,7 +76,23 @@ export function installEditor(deps: InstallDeps): () => void {
     if (cursor) selection.getState().setEdit({ cursor, currentTrack: cursor.track });
   });
 
+  // A cursor on a staff the view just stopped drawing moves to the one it shows: a guitar switched
+  // to standard notation has no tab staff, and the letters belong to the standard one.
+  const stopView = document.subscribe((state, previous) => {
+    if (state.id !== previous.id || state.view.notation === previous.view.notation) return;
+    const { cursor } = selection.getState();
+    const { score } = state;
+    const track = score?.tracks.findIndex(({ id }) => id === cursor?.track) ?? -1;
+    const found = score?.tracks[track];
+    const wanted = score && found && wantedNotation(score, state.view, track);
+    if (!cursor || !found || !wanted || found.kind === 'drums') return;
+    const shown = shownNotation(found, wanted);
+    if (shown === 'both' || shown === (cursor.staff === 'tab' ? 'tab' : 'standard')) return;
+    selection.getState().setEdit({ cursor: { ...cursor, staff: shown } });
+  });
+
   return () => {
+    stopView();
     stopDocument();
     stopSelection();
     stopEditing();

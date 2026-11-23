@@ -96,3 +96,69 @@ describe('a note tied across a bar line', () => {
     expect(after && noteOf(after, 0, 1, 0)).toMatchObject({ fret: 6, tie: true });
   });
 });
+
+describe('the octave keys', () => {
+  const ctrlShift = { ctrlKey: true, shiftKey: true };
+
+  it('Ctrl+Shift+Up and Down move the note under the cursor an octave, one undo step each', async () => {
+    const { services, press, beats } = await setupEffects();
+    const before = services.document.getState().revision;
+    expect(press('ArrowUp', ctrlShift)).toBe(true);
+    expect(beats()[0]?.notes[0]).toMatchObject({ string: 1, fret: 17 });
+    expect(services.document.getState().undoLabel).toBe('Transpose');
+    expect(press('ArrowDown', ctrlShift)).toBe(true);
+    expect(beats()[0]?.notes[0]?.fret).toBe(5);
+    expect(services.document.getState().revision).toBe(before + 2);
+  });
+
+  it('refuses an octave that leaves the neck, changing nothing', async () => {
+    const { services, press, beats } = await setupEffects();
+    press('ArrowDown', ctrlShift);
+    expect(beats()[0]?.notes[0]?.fret).toBe(5);
+    expect(services.entry.getState().message).toMatch(/cannot go down 12 semitones/);
+  });
+
+  it("carries a keyboard track's lane with the note", async () => {
+    const built = score().track('piano');
+    built.bar().beat('4', [note(0, 60)]);
+    const { services, press, beats } = await setupEffects(
+      undefined,
+      built.build({ ids: 'sequential' }),
+    );
+    const cursor = services.selection.getState().cursor;
+    act(() => {
+      if (cursor) {
+        services.selection
+          .getState()
+          .setEdit({ cursor: { ...cursor, pitch: 60, staff: 'standard' } });
+      }
+    });
+    press('ArrowUp', ctrlShift);
+    expect(beats()[0]?.notes[0]?.fret).toBe(72);
+    expect(services.selection.getState().cursor?.pitch).toBe(72);
+  });
+});
+
+describe('Respell note', () => {
+  it('J flips the note under the cursor to its other spelling, one step named Respell', async () => {
+    const built = score().track('guitar');
+    // A sharp 4, written A# in C major.
+    built.bar().beat('4', [note(1, 6)]);
+    const { services, press, beats } = await setupEffects(
+      undefined,
+      built.build({ ids: 'sequential' }),
+    );
+    expect(press('j')).toBe(true);
+    expect(beats()[0]?.notes[0]?.accidental).toBe('flat');
+    expect(historyLabel(services.document.getState().undoLabel ?? '')).toBe('Respell');
+    press('j');
+    expect(beats()[0]?.notes[0]?.accidental).toBeUndefined();
+  });
+
+  it('says to select a note when the cursor holds none', async () => {
+    const { services, press, goTo } = await setupEffects();
+    goTo(4);
+    press('j');
+    expect(services.entry.getState().message).toBe('Select a note first');
+  });
+});

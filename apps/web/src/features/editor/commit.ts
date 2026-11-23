@@ -54,6 +54,8 @@ export function commitEdit(
     inserted?: EditPlan['inserted'];
     /** The drum lane the cursor ends on. */
     lane?: number;
+    /** The string the cursor ends on, when the entry chose it. */
+    string?: number;
     moveCursor?: boolean;
   } = {},
 ): boolean {
@@ -71,15 +73,32 @@ export function commitEdit(
   const base = options.base ?? selection.getState().cursor;
   if (options.moveCursor !== false) {
     // One write per hit: the landing is made already on the hit's lane.
-    const { lane } = options;
-    const from = base && lane !== undefined ? { ...base, pitch: lane } : base;
+    const { lane, string } = options;
+    const from =
+      base && (lane !== undefined || string !== undefined)
+        ? {
+            ...base,
+            ...(lane !== undefined && { pitch: lane }),
+            ...(string !== undefined && { string }),
+          }
+        : base;
     const landed =
       options.land && score && from ? landingCursor(score, options.land, from) : undefined;
     const current = selection.getState().cursor;
     if (landed) {
       selection.getState().setEdit({ cursor: landed, currentTrack: landed.track });
-    } else if (lane !== undefined && current && current.pitch !== lane) {
-      selection.getState().setEdit({ cursor: { ...current, pitch: lane } });
+    } else if (
+      current &&
+      ((lane !== undefined && current.pitch !== lane) ||
+        (string !== undefined && current.string !== string))
+    ) {
+      selection.getState().setEdit({
+        cursor: {
+          ...current,
+          ...(lane !== undefined && { pitch: lane }),
+          ...(string !== undefined && { string }),
+        },
+      });
     }
   }
   // Only where the cursor is: an entry committed after the cursor moved away names no beat it sits on.

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { chordPitch, clefOf, letterPitch, middleLine, pitchName, stepPitch } from './pitch-entry';
+import {
+  chordPitch,
+  clefOf,
+  letterPitch,
+  middleLine,
+  pitchAtPosition,
+  pitchName,
+  stepPitch,
+} from './pitch-entry';
 
 const C = { fifths: 0, minor: false };
 const G = { fifths: 1, minor: false };
@@ -98,5 +106,20 @@ describe('clefOf', () => {
         0,
       ),
     ).toBe('alto');
+  });
+});
+
+describe('pitchAtPosition', () => {
+  it('reads the staff from its bottom line, as staffPosition writes it', () => {
+    expect(pitchAtPosition(0, 'treble', 0, C)).toBe(64);
+    expect(pitchAtPosition(4, 'treble', 0, C)).toBe(71);
+    expect(pitchAtPosition(-2, 'treble', 0, C)).toBe(60);
+    expect(pitchAtPosition(0, 'bass', 0, C)).toBe(43);
+  });
+
+  it('takes the key and the written octave shift into account', () => {
+    expect(pitchAtPosition(8, 'treble', 0, G)).toBe(78);
+    // A guitar's sounding E2 is written where E3 is: the bottom line of treble reads E3 up an octave.
+    expect(pitchAtPosition(0, 'treble', 1, C)).toBe(52);
   });
 });

@@ -5,6 +5,7 @@ import {
   createNote,
   insertBar,
   insertBeat,
+  midiNote,
   newId,
   percussionInstrument,
   removeBeat,
@@ -33,6 +34,7 @@ import { resolveCursor, stopCount, type Resolved } from './cursor';
 import { cursorLane, LAST_DRUM_KEY, laneLabel, noteAtCursor } from './drum-lanes';
 import { chordPitch, clefOf, letterPitch, middleLine, pitchName } from './pitch-entry';
 import { rangeBeats } from './range';
+import { chooseString, handPosition, neckPositions, neckRange } from './string-choice';
 import {
   longer,
   overfullMessage,
@@ -84,6 +86,8 @@ export interface EditPlan {
   inserted?: Id;
   /** The lane the cursor lands on: a GM key on drums, a MIDI key on a pitched track. */
   lane?: number;
+  /** The string the cursor lands on: the one note entry chose for a pitch on a fretted track. */
+  string?: number;
   /** The note to sound once the edit has been applied. */
   sound?: { track: Id; beat: Id; string: number; fret: number };
 }
@@ -216,6 +220,7 @@ function insertion(
   rhythm: Rhythm,
   note?: { string: number; fret: number; tie?: true },
   lane?: number,
+  string?: number,
 ): EntryPlan {
   const full = noRoom(input, where, rhythm);
   if (full) return full;
@@ -229,6 +234,7 @@ function insertion(
     ]),
     land: { beat: id },
     ...(lane !== undefined && { lane }),
+    ...(string !== undefined && { string }),
     ...(note && { inserted: id, sound: { track: where.track.id, beat: id, ...note } }),
   };
 }
@@ -292,6 +298,7 @@ const startsBeat = (input: EntryInput, where: Where): boolean =>
 /**
  * The key a note's letter sounds at: the nearest octave to the note before the cursor in this
  * voice, else to the clef's middle line; or, for a chord note, the first above the beat's highest.
+ * On a fretted track only a key some string can play counts, so the nearest playable octave wins.
  */
 function keyForLetter(
   input: EntryInput,
@@ -299,34 +306,139 @@ function keyForLetter(
   letter: Letter,
   chord: boolean,
 ): number | undefined {
-  const { beat } = where;
+  const { beat, track } = where;
+  const playable =
+    track.kind === 'fretted' ? (midi: number) => neckPositions(track, midi).length > 0 : undefined;
   if (chord && beat && beat.notes.length > 0 && !startsBeat(input, where)) {
-    return chordPitch(letter, Math.max(...beat.notes.map(({ fret }) => fret)), where.key);
+    const highest = Math.max(...beat.notes.map((note) => midiNote(track, note)));
+    return chordPitch(letter, highest, where.key, playable);
   }
-  return letterPitch(letter, referenceKey(where), where.key);
+  return letterPitch(letter, referenceKey(where), where.key, playable);
 }
 
-/** The top key of the nearest earlier played beat of this voice, across bars; else the middle line. */
-function referenceKey(where: Where): number {
+/** The notes of the nearest earlier played beat of this voice, across bars; undefined before the first. */
+function previousNotes(where: Where): readonly Note[] | undefined {
   const { track, at } = where;
   for (let bar = at.bar; bar >= 0; bar -= 1) {
     const beats = track.bars[bar]?.voices[at.voice]?.beats ?? [];
     for (let i = bar === at.bar ? at.stop - 1 : beats.length - 1; i >= 0; i -= 1) {
       const notes = beats[i]?.notes ?? [];
-      if (notes.length > 0) return Math.max(...notes.map(({ fret }) => fret));
+      if (notes.length > 0) return notes;
     }
   }
-  return middleLine(clefOf(track, at.bar), track.display.octaveShift);
+  return undefined;
 }
 
-/** A letter typed on a pitched track, A to G, or ⇧A to ⇧G to add to the chord. */
+/** The top key of the note before the cursor; else the middle line. */
+function referenceKey(where: Where): number {
+  const { track, at } = where;
+  const notes = previousNotes(where);
+  return notes
+    ? Math.max(...notes.map((note) => midiNote(track, note)))
+    : middleLine(clefOf(track, at.bar), track.display.octaveShift);
+}
+
+/** A letter typed on a pitched or fretted track, A to G, or ⇧A to ⇧G to add to the chord. */
 function planPitch(input: EntryInput, where: Where, letter: Letter, chord: boolean): EntryPlan {
-  if (where.track.kind !== 'pitched') {
-    return refuse('Typing a note name works on keyboard tracks only');
+  const { kind } = where.track;
+  if (kind === 'drums' || (kind === 'fretted' && where.track.tuning.length === 0)) {
+    return refuse('Typing a note name works on keyboard and fretted tracks only');
   }
   const midi = keyForLetter(input, where, letter, chord);
-  if (midi === undefined) return refuse(`No ${letter} in the range of the keys`);
-  return planKey(input, where, midi, chord ? 'add' : 'replace');
+  if (midi === undefined) {
+    return refuse(
+      kind === 'fretted'
+        ? `No ${letter} that this track's strings can play${chord ? ' above the chord' : ''}`
+        : `No ${letter} in the range of the keys`,
+    );
+  }
+  return kind === 'fretted'
+    ? planOnString(input, where, midi, chord ? 'add' : 'replace')
+    : planKey(input, where, midi, chord ? 'add' : 'replace');
+}
+
+/** Why no string takes `midi`: off the neck at either end, or every string that could is in use. */
+function noString(where: Where, midi: number): string {
+  const name = pitchName(midi, where.key);
+  const range = neckRange(where.track);
+  if (range && midi < range.lowest) return `${name} is below the lowest string`;
+  if (range && midi > range.highest) return `${name} is above the neck`;
+  return neckPositions(where.track, midi).length > 0
+    ? `No free string plays ${name}`
+    : `No string plays ${name}`;
+}
+
+/**
+ * A note typed by pitch on a fretted track, put on the string that keeps the hand where it is:
+ * the free string whose fret is nearest the one before (`chooseString`). `replace`, in overwrite
+ * mode, swaps the note on the cursor's string for it in one chain, keeping what the note had but
+ * its tie and accidental, and the string it held counts as free; with no note on the cursor's
+ * string it adds one. A pitch the beat already holds on another string is refused, so two notes
+ * never sound alike. `add` only adds, which is a chord note. The cursor follows to the string.
+ */
+function planOnString(
+  input: EntryInput,
+  where: Where,
+  midi: number,
+  how: 'replace' | 'add',
+): EntryPlan {
+  const { track, beat } = where;
+  // The staff does not show the cursor's string, so a lone note on another string is the one a
+  // plain letter means to correct; with a chord and an empty string it adds.
+  const old =
+    how === 'replace' && beat && !startsBeat(input, where)
+      ? (beat.notes.find((n) => n.string === input.cursor.string) ??
+        (beat.notes.length === 1 ? beat.notes[0] : undefined))
+      : undefined;
+  const from = old?.string ?? input.cursor.string;
+  const hand = handPosition(track, previousNotes(where), from);
+  const pick = (taken: ReadonlySet<number>) =>
+    chooseString(track, midi, { taken, hand, preferred: from });
+  if (!beat || startsBeat(input, where)) {
+    const position = pick(new Set());
+    if (!position) return refuse(noString(where, midi));
+    const index = beat ? where.at.stop : where.beats.length;
+    return insertion(input, where, index, input.rhythm, position, undefined, position.string);
+  }
+  const justInserted = input.inserted === beat.id;
+  const sounding = beat.notes.find((n) => midiNote(track, n) === midi);
+  const sound = (note: { string: number; fret: number }) => ({
+    track: track.id,
+    beat: beat.id,
+    ...note,
+  });
+  if (sounding && sounding === old) {
+    // The note already has this pitch: sound it again, and stay on its string.
+    const note = { string: sounding.string, fret: sounding.fret };
+    return {
+      command: chain('enterNote', [setNote({ beatId: beat.id }, note)]),
+      string: note.string,
+      ...(justInserted && { inserted: beat.id }),
+      sound: sound(note),
+    };
+  }
+  if (sounding) return refuse(`${pitchName(midi, where.key)} is already on this beat`);
+  const taken = new Set(beat.notes.filter((n) => n !== old).map(({ string }) => string));
+  const position = pick(taken);
+  if (!position) return refuse(noString(where, midi));
+  const base = {
+    string: position.string,
+    ...(justInserted && { inserted: beat.id }),
+    sound: sound(position),
+  };
+  if (!old) {
+    return { command: chain('enterNote', [setNote({ beatId: beat.id }, position)]), ...base };
+  }
+  const kept: Partial<Note> = { ...old };
+  delete kept.id;
+  delete kept.accidental;
+  return {
+    command: chain('enterNote', [
+      removeNote({ noteId: old.id }),
+      setNote({ beatId: beat.id, id: old.id }, { ...kept, ...position, tie: false }),
+    ]),
+    ...base,
+  };
 }
 
 /**

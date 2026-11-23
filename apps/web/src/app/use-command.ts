@@ -139,7 +139,7 @@ function indexOf(registry: CommandRegistry): GroupIndex {
  * one. Deliberately ignores `enabled`: nothing re-renders a tooltip when it flips, and the rule
  * shown to the user is simply "taken over while editing". Nor does anything re-render it when only
  * the cursor's staff changes, so the Bend… and Grace note… tooltips keep showing B and G for a
- * moment after the cursor moves onto a keyboard track's staff, and the reverse on the way off
+ * moment after the cursor moves onto a standard staff that takes notes by name, and the reverse on the way off
  * (accepted in the plan). `CommandRegistry.isShadowed` is the palette's version, which also asks
  * for `enabled` and does not filter by platform.
  */

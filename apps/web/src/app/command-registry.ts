@@ -29,7 +29,7 @@ const CONTEXT_LABELS: Record<CommandContext, ContextLabel> = {
 /** How a sentence names a context: "While editing, …". */
 export const contextPhrase = (context: CommandContext | undefined): string =>
   context === 'standardStaff'
-    ? "On a keyboard track's standard staff"
+    ? 'On a standard staff'
     : context === 'editing'
       ? 'While editing'
       : 'Everywhere';
