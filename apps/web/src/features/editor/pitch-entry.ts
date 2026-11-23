@@ -121,3 +121,9 @@ export function clefOf(track: Pick<Track, 'bars' | 'display'>, bar: number): Pit
   }
   return pitchedClef(track.display.clef ?? FALLBACK_CLEF);
 }
+
+/** The accidental stored on the note of `notes` that sounds `midi`, which decides how it is spelled and drawn. */
+export const accidentalAt = (
+  notes: readonly Pick<Note, 'fret' | 'accidental'>[] | undefined,
+  midi: number,
+): Accidental | undefined => notes?.find((note) => note.fret === midi)?.accidental;

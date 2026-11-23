@@ -19,7 +19,7 @@ import type { EditCursor, EditRange, RangeEnd } from '@/state/selection';
 
 import { stringCount } from './cursor';
 import { cursorLane, lanePosition } from './drum-lanes';
-import { clefOf } from './pitch-entry';
+import { accidentalAt, clefOf } from './pitch-entry';
 import { endSpan, rangeSpan, type TimePoint } from './range';
 
 /** A tab or standard staff has five or six lines to a staff `height`; this is one gap of the standard five. */
@@ -116,7 +116,16 @@ export function caretBoxes(layout: LayoutResult, score: Score, cursor: EditCurso
   const pitchedPosition =
     track.kind === 'pitched' && cursor.pitch !== undefined && barOf !== undefined
       ? staffPosition(
-          spell(cursor.pitch, score.masterBars[barOf]?.keySignature ?? { fifths: 0, minor: false }),
+          spell(
+            cursor.pitch,
+            score.masterBars[barOf]?.keySignature ?? { fifths: 0, minor: false },
+            // The note in the lane is drawn with its own accidental, so the caret follows it.
+            accidentalAt(
+              track.bars[barOf]?.voices[cursor.voice]?.beats.find(({ id }) => id === cursor.beat)
+                ?.notes,
+              cursor.pitch,
+            ),
+          ),
           clefOf(track, barOf),
           track.display.octaveShift,
         )

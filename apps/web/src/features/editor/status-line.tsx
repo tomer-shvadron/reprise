@@ -15,7 +15,7 @@ import type { SelectionStore } from '@/state/selection';
 
 import { resolveCursor } from './cursor';
 import { cursorLane, laneLabel } from './drum-lanes';
-import { pitchName } from './pitch-entry';
+import { accidentalAt, pitchName } from './pitch-entry';
 import { DurationStepItems } from './duration-steps';
 import type { EntryStore } from './entry-store';
 import { rhythmLabel } from './rhythm';
@@ -77,6 +77,10 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
           ? pitchName(
               cursor.pitch,
               score.masterBars[at.bar]?.keySignature ?? { fifths: 0, minor: false },
+              accidentalAt(
+                found.bars[at.bar]?.voices[at.voice]?.beats[at.stop]?.notes,
+                cursor.pitch,
+              ),
             )
           : undefined
       : undefined;
