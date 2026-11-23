@@ -104,6 +104,45 @@ describe('GmBank', () => {
     });
   });
 
+  describe('the ukulele variation', () => {
+    const ukulele = createTrack('fretted', { tuning: [67, 60, 64, 69], program: 24 });
+    afterEach(() => vi.restoreAllMocks());
+
+    it("asks the font for GeneralUser's Ukulele bank 8, and falls back to program 24 without it", () => {
+      const resolve = vi.spyOn(font, 'resolve');
+      // The synthetic font has neither, so it falls back to its program 0 like any missing preset.
+      expect(bank().instrumentId(ukulele, 24)).toBe('gm:0:0');
+      expect(resolve).toHaveBeenCalledWith(8, 24);
+    });
+
+    it("plays the font's Ukulele preset when it has one", () => {
+      const base = font.resolve(0, 25);
+      if (!base) throw new Error('the synthetic font has program 25');
+      const original = font.resolve.bind(font);
+      vi.spyOn(font, 'resolve').mockImplementation((bankNumber, program) =>
+        bankNumber === 8 && program === 24
+          ? { ...base, id: 'gm:8:24' }
+          : original(bankNumber, program),
+      );
+      const gm = bank();
+      expect(gm.instrumentId(ukulele, 24)).toBe('gm:8:24');
+      expect(gm.instrumentId(createTrack('fretted', { program: 24 }), 24)).toBe('gm:0:0');
+    });
+
+    it('leaves five strings, courses, another program and a chosen bank alone', () => {
+      const resolve = vi.spyOn(font, 'resolve');
+      const gm = bank();
+      gm.instrumentId({ ...ukulele, tuning: [67, 60, 64, 69, 72] }, 24);
+      gm.instrumentId({ ...ukulele, courses: [12, 0, 0, 0] }, 24);
+      gm.instrumentId(ukulele, 25);
+      gm.instrumentId({ ...ukulele, bank: 16 << 7 }, 24);
+      gm.instrumentId({ ...ukulele, bank: 8 << 7 }, 24);
+      const eights = resolve.mock.calls.filter(([bankNumber]) => bankNumber === 8);
+      // Only the track that chose bank 8 itself asks for it.
+      expect(eights).toHaveLength(1);
+    });
+  });
+
   it('hands the sampler the region map the manager decodes for the same id', () => {
     const gm = bank();
     for (const [track, program] of [

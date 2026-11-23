@@ -478,6 +478,14 @@ function articulation(
   xml.close('Articulation');
 }
 
+/** The bowed strings' instrument sets, keyed by General MIDI program. */
+const BOWED_SETS: ReadonlyMap<number, [name: string, type: string]> = new Map([
+  [40, ['Violin', 'violin']],
+  [41, ['Viola', 'viola']],
+  [42, ['Cello', 'cello']],
+  [43, ['Contrabass', 'contrabass']],
+]);
+
 /** gpif instrument set names and types for the programs Guitar Pro 7 files show them on. */
 function instrumentSet(track: Track): [name: string, type: string] {
   const { program } = track;
@@ -488,6 +496,9 @@ function instrumentSet(track: Track): [name: string, type: string] {
   if (program === 32 || program === 35) return ['Acoustic Bass', 'acousticBass'];
   if (program >= 33 && program <= 39) return ['Electric Bass', 'electricBass'];
   if (program === 105) return ['Banjo', 'banjo'];
+  // The names alphaTab's gpif writer uses (GpifSoundMapper); the reader ignores them.
+  const bowed = BOWED_SETS.get(program);
+  if (bowed && track.kind === 'fretted') return bowed;
   return track.kind === 'pitched'
     ? ['Acoustic Piano', 'acousticPiano']
     : ['Steel Guitar', 'steelGuitar'];
@@ -635,6 +646,9 @@ const DEFAULT_FRET_COUNT = 24;
 function tuningInstrument(track: Track): string {
   if (stringInstrumentOf(track) === 'banjo') return 'Banjo';
   if (track.program >= 32 && track.program <= 39) return 'Bass';
+  const bowed = BOWED_SETS.get(track.program)?.[0];
+  if (bowed) return bowed;
+  if (track.program === 106 && track.tuning.length === 3) return 'Shamisen';
   return 'Guitar';
 }
 
