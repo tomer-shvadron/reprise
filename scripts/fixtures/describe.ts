@@ -36,9 +36,7 @@ type Score = alphaTab.model.Score;
 alphaTab.Logger.logLevel = alphaTab.LogLevel.None;
 
 function settings(): alphaTab.Settings {
-  const result = new alphaTab.Settings();
-  result.core.logLevel = alphaTab.LogLevel.None;
-  return result;
+  return new alphaTab.Settings();
 }
 
 /** General MIDI programs of fretted instruments: guitars and basses, then sitar to koto. */
