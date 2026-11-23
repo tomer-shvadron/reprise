@@ -141,13 +141,15 @@ describe('paste of beats', () => {
   it('refuses an overfull bar, naming the bar and the room left, and changes nothing', () => {
     const state = { cursor: cursorAt(built, 0, 2, 3), range: undefined };
     const message = refusal(built, twoBeats, state, 'insert');
-    expect(message).toBe('Bar 3 has an eighth left: a half does not fit');
+    expect(message).toBe('Bar 3 has an eighth left: a quarter does not fit');
   });
 
-  it('refuses an overwrite that would overflow the bar', () => {
-    // The overwritten eighth frees a little room, so the refusal counts it.
+  it('re-flows an overwrite that would overflow the bar into the next one', () => {
+    // The overwritten eighth frees room for one quarter; the second quarter goes to bar 4.
     const state = { cursor: cursorAt(built, 0, 2, 3), range: undefined };
-    expect(refusal(built, twoBeats, state)).toBe('Bar 3 has a quarter left: a half does not fit');
+    const after = run(built, planned(built, twoBeats, state));
+    expect(frets(after, 0, 2)).toEqual(['7', '8', '9', '1']);
+    expect(frets(after, 0, 3)).toEqual(['2']);
   });
 
   it('starts at a range start rather than the cursor', () => {
@@ -214,29 +216,33 @@ describe('paste of beats', () => {
     const plan = planned(built, wide, state);
     const after = history.apply(built, plan.command).score;
     expect(after.masterBars).toHaveLength(6);
-    // Bar 5 held three quarters: the two pasted beats overwrite the first two.
-    expect(frets(after, 0, 4)).toEqual(['5', '6', '0']);
-    expect(frets(after, 0, 5)).toEqual(['7', '8']);
+    // Bar 2 of the clip was left half empty, so its gap pastes as a rest that keeps the time: it
+    // overwrites bar 5's third quarter and runs on into the appended bar, which is 3/4 like bar 5.
+    expect(frets(after, 0, 4)).toEqual(['5', '6', 'rest']);
+    expect(frets(after, 0, 5)).toEqual(['rest', '7', '8']);
     expect(history.steps).toHaveLength(1);
     expect(history.undo()?.score).toEqual(built);
   });
 
-  it('keeps a clip over a barline contiguous: it pastes only at the position it was copied from', () => {
-    // Beats 3 and 4 of bar 1 and beats 1 and 2 of bar 2: 3 4 | 5 6, started 1920 ticks into its bar.
+  it('lays a clip over a barline out again at another position in the bar', () => {
+    // Beats 3 and 4 of bar 1 and beats 1 and 2 of bar 2: 3 4 | 5 6 (the second bar half empty).
     const wide = clipOf(built, {
       cursor: undefined,
       range: beatsRange(built, { first: 0, bar: 0, lastBar: 1, from: 2, to: 1 }),
     });
-    expect(refusal(built, wide, { cursor: cursorAt(built, 0, 4, 0), range: undefined })).toBe(
-      'Paste this at the same beat position it was copied from, or copy whole bars',
-    );
-    // Beat 3 of bar 2 is where it came from: 5 6 [3 4 | 5 6 9 10].
-    const after = run(
+    // Into the 3/4 bar 5 from its start, bar 6 appended: 3 4 5 | 6.
+    const plan = planned(built, wide, { cursor: cursorAt(built, 0, 4, 0), range: undefined });
+    const after = run(built, plan);
+    expect(frets(after, 0, 4)).toEqual(['3', '4', '5']);
+    expect(frets(after, 0, 5)).toEqual(['6']);
+    // Where it came from, into bars of the same meter, it lands as it was.
+    const same = run(
       built,
       planned(built, wide, { cursor: cursorAt(built, 0, 1, 2), range: undefined }),
     );
-    expect(frets(after, 0, 1)).toEqual(['5', '6', '3', '4']);
-    expect(frets(after, 0, 2)).toEqual(['5', '6', '9', '10']);
+    expect(frets(same, 0, 1)).toEqual(['5', '6', '3', '4']);
+    expect(frets(same, 0, 2)).toEqual(['5', '6', '9', '10']);
+    expect(plan.notice).toBe('Pasted 4 beats');
   });
 
   it('leaves a track with nothing in the span as it is, and pastes the rest', () => {

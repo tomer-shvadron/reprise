@@ -95,9 +95,10 @@ test('A four-bar cross-track paste is one Paste row, and one undo restores the s
   expect(undone).toEqual(shapeOf(original.score));
 });
 
-// WP-084: a cut leaves rests where the beats were, Paste as insert makes room for what it carries,
-// and Paste over refuses a bar it cannot fit in, naming the bar.
-test('Cut leaves rests, Paste as insert adds bars, and Paste over a bar too short is refused', async ({
+// WP-084 and #268: a cut leaves rests where the beats were, Paste as insert makes room for what it
+// carries and refuses a bar it cannot fit in (naming the bar), and Paste over re-flows what does not
+// fit into the next bar.
+test('Cut leaves rests, Paste as insert adds bars, and Paste over re-flows across the barline', async ({
   app,
   page,
 }) => {
@@ -121,13 +122,35 @@ test('Cut leaves rests, Paste as insert adds bars, and Paste over a bar too shor
     [false, 4],
   ]);
 
-  // Paste over at the last beat of the bar (the half rest is one beat): two quarters do not fit, and the bar is named.
+  // At the last beat of the bar (the half rest is one beat) two quarters do not fit: Paste as insert
+  // refuses and names the bar, and changes nothing.
   await toBar(app, 1);
   for (let beat = 0; beat < 2; beat += 1) await page.keyboard.press('ArrowRight');
   await expect(status).toContainText('Bar 1 · Beat 3');
-  await palette(app, 'Paste over');
-  await expect(status.getByRole('status')).toContainText(/^Bar 1 has .* left/);
+  await palette(app, 'Paste as insert');
+  await expect(status.getByRole('status')).toContainText(/^Bar 1 is full/);
   await rowCount(typed + 1);
+
+  // Paste over re-flows: the first quarter replaces the last one, the second goes to bar 2. One row.
+  await palette(app, 'Paste over');
+  await expect(status.getByRole('status')).toContainText('Pasted 2 beats');
+  await rowCount(typed + 2);
+  await expect(rows.last()).toHaveText('Paste');
+  // Undo it, so the rest of the flow starts from the cut again.
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect
+    .poll(async () => {
+      const undone = await saveKey(app);
+      return undone.tracks[0]?.bars[0]?.voices[0]?.beats.map(({ rest, duration }) => [
+        rest,
+        duration,
+      ]);
+    })
+    .toEqual([
+      [true, 2],
+      [false, 4],
+      [false, 4],
+    ]);
 
   // Copy both bars and paste them as an insert at bar 2: the song grows by two bars.
   expect(await app.description()).toBe('2 bars, 1 page');

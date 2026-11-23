@@ -26,6 +26,7 @@ describe('copyClip', () => {
     expect(clip.tracks).toHaveLength(1);
     const [bar] = must(clip.tracks[0]).bars;
     expect(bar?.timeSignature).toEqual({ numerator: 4, denominator: 4 });
+    expect(bar?.ticks).toBe(3840);
     expect(bar?.voices).toHaveLength(1);
     expect(bar?.voices[0]?.beats.map(({ notes }) => notes[0]?.fret)).toEqual([2, 3]);
     expect(clipSummary(clip)).toBe('2 beats');

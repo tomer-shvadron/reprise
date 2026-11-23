@@ -2,6 +2,7 @@ import {
   beatStartTicks,
   chain,
   createBeat,
+  playedBarTicks,
   replaceBeats,
   type Beat,
   type Command,
@@ -86,7 +87,15 @@ function clipTrack(
   if (!track) return undefined;
   const clipBars: ClipBar[] = bars.flatMap(({ bar, voices }) => {
     const masterBar = score.masterBars[bar];
-    return masterBar ? [{ timeSignature: { ...masterBar.timeSignature }, voices }] : [];
+    return masterBar
+      ? [
+          {
+            timeSignature: { ...masterBar.timeSignature },
+            ticks: playedBarTicks(score, bar),
+            voices,
+          },
+        ]
+      : [];
   });
   return {
     kind: track.kind,
