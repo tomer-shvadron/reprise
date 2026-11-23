@@ -1,6 +1,7 @@
-import type { Command } from '@/app/command-registry';
+import type { Command, CommandContext } from '@/app/command-registry';
 import { detectKeyboardPlatform, type Shortcut } from '@/app/keyboard';
 import type { AppServices } from '@/app/services';
+import type { Letter } from '@reprise/model';
 
 import type { EntryAction } from './entry';
 import { entryController } from './entry-controller';
@@ -18,8 +19,12 @@ const FRET_IDS = [
   'editor.fret9',
 ] as const;
 
+const NOTE_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as const satisfies readonly Letter[];
+
 export type EntryCommandId =
   | (typeof FRET_IDS)[number]
+  | `editor.note${(typeof NOTE_LETTERS)[number]}`
+  | `editor.chordNote${(typeof NOTE_LETTERS)[number]}`
   | 'editor.durationLonger'
   | 'editor.durationShorter'
   | 'editor.durationShorterPlus'
@@ -44,6 +49,7 @@ type EntryCommand = Command & { id: EntryCommandId };
  * The note-entry keys of edit mode, Guitar Pro's where it has one. Each is a thin call into the
  * entry controller, which does nothing outside edit mode or without a cursor. The insert-or-
  * overwrite toggle has no key: Insert belongs to inserting a bar (WP-083), so it is palette-only.
+ * The note letters are the one exception to the editing context: they hold on a standard staff.
  */
 export function entryCommands(services: Pick<AppServices, 'entry'>): EntryCommand[] {
   const { entry } = services;
@@ -56,11 +62,12 @@ export function entryCommands(services: Pick<AppServices, 'entry'>): EntryComman
     shortcut: Shortcut | undefined,
     run: () => void,
     extra: Partial<Pick<Command, 'inPalette' | 'repeat' | 'rebindable'>> = {},
+    context: CommandContext = 'editing',
   ): EntryCommand => ({
     id,
     title,
     ...(shortcut && { shortcut }),
-    context: 'editing',
+    context,
     run,
     ...extra,
   });
@@ -80,6 +87,26 @@ export function entryCommands(services: Pick<AppServices, 'entry'>): EntryComman
         { ...hidden, repeat: false, rebindable: false },
       ),
     ),
+    // Letters are values like the digits, not shortcuts, so they are not in the palette and have
+    // no second key; the keys they take on a standard staff stay available everywhere else.
+    ...NOTE_LETTERS.flatMap((letter) => [
+      command(
+        `editor.note${letter}`,
+        'Type note name',
+        { key: letter.toLowerCase() },
+        act({ kind: 'pitch', letter, chord: false }),
+        { ...hidden, repeat: false, rebindable: false },
+        'standardStaff',
+      ),
+      command(
+        `editor.chordNote${letter}`,
+        'Add note to chord',
+        { key: letter.toLowerCase(), shift: true },
+        act({ kind: 'pitch', letter, chord: true }),
+        { ...hidden, repeat: false, rebindable: false },
+        'standardStaff',
+      ),
+    ]),
     command('editor.durationLonger', 'Longer duration', { key: '-' }, act({ kind: 'longer' })),
     command('editor.durationShorter', 'Shorter duration', { key: '=' }, act({ kind: 'shorter' })),
     command(

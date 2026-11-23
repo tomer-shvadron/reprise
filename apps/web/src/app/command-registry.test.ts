@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { CommandRegistry, type Command } from './command-registry';
+import { CommandRegistry, contextLabel, type Command } from './command-registry';
 import type { Shortcut } from './keyboard';
 import { dispatchShortcut } from './shortcut-dispatcher';
 
@@ -134,6 +134,41 @@ describe('CommandRegistry', () => {
     expect(registry.isShadowed(seek)).toBe(true);
     expect(registry.isShadowed(other)).toBe(false);
     expect(registry.isShadowed(move)).toBe(false);
+  });
+
+  it('ranks the standard staff above editing, and editing above a context-free key', () => {
+    let editing = false;
+    let staff = false;
+    const registry = new CommandRegistry((context) => editing && (context === 'editing' || staff));
+    const seek = command({ id: 'seek', shortcut: { key: 'a' } });
+    const chord = command({ id: 'chord', shortcut: { key: 'a' }, context: 'editing' });
+    const note = command({ id: 'note', shortcut: { key: 'a' }, context: 'standardStaff' });
+    for (const c of [seek, chord, note]) registry.register(c);
+
+    editing = true;
+    expect(registry.available()).toEqual([seek, chord]);
+    expect(registry.isShadowed(seek)).toBe(true);
+    expect(registry.isShadowed(chord)).toBe(false);
+
+    staff = true;
+    expect(registry.available()).toEqual([seek, chord, note]);
+    expect(registry.isShadowed(seek)).toBe(true);
+    expect(registry.isShadowed(chord)).toBe(true);
+    expect(registry.isShadowed(note)).toBe(false);
+  });
+
+  it('allows one key in different contexts, and labels each context', () => {
+    const registry = new CommandRegistry();
+    registry.register(command({ id: 'a', shortcut: { key: 'a' }, context: 'editing' }));
+    registry.register(command({ id: 'b', shortcut: { key: 'a' }, context: 'standardStaff' }));
+    expect(() =>
+      registry.register(command({ id: 'c', shortcut: { key: 'a' }, context: 'standardStaff' })),
+    ).toThrow('in the standardStaff context');
+    expect([undefined, 'editing', 'standardStaff'].map((c) => contextLabel(c as never))).toEqual([
+      'Global',
+      'Editing',
+      'Standard staff',
+    ]);
   });
 
   it('leaves a command out of available() while it reports itself not enabled', () => {

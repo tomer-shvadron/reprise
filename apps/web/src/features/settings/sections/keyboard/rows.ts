@@ -1,4 +1,10 @@
-import type { Command } from '@/app/command-registry';
+import {
+  contextLabel,
+  contextPhrase,
+  contextRank,
+  type Command,
+  type ContextLabel,
+} from '@/app/command-registry';
 import { effectiveKeys, fixedReason, type ShortcutOverrides } from '@/app/keymap';
 import {
   formatShortcut,
@@ -34,7 +40,7 @@ export interface Row {
   id: string;
   title: string;
   category: string;
-  context: 'Global' | 'Editing';
+  context: ContextLabel;
   slots: Slot[];
 }
 
@@ -56,7 +62,7 @@ export function buildRows(
     .sort((a, b) => categoryRank(a.category) - categoryRank(b.category) || a.index - b.index);
   for (const { command, category } of sorted) {
     if (command.shortcut?.only !== undefined && command.shortcut.only !== platform) continue;
-    const context = command.context === 'editing' ? 'Editing' : 'Global';
+    const context = contextLabel(command.context);
     const id = bindingGroup(command);
     const row = rows.get(id) ?? { id, title: command.title, category, context, slots: [] };
     rows.set(id, row);
@@ -86,4 +92,18 @@ export function filterRows(rows: readonly Row[], filter: string, platform: Keybo
     const haystack = searchText(`${row.title} ${row.category} ${row.context} ${keys}`);
     return words.every((word) => haystack.includes(word));
   });
+}
+
+/**
+ * The sentence a rebind adds when the key is also held in another context: each command that
+ * shares the key, with the context it wins or loses in, named as the user knows it.
+ */
+export function shadowNote(keyText: string, command: Command, others: readonly Command[]): string {
+  return others
+    .map((other) =>
+      contextRank(command.context) < contextRank(other.context)
+        ? `${contextPhrase(command.context)}, ${keyText} runs ${command.title} instead of ${other.title}.`
+        : `${contextPhrase(other.context)}, ${keyText} runs ${other.title} instead.`,
+    )
+    .join(' ');
 }

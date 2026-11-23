@@ -10,9 +10,32 @@ export interface ShortcutConflict {
   second: string;
 }
 
-/** A situation a binding is limited to; a command without one is bound everywhere. */
-export const COMMAND_CONTEXTS = ['editing'] as const;
+/**
+ * A situation a binding is limited to; a command without one is bound everywhere. Listed from the
+ * most specific to the least: while several hold, the earlier one wins a shared key, and every
+ * context is a refinement of edit mode (`standardStaff` holds only while editing).
+ */
+export const COMMAND_CONTEXTS = ['standardStaff', 'editing'] as const;
 export type CommandContext = (typeof COMMAND_CONTEXTS)[number];
+
+/** What the keyboard reference and Settings call a binding's context. */
+export type ContextLabel = 'Global' | 'Editing' | 'Standard staff';
+
+const CONTEXT_LABELS: Record<CommandContext, ContextLabel> = {
+  standardStaff: 'Standard staff',
+  editing: 'Editing',
+};
+
+/** How a sentence names a context: "While editing, …". */
+export const contextPhrase = (context: CommandContext | undefined): string =>
+  context === 'standardStaff'
+    ? "On a keyboard track's standard staff"
+    : context === 'editing'
+      ? 'While editing'
+      : 'Everywhere';
+
+export const contextLabel = (context: CommandContext | undefined): ContextLabel =>
+  context === undefined ? 'Global' : CONTEXT_LABELS[context];
 
 /** Precedence of a context when several are active: lower wins, a context-free command last. */
 export const contextRank = (context: CommandContext | undefined): number =>
@@ -155,14 +178,23 @@ export class CommandRegistry {
     );
   }
 
-  /** Whether an available command of an active context owns this command's shortcut instead. */
+  /**
+   * Whether an available command of a more specific active context owns this command's shortcut
+   * instead: a context-free key under an editing one, an editing key under a standard-staff one.
+   */
   isShadowed(command: Command): boolean {
     const own = this.shortcutOf(command);
-    if (command.context !== undefined || !own) return false;
+    if (!own) return false;
     const id = shortcutId(own);
+    const rank = contextRank(command.context);
     return this.available().some((other) => {
       const theirs = this.shortcutOf(other);
-      return other.context !== undefined && theirs !== undefined && shortcutId(theirs) === id;
+      return (
+        other.context !== undefined &&
+        contextRank(other.context) < rank &&
+        theirs !== undefined &&
+        shortcutId(theirs) === id
+      );
     });
   }
 

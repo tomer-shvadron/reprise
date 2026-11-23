@@ -24,15 +24,24 @@ const positionOf = (midi: number): number =>
 export const cursorLane = (cursor: Pick<EditCursor, 'pitch'>): number =>
   cursor.pitch ?? DEFAULT_LANE;
 
-/** The note of a beat in the cursor's slot: its string on a fretted track, its lane on a drum one. */
+/**
+ * Whether the cursor sits on a lane (`EditCursor.pitch`) rather than a string: drum tracks, where
+ * it is a GM key, and pitched ones, where it is a MIDI key.
+ */
+export const hasLane = (track: Pick<Track, 'kind'>): boolean => track.kind !== 'fretted';
+
+/**
+ * The note of a beat in the cursor's slot: its string on a fretted track, its lane on a drum one,
+ * and on a pitched one the note of its key (none while the cursor has not picked a lane).
+ */
 export function noteAtCursor<T extends Pick<Note, 'string' | 'fret'>>(
   track: Pick<Track, 'kind'>,
   notes: readonly T[],
   cursor: Pick<EditCursor, 'string' | 'pitch'>,
 ): T | undefined {
-  return notes.find((note) =>
-    track.kind === 'drums' ? note.fret === cursorLane(cursor) : note.string === cursor.string,
-  );
+  if (track.kind === 'drums') return notes.find((note) => note.fret === cursorLane(cursor));
+  if (track.kind === 'pitched') return notes.find((note) => note.fret === cursor.pitch);
+  return notes.find((note) => note.string === cursor.string);
 }
 
 /**

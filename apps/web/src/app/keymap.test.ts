@@ -222,6 +222,35 @@ describe('a key held in both contexts', () => {
   });
 });
 
+describe('the standard staff context', () => {
+  const layered = [
+    cmd('e.chord', { shortcut: { key: 'a' }, context: 'editing' }),
+    cmd('s.note', { shortcut: { key: 'b' }, context: 'standardStaff' }),
+    cmd('g.free'),
+  ];
+  const find = (id: string) => layered.find((c) => c.id === id) as Command;
+
+  it('shadows an editing key it takes, and is shadowed over a context-free one the other way', () => {
+    const over = planChange(layered, {}, 'other', find('s.note'), { key: 'a' });
+    expect(over.kind === 'ok' && over.shadow).toMatchObject({ kind: 'over' });
+    expect(over.kind === 'ok' && over.shadow?.other.id).toBe('e.chord');
+    const under = planChange(layered, {}, 'other', find('e.chord'), { key: 'b' });
+    expect(under.kind === 'ok' && under.shadow).toMatchObject({ kind: 'under' });
+    expect(under.kind === 'ok' && under.shadow?.other.id).toBe('s.note');
+  });
+
+  it('puts a standard-staff command over a context-free command on its key too', () => {
+    const plan = planChange(
+      [...layered, cmd('g.bound', { shortcut: { key: 'q' } })],
+      {},
+      'other',
+      find('s.note'),
+      { key: 'q' },
+    );
+    expect(plan.kind === 'ok' && plan.shadow?.kind).toBe('over');
+  });
+});
+
 describe('fixed commands', () => {
   it('claim their keys before the overrides', () => {
     const { keys, displacedBy } = effectiveKeys(

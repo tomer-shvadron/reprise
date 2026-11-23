@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { defineSetting, type SettingsStore } from '@/state/settings';
 
-import { findConflicts, type Command, type CommandRegistry } from './command-registry';
+import { contextRank, findConflicts, type Command, type CommandRegistry } from './command-registry';
 import { shortcutId, shortcutOn, type KeyboardPlatform, type Shortcut } from './keyboard';
 
 const NAMED_KEYS: ReadonlySet<string> = new Set([
@@ -208,7 +208,12 @@ export type KeyPlan =
       kind: 'ok';
       overrides: ShortcutOverrides;
       /** The key now shadows (`over`) or is shadowed by (`under`) a command of the other context. */
-      shadow?: { kind: 'over' | 'under'; other: Command };
+      shadow?: {
+        kind: 'over' | 'under';
+        other: Command;
+        /** Every command of another context on the key, `other` among them: a key can be held in two. */
+        others: Command[];
+      };
     }
   | { kind: 'conflict'; other: Command; overrides: ShortcutOverrides; otherGets?: Shortcut }
   | { kind: 'refused'; other: Command };
@@ -251,12 +256,12 @@ export function planChange(
     commands.find(holds);
   if (!holder) return { kind: 'ok', overrides: applied };
   if (holder.context !== command.context) {
-    // The editing binding wins while editing; the global one is untouched.
-    const over = command.context === 'editing';
+    // The more specific context wins while it holds; the other binding is untouched.
+    const over = contextRank(command.context) < contextRank(holder.context);
     return {
       kind: 'ok',
       overrides: applied,
-      shadow: { kind: over ? 'over' : 'under', other: holder },
+      shadow: { kind: over ? 'over' : 'under', other: holder, others: commands.filter(holds) },
     };
   }
   if (!isRebindable(holder)) return { kind: 'refused', other: holder };

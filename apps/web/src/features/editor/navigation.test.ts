@@ -127,8 +127,20 @@ describe('moveString', () => {
     expect(moveString(score, { ...cursor, string: 6 }, 1)).toBeUndefined();
   });
 
-  it('does nothing on a track without strings or lanes', () => {
+  it('steps the lane a line or space on a pitched track, from the middle line by default', () => {
     const keys = scoreBuilder().track('piano').bar().build();
+    const cursor = firstStop(keys, 0, 0);
+    if (!cursor) throw new Error('no stop');
+    expect(cursor.pitch).toBe(71);
+    expect(moveString(keys, cursor, -1)?.pitch).toBe(72);
+    expect(moveString(keys, cursor, 1)?.pitch).toBe(69);
+  });
+
+  it('does nothing on a fretted track with no strings', () => {
+    const keys = scoreBuilder().track('guitar').bar().build();
+    const track = keys.tracks[0];
+    if (!track) throw new Error('no track');
+    track.tuning = [];
     const cursor = firstStop(keys, 0, 0);
     if (!cursor) throw new Error('no stop');
     expect(moveString(keys, cursor, 1)).toBeUndefined();

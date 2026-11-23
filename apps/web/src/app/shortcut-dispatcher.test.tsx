@@ -341,6 +341,35 @@ describe('shortcut contexts', () => {
     expect(seek).toHaveBeenCalledTimes(1);
   });
 
+  it('runs the standard-staff command first while that context holds, and the editing one otherwise', () => {
+    let staff = false;
+    const registry = new CommandRegistry((context) => context === 'editing' || staff);
+    const chord = vi.fn();
+    const note = vi.fn();
+    registry.register({
+      id: 'editor.chordName',
+      title: 'Chord name',
+      shortcut: { key: 'a' },
+      context: 'editing',
+      run: chord,
+    });
+    registry.register({
+      id: 'editor.noteA',
+      title: 'Type note name',
+      shortcut: { key: 'a' },
+      context: 'standardStaff',
+      run: note,
+    });
+    uninstall = installShortcutDispatcher(window, registry, 'other');
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(chord).toHaveBeenCalledTimes(1);
+    expect(note).not.toHaveBeenCalled();
+    staff = true;
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(note).toHaveBeenCalledTimes(1);
+    expect(chord).toHaveBeenCalledTimes(1);
+  });
+
   it('leaves the arrows and bare keys to a focused text field while editing', () => {
     const { seek, move, only, setEditing } = setupContexts();
     setEditing(true);

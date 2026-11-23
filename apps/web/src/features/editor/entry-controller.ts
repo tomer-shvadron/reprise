@@ -187,8 +187,9 @@ export function installEntry(deps: EntryDeps): () => void {
   };
 
   const start = (digit: number, cursor: EditCursor) => {
-    // A 0 on a drum track is the lane's own hit, as it is the open string on a fretted one.
-    if (digit === 0 && track(cursor.track)?.kind === 'drums') {
+    // A 0 on a drum or keyboard track is the lane's own note, as it is the open string on a fretted one.
+    const kind = track(cursor.track)?.kind;
+    if (digit === 0 && kind !== undefined && kind !== 'fretted') {
       const c = context(false);
       if (c) run(planEntry(inputFor(cursor, c.score), { kind: 'lane' }), cursor);
       return;

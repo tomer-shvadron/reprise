@@ -7,7 +7,7 @@ import {
   type LayoutResult,
 } from '@reprise/layout';
 import { beatTicks, type Notation, type Score } from '@reprise/model';
-import { beatOf, largeScore } from '@reprise/model/testing';
+import { beatOf, largeScore, note, score as scoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { playheadAt } from '@/features/score';
@@ -15,6 +15,7 @@ import type { EditRange } from '@/state/selection';
 
 import { cursorAtPosition, defaultStaff } from './cursor';
 import { caretBoxes, caretRect, rangeBoxes } from './geometry';
+import { keysScore } from './test/key-scores';
 import { editScore } from './test/scores';
 
 const paged: LayoutOptions = {
@@ -81,6 +82,49 @@ describe('caretBoxes', () => {
     expect((snare?.y ?? 0) + space / 2).toBeCloseTo(staff.bottom - (5 * space) / 2);
     // The kick is on position 1, lower on the page.
     expect((at(36)?.y ?? 0) + space / 2).toBeCloseTo(staff.bottom - space / 2);
+  });
+
+  it('draws one space tall on the written line of a pitched track, in its clef', () => {
+    const keys = keysScore();
+    const staves = lay(keys, 'standard');
+    const staff = staves.systems[0]?.staves.find((s) => s.type === 'standard');
+    if (!staff) throw new Error('no standard staff');
+    const space = (staff.bottom - staff.top) / 4;
+    const at = (pitch?: number) => {
+      const found = cursorAtPosition(
+        keys,
+        { track: 0, bar: 1, voice: 0, stop: 1 },
+        { string: 0, staff: 'standard', ...(pitch !== undefined && { pitch }) },
+      );
+      if (!found) throw new Error('no stop');
+      return caretBoxes(staves, keys, found)[0]?.box;
+    };
+    // B4 is the middle line, position 4, and E4 the bottom line, position 0; F sharp 4 in G major
+    // is written on F4's space, position 1.
+    const middle = at();
+    expect(middle?.height).toBeCloseTo(space);
+    expect((middle?.y ?? 0) + space / 2).toBeCloseTo(staff.bottom - (4 * space) / 2);
+    expect((at(64)?.y ?? 0) + space / 2).toBeCloseTo(staff.bottom);
+    expect((at(66)?.y ?? 0) + space / 2).toBeCloseTo(staff.bottom - space / 2);
+  });
+
+  it('puts the caret where a stored accidental draws the note in the lane', () => {
+    const built = scoreBuilder().track('piano');
+    built.bar().beat('4', [note(0, 66, { accidental: 'flat' })]);
+    const flat = built.build({ ids: 'sequential' });
+    const staves = lay(flat, 'standard');
+    const staff = staves.systems[0]?.staves.find((s) => s.type === 'standard');
+    if (!staff) throw new Error('no standard staff');
+    const found = cursorAtPosition(
+      flat,
+      { track: 0, bar: 0, voice: 0, stop: 0 },
+      { string: 0, staff: 'standard', pitch: 66 },
+    );
+    if (!found) throw new Error('no stop');
+    const space = (staff.bottom - staff.top) / 4;
+    // G flat 4 is on G4's line, position 2, not F4's space, position 1.
+    const box = caretBoxes(staves, flat, found)[0]?.box;
+    expect((box?.y ?? 0) + space / 2).toBeCloseTo(staff.bottom - space);
   });
 
   it('draws a column over a standard staff', () => {

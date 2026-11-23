@@ -23,8 +23,9 @@ export interface EditCursor {
   /** 1 = highest-pitched string, as `Note.string`; 0 on a track without strings. */
   string: number;
   /**
-   * The lane on a drum track: the GM key a hit would take. Absent on a fretted track, and on a
-   * drum track until the cursor picks one, which reads as the snare.
+   * The lane on a track without strings. On a drum track, the GM key a hit would take, read as
+   * the snare until the cursor picks one. On a pitched track, the MIDI key a note would take,
+   * always set (the clef's middle line to begin with). Absent on a fretted track.
    */
   pitch?: number;
   /** Which of the track's staves holds the cursor; decides where it is drawn in `both`. */

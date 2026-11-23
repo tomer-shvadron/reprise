@@ -1,4 +1,4 @@
-import type { Command } from './command-registry';
+import { contextLabel, type Command, type ContextLabel } from './command-registry';
 import {
   formatShortcut,
   shortcutOn,
@@ -33,14 +33,14 @@ export const categoryOf = (id: string) => CATEGORIES[id.split('.')[0] ?? ''] ?? 
  * control binds as a whole.
  */
 export const bindingGroup = (command: Command): string =>
-  `${categoryOf(command.id)}\n${command.context === 'editing' ? 'Editing' : 'Global'}\n${command.title}`;
+  `${categoryOf(command.id)}\n${contextLabel(command.context)}\n${command.title}`;
 const cell = (text: string) => text.replaceAll('|', '\\|');
 
 /** One line of the reference: every command of a title, with the keys each platform prints. */
 export interface ShortcutEntry {
   title: string;
   category: string;
-  context: 'Global' | 'Editing';
+  context: ContextLabel;
   mac: string[];
   other: string[];
   /** The same keys spelled out, per platform, for screen readers and the filter. */
@@ -62,7 +62,7 @@ export function shortcutEntries(
     .map((command, index) => ({ command, index, category: categoryOf(command.id) }))
     .sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category) || a.index - b.index);
   for (const { command, category } of sorted) {
-    const context = command.context === 'editing' ? 'Editing' : 'Global';
+    const context = contextLabel(command.context);
     const key = bindingGroup(command);
     const row = rows.get(key) ?? {
       title: command.title,
@@ -85,9 +85,17 @@ export function shortcutEntries(
   return [...rows.values()];
 }
 
-const DIGIT = /^\d$/;
+/** A bare digit, or a letter with at most a Shift: the keys that read as a run. */
+const RUN_KEY = /^(\d|(?:⇧|Shift\+)?[A-Z])$/;
 
-/** Keys as one phrase: "Left or Right", with a run of digits written as a range ("0–9"). */
+/** The kind and prefix of a run key, so "⇧A" and "A" never join and a digit never joins a letter. */
+const runOf = (key: string | undefined): { group: string; code: number } | undefined => {
+  if (key === undefined || !RUN_KEY.test(key)) return undefined;
+  const last = key.slice(-1);
+  return { group: key.slice(0, -1) + (/\d/.test(last) ? '#' : 'a'), code: last.charCodeAt(0) };
+};
+
+/** Keys as one phrase: "Left or Right", with a run of digits or letters written as a range ("0–9", "⇧A–G"). */
 export function joinKeys(all: readonly string[]): string {
   // Two spellings can print alike (Shift+= is both `+` with Shift and `=` with Shift).
   const keys = [...new Set(all)];
@@ -96,16 +104,15 @@ export function joinKeys(all: readonly string[]): string {
   for (let i = 0; i < keys.length; i += 1) {
     const first = keys[i] ?? '';
     let end = i;
-    while (
-      DIGIT.test(keys[end] ?? '') &&
-      DIGIT.test(keys[end + 1] ?? '') &&
-      Number(keys[end + 1]) === Number(keys[end]) + 1
-    ) {
+    for (;;) {
+      const here = runOf(keys[end]);
+      const next = runOf(keys[end + 1]);
+      if (!here || !next || here.group !== next.group || next.code !== here.code + 1) break;
       end += 1;
     }
-    // Two digits read better listed, three or more as a range.
+    // Two keys read better listed, three or more as a range.
     if (end - i >= 2) {
-      parts.push(`${first}–${keys[end] ?? ''}`);
+      parts.push(`${first}–${(keys[end] ?? '').slice(-1)}`);
       i = end;
     } else {
       parts.push(first);

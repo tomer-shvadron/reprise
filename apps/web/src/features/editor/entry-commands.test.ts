@@ -8,6 +8,7 @@ import { createTestServices } from '@/test/services';
 
 import { cursorAtPosition } from './cursor';
 import { fullBarScore } from './test/entry-scores';
+import { keysScore } from './test/key-scores';
 
 async function setup(built: Score = fullBarScore()) {
   const services = createTestServices();
@@ -177,5 +178,100 @@ describe('the note entry commands', () => {
     expect(press('5')).toBe(false);
     expect(press('Backspace')).toBe(false);
     expect(beats(0)[1]?.notes[0]?.fret).toBe(1);
+  });
+});
+
+describe('the Standard staff key context', () => {
+  const standardAt = (
+    services: Awaited<ReturnType<typeof setup>>['services'],
+    score: Score,
+    bar: number,
+    stop: number,
+  ) => {
+    const cursor = cursorAtPosition(
+      score,
+      { track: 0, bar, voice: 0, stop },
+      { string: 0, staff: 'standard' },
+    );
+    services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
+  };
+
+  it('holds on a keyboard track standard staff in edit mode only, and out of a word field', async () => {
+    const { services, registry, score } = await setup(keysScore());
+    standardAt(services, score(), 0, 0);
+    expect(registry.isActive('standardStaff')).toBe(false);
+    services.editing.getState().setEditing(true);
+    expect(registry.isActive('standardStaff')).toBe(true);
+    expect(registry.isActive('editing')).toBe(true);
+    services.entry.getState().setWord({
+      kind: 'chord',
+      trackId: score().tracks[0]?.id ?? '',
+      beatId: '',
+      line: 0,
+      draft: '',
+    });
+    expect(registry.isActive('standardStaff')).toBe(false);
+    expect(registry.isActive('editing')).toBe(true);
+  });
+
+  it('types a note name on a keyboard track instead of opening the chord name field', async () => {
+    const { services, registry, score, press, beats } = await setup(keysScore());
+    services.editing.getState().setEditing(true);
+    standardAt(services, score(), 0, 0);
+    expect(registry.get('editor.noteA')).toMatchObject({
+      context: 'standardStaff',
+      inPalette: false,
+      rebindable: false,
+    });
+    expect(press('a')).toBe(true);
+    expect(beats(0)[0]?.notes[0]?.fret).toBe(69);
+    expect(services.entry.getState().word).toBeUndefined();
+  });
+
+  it('adds to the chord with a shifted letter', async () => {
+    const { services, score, press, beats } = await setup(keysScore());
+    services.editing.getState().setEditing(true);
+    standardAt(services, score(), 1, 0);
+    press('b', { shiftKey: true });
+    expect(beats(1)[0]?.notes.map((n) => n.fret)).toEqual([67, 71]);
+  });
+
+  it('leaves the letter to its editing command on a tab staff', async () => {
+    const { services, press, beats } = await setup();
+    services.editing.getState().setEditing(true);
+    press('a');
+    expect(services.entry.getState().word).toBeDefined();
+    expect(beats(0)[0]?.notes[0]?.fret).toBe(0);
+  });
+
+  it('moves the lane with the note a semitone key transposes', async () => {
+    const { services, score, press, beats } = await setup(keysScore());
+    services.editing.getState().setEditing(true);
+    standardAt(services, score(), 1, 0);
+    const cursor = services.selection.getState().cursor;
+    if (cursor) services.selection.getState().setEdit({ cursor: { ...cursor, pitch: 67 } });
+    expect(press('ArrowUp', { altKey: true, shiftKey: true })).toBe(true);
+    expect(beats(1)[0]?.notes[0]?.fret).toBe(68);
+    expect(services.selection.getState().cursor?.pitch).toBe(68);
+  });
+
+  it('steps the lane with the arrows on a keyboard track', async () => {
+    const { services, score, press } = await setup(keysScore());
+    services.editing.getState().setEditing(true);
+    standardAt(services, score(), 0, 0);
+    press('ArrowUp');
+    expect(services.selection.getState().cursor?.pitch).toBe(72);
+    press('ArrowDown');
+    press('ArrowDown');
+    expect(services.selection.getState().cursor?.pitch).toBe(69);
+  });
+
+  it('keeps the shadowed commands in the registry and off the standard staff keys', async () => {
+    const { services, registry, score } = await setup(keysScore());
+    services.editing.getState().setEditing(true);
+    standardAt(services, score(), 0, 0);
+    const chordName = registry.get('editor.chordName');
+    expect(chordName).toBeDefined();
+    if (chordName) expect(registry.isShadowed(chordName)).toBe(true);
   });
 });

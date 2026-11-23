@@ -15,6 +15,7 @@ import type { SelectionStore } from '@/state/selection';
 
 import { resolveCursor } from './cursor';
 import { cursorLane, laneLabel } from './drum-lanes';
+import { accidentalAt, pitchName } from './pitch-entry';
 import { DurationStepItems } from './duration-steps';
 import type { EntryStore } from './entry-store';
 import { rhythmLabel } from './rhythm';
@@ -66,14 +67,30 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
   if (!isEditing) return null;
   const at = cursor && score && resolveCursor(score, cursor);
   const voice = cursor?.voice ?? 0;
-  const drums = at !== undefined && score?.tracks[at.track]?.kind === 'drums';
+  const found = at && score.tracks[at.track];
+  const drums = found?.kind === 'drums';
+  const lane =
+    at && found
+      ? found.kind === 'drums'
+        ? laneLabel(cursorLane(cursor))
+        : found.kind === 'pitched' && cursor.pitch !== undefined
+          ? pitchName(
+              cursor.pitch,
+              score.masterBars[at.bar]?.keySignature ?? { fifths: 0, minor: false },
+              accidentalAt(
+                found.bars[at.bar]?.voices[at.voice]?.beats[at.stop]?.notes,
+                cursor.pitch,
+              ),
+            )
+          : undefined
+      : undefined;
   const position =
     at &&
     [
       `Bar ${String(at.bar + 1)}`,
       cursor.beat === undefined ? 'End of bar' : `Beat ${String(at.stop + 1)}`,
       ...(cursor.string > 0 ? [`String ${String(cursor.string)}`] : []),
-      ...(drums ? [laneLabel(cursorLane(cursor))] : []),
+      ...(lane === undefined ? [] : [lane]),
     ].join(' · ');
   const segments = [
     <StatusSegment

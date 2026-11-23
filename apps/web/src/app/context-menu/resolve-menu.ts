@@ -62,8 +62,9 @@ function candidates(
     if (!picked) continue;
     const { id, command } = picked;
     if (command.context !== undefined && !registry.isActive(command.context)) continue;
-    // Whatever the registration allowed, an editing command never shows in play mode.
-    if (command.context === 'editing' && at.mode === 'play') continue;
+    // Whatever the registration allowed, a command of any context (each is a refinement of edit
+    // mode) never shows in play mode.
+    if (command.context !== undefined && at.mode === 'play') continue;
     found.push({ id, command, item });
   }
   return found;
