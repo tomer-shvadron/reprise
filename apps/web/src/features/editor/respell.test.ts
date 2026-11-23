@@ -60,4 +60,31 @@ describe('planRespell', () => {
     const plan = planRespell({ score: kit, state });
     expect('refused' in plan).toBe(true);
   });
+
+  it('respells the notes tied from the note with it, in one step', () => {
+    const built = score().track('guitar');
+    built.bar().beat('2', [note(1, 6)]);
+    built.bar().beat('2', [note(1, 6, { tie: true })]);
+    const tied = built.build({ ids: 'sequential' });
+    const plan = planRespell({ score: tied, state: stateAt(tied, 0, 0) });
+    if (!('command' in plan)) throw new Error('refused');
+    const flat = applyCommand(tied, plan.command).score;
+    expect(flat.tracks[0]?.bars[0]?.voices[0]?.beats[0]?.notes[0]?.accidental).toBe('flat');
+    expect(flat.tracks[0]?.bars[1]?.voices[0]?.beats[0]?.notes[0]?.accidental).toBe('flat');
+  });
+
+  it('does not flip a picked continuation twice when its origin is picked too', () => {
+    const built = score().track('guitar');
+    built.bar().beat('2', [note(1, 6)]);
+    built.bar().beat('2', [note(1, 6, { tie: true })]);
+    const tied = built.build({ ids: 'sequential' });
+    const ids = tied.tracks[0]?.bars.flatMap((bar) =>
+      bar.voices.flatMap((voice) => voice.beats.flatMap((beat) => beat.notes.map((n) => n.id))),
+    );
+    const state = { ...stateAt(tied, 0, 0), selection: { noteIds: ids ?? [] } };
+    const plan = planRespell({ score: tied, state });
+    if (!('command' in plan)) throw new Error('refused');
+    const flat = applyCommand(tied, plan.command).score;
+    expect(flat.tracks[0]?.bars[1]?.voices[0]?.beats[0]?.notes[0]?.accidental).toBe('flat');
+  });
 });

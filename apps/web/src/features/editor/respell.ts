@@ -2,6 +2,7 @@ import {
   chain,
   respell,
   setNoteEffects,
+  tieChainOf,
   type Command,
   type Id,
   type Note,
@@ -56,15 +57,36 @@ export function planRespell(input: RespellInput): RespellPlan {
     const note = found?.beat.notes.find((n) => n.id === id);
     if (found && note) add(note, found.info.trackIndex, found.info.masterBarIndex);
   }
-  const edits: NoteEffectEdit[] = [];
+  // A tied note's continuations are spelled with it, as transpose moves them: layout draws each
+  // from its own accidental, so a chain left half-respelled would join two staff positions.
+  const chains = new Map<Id, Note[]>();
+  const followers = new Set<Id>();
+  for (const [id, { note, track, bar }] of picked) {
+    const owner = score.tracks[track];
+    const info = index.noteBeat.get(id);
+    const at = info === undefined ? undefined : index.beats.get(info);
+    if (!owner || !at) continue;
+    const links = tieChainOf(owner, { bar, voice: at.voice, beat: at.index }, note);
+    chains.set(
+      id,
+      links.map((link) => link.note),
+    );
+    for (const link of links) followers.add(link.note.id);
+  }
+  const edits = new Map<Id, NoteEffectEdit>();
   for (const { note, track, bar } of picked.values()) {
     const owner = score.tracks[track];
-    if (!owner || owner.kind === 'drums') continue;
+    // A picked continuation follows its picked origin instead of flipping on its own.
+    if (!owner || owner.kind === 'drums' || followers.has(note.id)) continue;
     const flipped = respell(owner, note, score.masterBars[bar]?.keySignature ?? C_MAJOR);
-    if (flipped.accidental !== note.accidental) {
-      edits.push({ noteId: note.id, effects: { accidental: flipped.accidental ?? null } });
+    if (flipped.accidental === note.accidental) continue;
+    for (const target of [note, ...(chains.get(note.id) ?? [])]) {
+      edits.set(target.id, {
+        noteId: target.id,
+        effects: { accidental: flipped.accidental ?? null },
+      });
     }
   }
-  if (edits.length > 0) return { command: chain('respell', [setNoteEffects(edits)]) };
+  if (edits.size > 0) return { command: chain('respell', [setNoteEffects([...edits.values()])]) };
   return { refused: picked.size > 0 ? 'Drum notes have no spelling' : 'Select a note first' };
 }
