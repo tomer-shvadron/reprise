@@ -55,7 +55,7 @@ export function installEditor(deps: InstallDeps): () => void {
     const { cursor, currentTrack } = state;
     if (!score || !cursor || state.currentTrack === previous.currentTrack) return;
     if (currentTrack === undefined || cursor.track === currentTrack) return;
-    const next = cursorOnTrack(score, cursor, currentTrack);
+    const next = cursorOnTrack(score, cursor, currentTrack, document.getState().view);
     if (next) selection.getState().setEdit({ cursor: next });
   });
 

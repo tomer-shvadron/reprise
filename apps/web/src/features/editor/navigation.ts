@@ -1,10 +1,13 @@
 import type { LayoutResult } from '@reprise/layout';
-import { beatTicks, type Id, type Score } from '@reprise/model';
+import { beatTicks, shownNotation, type Id, type Score } from '@reprise/model';
+
+import type { DocumentView } from '@/state/document';
 
 import type { EditCursor } from '@/state/selection';
 
 import { cursorLane, stepLane } from './drum-lanes';
 import { clefOf, middleLine, stepPitch } from './pitch-entry';
+import { wantedNotation } from './visible';
 import {
   clampString,
   cursorAtPosition,
@@ -94,6 +97,7 @@ export function cursorOnTrack(
   score: Score,
   cursor: EditCursor,
   trackId: Id | undefined,
+  view?: DocumentView,
 ): EditCursor | undefined {
   const at = resolveCursor(score, cursor);
   const track = score.tracks.findIndex((candidate) => candidate.id === trackId);
@@ -104,7 +108,7 @@ export function cursorOnTrack(
     string: cursor.string,
     staff: cursor.staff,
   });
-  return next && { ...next, staff: staffOn(score, track, cursor) };
+  return next && { ...next, staff: staffOn(score, track, cursor, view) };
 }
 
 /**
@@ -121,11 +125,20 @@ export function moveTrack(
   return from < 0 ? undefined : cursorOnTrack(score, cursor, visible[from + delta]);
 }
 
-/** The cursor's staff, kept when the new track can show it. */
-function staffOn(score: Score, track: number, cursor: EditCursor): EditCursor['staff'] {
-  if (score.tracks[track]?.kind === 'drums') return 'percussion';
+/** The cursor's staff, kept when the new track draws it: the view's notation decides, else the track's own. */
+function staffOn(
+  score: Score,
+  track: number,
+  cursor: EditCursor,
+  view?: DocumentView,
+): EditCursor['staff'] {
+  const found = score.tracks[track];
+  if (found?.kind === 'drums') return 'percussion';
+  const wanted = view ? wantedNotation(score, view, track) : undefined;
+  const shown = found && shownNotation(found, wanted ?? found.display.notation);
+  if (shown === 'standard' || shown === 'tab') return shown;
   if (cursor.staff === 'tab' && stringCount(score, track) > 0) return 'tab';
-  return cursor.staff === 'standard' ? 'standard' : defaultStaff(score, track);
+  return cursor.staff === 'standard' ? 'standard' : defaultStaff(score, track, wanted);
 }
 
 /**

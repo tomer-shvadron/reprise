@@ -1,4 +1,5 @@
 import { write } from '@reprise/formats';
+import { midi, note, score as scoreBuilder } from '@reprise/model/testing';
 import type { Score } from '@reprise/model';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -7,6 +8,7 @@ import { dispatchShortcut } from '@/app/shortcut-dispatcher';
 import { createTestServices } from '@/test/services';
 
 import { cursorAtPosition } from './cursor';
+import { dialogsOf } from './dialogs';
 import { fullBarScore } from './test/entry-scores';
 import { keysScore } from './test/key-scores';
 
@@ -278,6 +280,9 @@ describe('the Standard staff key context', () => {
   it("holds on a fretted track's standard staff, whether alone or beside the tab", async () => {
     const { services, registry, goTo } = await setup();
     services.editing.getState().setEditing(true);
+    services.document
+      .getState()
+      .setNotation(services.document.getState().score?.tracks[0]?.id ?? '', 'both');
     goTo(0, 0);
     expect(registry.isActive('standardStaff')).toBe(false);
     const cursor = services.selection.getState().cursor;
@@ -288,6 +293,9 @@ describe('the Standard staff key context', () => {
   it("types a pitch on a guitar's standard staff, choosing the string, and A does not open the chord name", async () => {
     const { services, press, beats, goTo } = await setup();
     services.editing.getState().setEditing(true);
+    services.document
+      .getState()
+      .setNotation(services.document.getState().score?.tracks[0]?.id ?? '', 'both');
     goTo(0, 3);
     const cursor = services.selection.getState().cursor;
     if (cursor) services.selection.getState().setEdit({ cursor: { ...cursor, staff: 'standard' } });
@@ -295,11 +303,8 @@ describe('the Standard staff key context', () => {
     // nearest A, A3, which string 3 plays at fret 2.
     expect(press('a')).toBe(true);
     expect(services.entry.getState().word).toBeUndefined();
-    // It joins the F3 on string 4 as a chord note.
-    expect(beats(0)[3]?.notes.map((n) => [n.string, n.fret])).toEqual([
-      [4, 3],
-      [3, 2],
-    ]);
+    // A lone note on another string is the one a plain letter corrects: F3 becomes A3.
+    expect(beats(0)[3]?.notes.map((n) => [n.string, n.fret])).toEqual([[3, 2]]);
     expect(services.selection.getState().cursor?.string).toBe(3);
   });
 
@@ -308,5 +313,46 @@ describe('the Standard staff key context', () => {
     services.editing.getState().setEditing(true);
     expect(press('a')).toBe(true);
     expect(services.entry.getState().word).toBeDefined();
+  });
+
+  it('does not hold on the tab-only guitar a track change lands on, where B still opens Bend…', async () => {
+    const built = scoreBuilder().track('piano');
+    built.bar().beat('4', [midi(60)]);
+    built.track('guitar');
+    built.bar().beat('4', [note(1, 3)]);
+    const {
+      services,
+      registry,
+      score: current,
+      press,
+    } = await setup(built.build({ ids: 'sequential' }));
+    services.editing.getState().setEditing(true);
+    const first = cursorAtPosition(
+      current(),
+      { track: 0, bar: 0, voice: 0, stop: 0 },
+      { string: 0, staff: 'standard' },
+    );
+    services.selection.getState().setEdit({ cursor: first, currentTrack: first?.track });
+    expect(registry.isActive('standardStaff')).toBe(true);
+    // Track down, as the Next track key does.
+    services.selection.getState().setCurrentTrack(current().tracks[1]?.id);
+    expect(services.selection.getState().cursor?.staff).toBe('tab');
+    expect(registry.isActive('standardStaff')).toBe(false);
+    press('b');
+    expect(dialogsOf(services).getState().dialog).toEqual({ kind: 'effectPicker', picker: 'bend' });
+    expect(current().tracks[1]?.bars[0]?.voices[0]?.beats).toHaveLength(1);
+  });
+
+  it('does not hold when the view draws only tab, whatever staff the cursor remembers', async () => {
+    const { services, registry, goTo } = await setup();
+    services.editing.getState().setEditing(true);
+    goTo(0, 0);
+    const cursor = services.selection.getState().cursor;
+    if (cursor) services.selection.getState().setEdit({ cursor: { ...cursor, staff: 'standard' } });
+    const track = services.document.getState().score?.tracks[0]?.id ?? '';
+    services.document.getState().setNotation(track, 'tab');
+    expect(registry.isActive('standardStaff')).toBe(false);
+    services.document.getState().setNotation(track, 'standard');
+    expect(registry.isActive('standardStaff')).toBe(true);
   });
 });
