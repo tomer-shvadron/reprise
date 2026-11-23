@@ -20,7 +20,7 @@ The engraving rules `@reprise/layout` follows, collected as the score lane imple
 
 - A bar's `clef` holds until the next bar that sets one; the first bar starts from the track's `display.clef`, or treble when that is absent (percussion on a drum track).
 - `Track.display.octaveShift` is written minus sounding pitch, so a guitar's 1 is the treble clef with an 8 below (`gClef8vb`): the music sounds an octave lower than written. Two octaves use the `15mb` forms, negative shifts the `8va` and `15ma` forms. C clefs have only an 8-below form.
-- **A track added from a preset** in the track dialog (#432) starts with the clef and `octaveShift` of its instrument: guitar, 12-string, banjo, shamisen and octave mandolin treble with 1; bass and double bass bass clef with 1; ukulele, mandolin and violin treble with 0; viola and mandola alto with 0; cello bass clef with 0. Editing a track, or picking a preset on an existing one, never changes its clef or transposition.
+- **A track added from a preset** in the track dialog (#432) starts with the clef and `octaveShift` of its instrument: guitar, 12-string, banjo, shamisen and octave mandolin treble with 1; bass and double bass bass clef with 1; ukulele, mandolin and violin treble with 0 (the baritone ukulele DGBE is written like a guitar: treble with 1); viola and mandola alto with 0; cello bass clef with 0. Editing a track, or picking a preset on an existing one, never changes its clef or transposition.
 - A tab staff opens with the six-string TAB clef from five strings up and the four-string one below that, scaled down if it would overflow the lines.
 - A clef change inside a system is drawn at three quarters of the size, before the key and time signatures of that bar.
 

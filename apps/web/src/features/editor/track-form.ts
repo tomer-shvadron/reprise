@@ -61,6 +61,33 @@ const INSTRUMENT_DEFAULTS: Record<TuningInstrument, InstrumentDefaults> = {
   },
 };
 
+/** Presets written differently from their instrument: the baritone ukulele reads like a guitar. */
+const TUNING_DISPLAY: Readonly<Record<string, InstrumentDefaults['display']>> = {
+  'Baritone ukulele DGBE': at('treble', 1),
+};
+
+/** The instruments whose preset names exist only on their own program (see `findTuningName`). */
+const PROGRAM_BOUND: ReadonlySet<TuningInstrument> = new Set([
+  'violin',
+  'viola',
+  'cello',
+  'doubleBass',
+  'shamisen',
+]);
+
+/**
+ * The clef and written octave of a track added from this form: the baritone's own, else the
+ * instrument picked, else the one whose preset the strings now name, else the guitar's.
+ */
+function displayOf(form: TrackForm): InstrumentDefaults['display'] {
+  const name = presetNameOf(form);
+  const named = TUNING_DISPLAY[name ?? ''];
+  if (named) return named;
+  const instrument =
+    form.instrument ?? STANDARD_TUNINGS.find((tuning) => tuning.name === name)?.instrument;
+  return INSTRUMENT_DEFAULTS[instrument ?? 'guitar'].display;
+}
+
 /**
  * The track dialog's state. The text fields stay strings so a half-typed value validates instead
  * of snapping; `strings` runs string 1 (the highest) first as Guitar Pro lists them, the reverse
@@ -229,6 +256,15 @@ export function applyPreset(form: TrackForm, name: string | undefined, adding: b
     courses: preset.courses ? modelOrder(preset.courses) : undefined,
     drone: preset.drone,
   };
+  // A program-bound name is shown only on its own program, so picking one picks that instrument,
+  // in both modes and over a program set before; the clef and octave are not touched here.
+  if (form.kind === 'fretted' && PROGRAM_BOUND.has(preset.instrument)) {
+    next = {
+      ...next,
+      program: INSTRUMENT_DEFAULTS[preset.instrument].program,
+      programEdited: adding ? true : next.programEdited,
+    };
+  }
   if (adding && form.kind === 'fretted') {
     next = { ...next, instrument: preset.instrument };
     const defaults = INSTRUMENT_DEFAULTS[preset.instrument];
@@ -236,7 +272,9 @@ export function applyPreset(form: TrackForm, name: string | undefined, adding: b
     if (!form.shortNameEdited) {
       next = { ...next, shortName: form.nameEdited ? shortNameOf(next.name) : defaults.shortName };
     }
-    if (!form.programEdited) next = { ...next, program: defaults.program };
+    if (!form.programEdited && !PROGRAM_BOUND.has(preset.instrument)) {
+      next = { ...next, program: defaults.program };
+    }
   }
   return next;
 }
@@ -442,7 +480,7 @@ export function newTrackProperties(form: TrackForm, defaults: NotationDefaults):
     properties.capo = Number(form.capo);
     properties.display = {
       ...createTrack('fretted').display,
-      ...INSTRUMENT_DEFAULTS[form.instrument ?? 'guitar'].display,
+      ...displayOf(form),
       notation: isVocalTrack({ kind: 'fretted', program: form.program, name: form.name })
         ? defaults.vocals
         : defaults.strings,
