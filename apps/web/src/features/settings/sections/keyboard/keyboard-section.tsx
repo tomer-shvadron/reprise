@@ -23,7 +23,7 @@ import { Input } from '@/components/ui/input';
 
 import type { SettingsSection } from '../../section';
 import { ConflictPrompt, KeySlot, REFUSALS } from './key-slot';
-import { buildRows, filterRows, type Row } from './rows';
+import { buildRows, filterRows, shadowNote, type Row } from './rows';
 
 type Change = KeyBinding | null | 'default';
 
@@ -112,11 +112,7 @@ function Keyboard() {
       setRecording(undefined);
       setPending({ command, plan, binding: wanted });
     } else {
-      const note = plan.shadow
-        ? plan.shadow.kind === 'over'
-          ? ` While editing, ${keyText} runs ${title} instead of ${plan.shadow.other.title}.`
-          : ` While editing, ${keyText} runs ${plan.shadow.other.title} instead.`
-        : '';
+      const note = plan.shadow ? ` ${shadowNote(keyText, command, plan.shadow.others)}` : '';
       apply(
         command,
         plan.overrides,
@@ -160,7 +156,9 @@ function Keyboard() {
         <div className="flex items-center justify-between gap-4">
           <span className="text-sm">
             {row.title}
-            {row.context === 'Editing' && <span className="text-muted-foreground"> (editing)</span>}
+            {row.context !== 'Global' && (
+              <span className="text-muted-foreground"> ({row.context.toLowerCase()})</span>
+            )}
           </span>
           <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
             {row.slots.map((slot, index) => (

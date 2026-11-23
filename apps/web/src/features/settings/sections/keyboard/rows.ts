@@ -1,4 +1,10 @@
-import { contextLabel, type Command, type ContextLabel } from '@/app/command-registry';
+import {
+  contextLabel,
+  contextPhrase,
+  contextRank,
+  type Command,
+  type ContextLabel,
+} from '@/app/command-registry';
 import { effectiveKeys, fixedReason, type ShortcutOverrides } from '@/app/keymap';
 import {
   formatShortcut,
@@ -86,4 +92,18 @@ export function filterRows(rows: readonly Row[], filter: string, platform: Keybo
     const haystack = searchText(`${row.title} ${row.category} ${row.context} ${keys}`);
     return words.every((word) => haystack.includes(word));
   });
+}
+
+/**
+ * The sentence a rebind adds when the key is also held in another context: each command that
+ * shares the key, with the context it wins or loses in, named as the user knows it.
+ */
+export function shadowNote(keyText: string, command: Command, others: readonly Command[]): string {
+  return others
+    .map((other) =>
+      contextRank(command.context) < contextRank(other.context)
+        ? `${contextPhrase(command.context)}, ${keyText} runs ${command.title} instead of ${other.title}.`
+        : `${contextPhrase(other.context)}, ${keyText} runs ${other.title} instead.`,
+    )
+    .join(' ');
 }

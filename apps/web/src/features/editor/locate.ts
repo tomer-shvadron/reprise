@@ -182,6 +182,7 @@ export function locate(
       if (track.kind === 'drums') {
         pitch = laneAtY(system(anchor), track, point.y, current?.pitch) ?? current?.pitch;
       } else if (track.kind === 'pitched') {
+        // A click's height is not turned into a pitch yet (#221, part C); the lane stays.
         pitch = sameTrackLane(current, track.id);
       }
     }

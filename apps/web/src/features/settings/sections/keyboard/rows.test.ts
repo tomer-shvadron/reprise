@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createAppRegistry } from '@/app/app-registry';
 import { createTestServices } from '@/test/services';
 
-import { buildRows, filterRows } from './rows';
+import { buildRows, filterRows, shadowNote } from './rows';
 
 const registry = createAppRegistry(createTestServices(), 'mac');
 const rows = buildRows(registry.list(), {}, 'mac');
@@ -55,5 +55,31 @@ describe('filterRows', () => {
     expect(filterRows(rows, 'F8', 'mac').map((r) => r.title)).toContain('Toggle mixer');
     expect(filterRows(rows, 'cmd s', 'mac').map((r) => r.title)).toContain('Save');
     expect(filterRows(rows, 'zzzz', 'mac')).toEqual([]);
+  });
+});
+
+describe('shadowNote', () => {
+  const find = (id: string) => {
+    const found = registry.get(id);
+    if (!found) throw new Error(id);
+    return found;
+  };
+
+  it('names the real context of each command that shares the key', () => {
+    const note = find('editor.noteC');
+    const bend = find('editor.effect.bendPicker');
+    expect(shadowNote('C', bend, [note])).toBe(
+      "On a keyboard track's standard staff, C runs Type note name instead.",
+    );
+    expect(shadowNote('C', note, [bend])).toBe(
+      "On a keyboard track's standard staff, C runs Type note name instead of Bend….",
+    );
+    expect(shadowNote('A', bend, [find('editor.chordName'), find('editor.noteA')])).toContain(
+      "On a keyboard track's standard staff",
+    );
+  });
+
+  it('labels the standard staff rows in the section', () => {
+    expect(rows.find((row) => row.title === 'Type note name')?.context).toBe('Standard staff');
   });
 });

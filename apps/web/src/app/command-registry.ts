@@ -26,6 +26,14 @@ const CONTEXT_LABELS: Record<CommandContext, ContextLabel> = {
   editing: 'Editing',
 };
 
+/** How a sentence names a context: "While editing, …". */
+export const contextPhrase = (context: CommandContext | undefined): string =>
+  context === 'standardStaff'
+    ? "On a keyboard track's standard staff"
+    : context === 'editing'
+      ? 'While editing'
+      : 'Everywhere';
+
 export const contextLabel = (context: CommandContext | undefined): ContextLabel =>
   context === undefined ? 'Global' : CONTEXT_LABELS[context];
 
