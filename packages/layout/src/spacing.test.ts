@@ -3,7 +3,14 @@ import { describe, expect, it } from 'vitest';
 
 import { assert, array, double, property } from 'fast-check';
 
-import { durationWidth, rigidShares, segmentWidth, squeezedMin, stretch } from './spacing';
+import {
+  clearanceParts,
+  durationWidth,
+  rigidShares,
+  segmentWidth,
+  squeezedMin,
+  stretch,
+} from './spacing';
 
 describe('durationWidth', () => {
   it('adds the same width for every doubling of the duration up to a quarter', () => {
@@ -100,5 +107,26 @@ describe('rigidShares', () => {
     expect(squeezedMin(spring, 0, 1, 1, 0.5)).toBe(33);
     expect(squeezedMin(spring, 0, 1, 1, 0)).toBe(30);
     expect(squeezedMin(spring, 1, 1, 1, 0)).toBe(40);
+  });
+});
+
+describe('clearanceParts', () => {
+  it('takes off the room the springs between two marked onsets already hold (#523)', () => {
+    // Onset 1 holds 4 of rigid room, so the springs 0 and 1 hold 4 and a need of 10 adds 6 on
+    // spring 0; with one spring only (`to` right after `from`) the first round's floor counted
+    // the whole need again.
+    expect(clearanceParts([{ from: 0, to: 2, need: 10 }], [1, 4, 0])).toEqual([6, 0, 0]);
+    // The room held already covers the need: nothing is added.
+    expect(clearanceParts([{ from: 0, to: 2, need: 3 }], [1, 4, 0])).toEqual([0, 0, 0]);
+    // The widest of two pairs on one spring wins.
+    expect(
+      clearanceParts(
+        [
+          { from: 0, to: 1, need: 5 },
+          { from: 0, to: 2, need: 9 },
+        ],
+        [0, 0, 0],
+      ),
+    ).toEqual([9, 0, 0]);
   });
 });

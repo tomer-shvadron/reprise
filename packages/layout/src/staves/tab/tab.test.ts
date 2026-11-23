@@ -541,14 +541,14 @@ describe('tab staff: words', () => {
 
   it('reserves half a fingering label either side of its onset, the whole combined text (#523)', () => {
     const builder = guitar().bar();
-    builder.beat('16', [note(1, 0, { leftHandFinger: 'ring', rightHandFinger: 'ring' })]);
+    builder.beat('16', [note(1, 0, { leftHandFinger: 'thumb' })]);
     builder.beat('16', [note(2, 0, { rightHandFinger: 'middle' })]);
     builder.beat('16', [note(3, 0)]);
     builder.voice(1);
-    builder.beat('16', [note(4, 0, { leftHandFinger: 'thumb' })]);
+    builder.beat('16', [note(4, 0, { leftHandFinger: 'ring', rightHandFinger: 'ring' })]);
     const { onsets } = tabModule().measure(firstBar(builder.build({ ids: 'sequential' })));
     const half = (text: string) => textWidth(text, TAB.fingerSize * STAFF_SPACE) / 2;
-    // Two voices at the first onset: the wider label, `3 a`, sets both sides.
+    // Two voices at the first onset: the second voice's wider label, `3 a`, sets both sides.
     expect(onsets[0]?.marks?.left).toBeCloseTo(half('3 a'), 9);
     expect(onsets[0]?.marks?.right).toBeCloseTo(half('3 a'), 9);
     expect(onsets[1]?.marks?.left).toBeCloseTo(half('m'), 9);

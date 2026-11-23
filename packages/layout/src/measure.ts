@@ -13,7 +13,14 @@ import {
 } from './furniture';
 import { headerWidth } from './header';
 import { staffBar, trackBar, type StaffSlot } from './slots';
-import { durationWidth, rigidShares, segmentWidth, squeezedMin, type Spring } from './spacing';
+import {
+  clearanceParts,
+  durationWidth,
+  rigidShares,
+  segmentWidth,
+  squeezedMin,
+  type Spring,
+} from './spacing';
 import { TICK_EPSILON } from './ticks';
 
 /** Room between neighbouring onsets' extents, and around a bar's content, in staff spaces. */
@@ -206,21 +213,14 @@ export function measureBar(
   const fixedParts = rigidShares(fixed);
   const totalParts = rigidShares(rigid);
   const movableParts = totalParts.map((total, i) => total - (fixedParts[i] ?? 0));
+  // At `markScale` 1 every scale is 1, so each spring holds its F + M of the rigid extents.
+  const marksParts = clearanceParts(clearances, rigid);
   const springs = onsets.map(({ tick, governing }, i): Spring => {
     const next = onsets[i + 1]?.tick ?? end;
     const gap = Math.max(next - tick, TICK_EPSILON);
     const movablePart = movableParts[i] ?? 0;
     const fixedPart = fixedParts[i] ?? 0;
-    // What the springs from here to the next marked onset already hold of the room takes off
-    // what this one adds. At `markScale` 1 every scale is 1, so each spring holds its F + M.
-    let marksPart = 0;
-    for (const { from, to, need } of clearances) {
-      if (from !== i) continue;
-      let held = 0;
-      for (let k = from; k < to; k++) held += (fixedParts[k] ?? 0) + (movableParts[k] ?? 0);
-      marksPart = Math.max(marksPart, need - held);
-    }
-    marksPart = Math.max(0, marksPart);
+    const marksPart = marksParts[i] ?? 0;
     const min = Math.max(
       (right[i] ?? 0) + (i + 1 < onsets.length ? (left[i + 1] ?? 0) : 0) + ONSET_GAP * space,
       fixedPart + movablePart + marksPart,

@@ -21,6 +21,7 @@ import {
 import { expectValid, overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
+import { glyphWidth } from '../../primitives';
 import { standardModule } from './index';
 import { MARGIN, planBar, type BarPlan } from './plan';
 
@@ -518,6 +519,11 @@ describe('standard staff', () => {
     // The first voice's mark is centred on its head, the second one's is not.
     expect(shifted[0]?.right).toBeCloseTo(shifted[0]?.left ?? 0, 9);
     expect((shifted[1]?.right ?? 0) - (shifted[1]?.left ?? 0)).toBeGreaterThan(1e-6);
+    // Left and right add up to the widest glyph, whichever side the shift moved.
+    const sum = (m: { left: number; right: number } | undefined) =>
+      (m?.left ?? 0) + (m?.right ?? 0);
+    expect(sum(shifted[0])).toBeCloseTo(glyphWidth('fingeringMLower', 7), 9);
+    expect(sum(shifted[1])).toBeCloseTo(glyphWidth('fingering1', 7), 9);
     // A bar with no fingering reserves nothing.
     const plain = score()
       .track('guitar', { display: { notation: 'standard', octaveShift: 0 } })
