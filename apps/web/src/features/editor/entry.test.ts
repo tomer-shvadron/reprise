@@ -827,6 +827,28 @@ describe('pitch entry on a fretted track', () => {
     expect(planned).toMatchObject({ string: 4 });
   });
 
+  it('corrects a lone melody note that sits on another string, and moves the cursor to it', () => {
+    // E4 on string 1 with the cursor left on string 2 by an earlier string move: D replaces it.
+    const built = phrase([1, 0], [1, 0]);
+    const planned = letter(built, cursorAt(built, 0, 0, 2), 'D');
+    const notes = beatsOf(after(built, planned), 0)[0]?.notes ?? [];
+    expect(notes).toHaveLength(1);
+    expect(planned).toMatchObject({ string: notes[0]?.string });
+  });
+
+  it('adds to a chord when the cursor string is empty, and a shifted letter always adds', () => {
+    const built = score().track('guitar');
+    built.bar().beat('4', [note(1, 0), note(3, 0)]);
+    const two = built.build({ ids: 'sequential' });
+    expect(beatsOf(after(two, letter(two, cursorAt(two, 0, 0, 2), 'D')), 0)[0]?.notes).toHaveLength(
+      3,
+    );
+    const lone = phrase([1, 0]);
+    expect(
+      beatsOf(after(lone, letter(lone, cursorAt(lone, 0, 0, 2), 'D', true)), 0)[0]?.notes,
+    ).toHaveLength(2);
+  });
+
   it('refuses a pitch the beat already holds on another string', () => {
     // A3 is string 3 fret 2; the cursor is on string 1, whose own note is E4, and A lands on A3.
     const built = score().track('guitar');
@@ -858,7 +880,7 @@ describe('pitch entry on a fretted track', () => {
     built
       .bar()
       .beat('4', [note(6, 0)])
-      .beat('4', [note(6, 3)]);
+      .beat('4', [note(6, 3), note(2, 0)]);
     const low = built.build({ ids: 'sequential' });
     expect(letter(low, cursorAt(low, 0, 1, 1), 'E')).toEqual({
       refused: 'No free string plays E2',

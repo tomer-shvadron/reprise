@@ -93,11 +93,17 @@ test("A guitar's standard staff takes pitches, with the string chosen and movabl
   await page.keyboard.press('5');
   await expect(status).toContainText('String 2');
 
+  // A plain letter corrects the lone note of a beat even when it is on another string than the
+  // cursor's: D replaces the F on string 1 rather than joining it as a chord.
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('d');
+
   const saved = shapeOf(await savedToLibrary(app, () => page.keyboard.press('ControlOrMeta+s')));
   const beats = saved.tracks[0]?.[0]?.voices[0]?.beats ?? [];
   expect(beats.map(({ notes }) => notes.map((note) => [note.string, note.fret]))).toEqual([
     [[1, 0]],
-    [[1, 1]],
+    [[2, 3]],
     [[2, 8]],
     [[2, 5]],
   ]);

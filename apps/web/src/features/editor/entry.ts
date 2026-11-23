@@ -383,9 +383,17 @@ function planOnString(
   how: 'replace' | 'add',
 ): EntryPlan {
   const { track, beat } = where;
-  const hand = handPosition(track, previousNotes(where), input.cursor.string);
+  // The staff does not show the cursor's string, so a lone note on another string is the one a
+  // plain letter means to correct; with a chord and an empty string it adds.
+  const old =
+    how === 'replace' && beat && !startsBeat(input, where)
+      ? (beat.notes.find((n) => n.string === input.cursor.string) ??
+        (beat.notes.length === 1 ? beat.notes[0] : undefined))
+      : undefined;
+  const from = old?.string ?? input.cursor.string;
+  const hand = handPosition(track, previousNotes(where), from);
   const pick = (taken: ReadonlySet<number>) =>
-    chooseString(track, midi, { taken, hand, preferred: input.cursor.string });
+    chooseString(track, midi, { taken, hand, preferred: from });
   if (!beat || startsBeat(input, where)) {
     const position = pick(new Set());
     if (!position) return refuse(noString(where, midi));
@@ -393,8 +401,6 @@ function planOnString(
     return insertion(input, where, index, input.rhythm, position, undefined, position.string);
   }
   const justInserted = input.inserted === beat.id;
-  const old =
-    how === 'replace' ? beat.notes.find((n) => n.string === input.cursor.string) : undefined;
   const sounding = beat.notes.find((n) => midiNote(track, n) === midi);
   const sound = (note: { string: number; fret: number }) => ({
     track: track.id,
