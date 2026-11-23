@@ -166,6 +166,7 @@ export const GM_DRUM_KITS: ReadonlyMap<number, string> = new Map([
 ]);
 
 const STEEL_GUITAR_PROGRAM = 25;
+const NYLON_GUITAR_PROGRAM = 24;
 
 /** The GM name of the track's instrument; names come from this table, not the sound bank. */
 export function instrumentName(
@@ -182,5 +183,6 @@ export function instrumentName(
     if (instrument === 'twelveString') return '12-string Guitar';
     if (instrument === 'mandolin') return 'Mandolin';
   }
+  if (track.program === NYLON_GUITAR_PROGRAM && instrument === 'ukulele') return 'Ukulele';
   return GM_PROGRAMS[track.program] ?? `Program ${String(track.program)}`;
 }

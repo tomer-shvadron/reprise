@@ -17,11 +17,14 @@ export function soundFamilyOf(
   track: Pick<Track, 'kind' | 'program'> & Partial<Pick<Track, 'tuning' | 'courses' | 'drone'>>,
 ): PackFamily {
   if (track.kind === 'drums') return 'drums';
-  // A banjo and a mandolin are not a guitar, whatever program they carry (a mandolin sits on 25,
-  // the steel guitar), so the Emilyguitar default never captures them. A 12-string is a guitar:
-  // it follows its program's family, and the engine doubles its courses.
+  // A banjo, a ukulele and a mandolin are not a guitar, whatever program they carry (a mandolin
+  // sits on 25, the steel guitar; a ukulele on 24), so the Emilyguitar default never captures
+  // them. A ukulele then plays GeneralUser's Ukulele. A 12-string is a guitar: it follows its
+  // program's family, and the engine doubles its courses.
   const instrument = stringInstrumentOf({ ...track, tuning: track.tuning ?? [] });
-  if (instrument === 'banjo' || instrument === 'mandolin') return 'other';
+  if (instrument === 'banjo' || instrument === 'mandolin' || instrument === 'ukulele') {
+    return 'other';
+  }
   const { program } = track;
   if (program <= 23) return 'keys';
   if (program <= 25) return 'acoustic-guitar';

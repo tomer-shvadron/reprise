@@ -14,21 +14,22 @@ type TrackKey = Pick<Track, 'kind' | 'bank'> & Partial<Pick<Track, 'tuning' | 'c
 const MANDOLIN_PROGRAM = 25;
 /** GeneralUser GS's Mandolin variation of that program. */
 const MANDOLIN_BANK = 16;
+/** General MIDI's nylon guitar program, which a ukulele track carries. */
+const UKULELE_PROGRAM = 24;
+/** GeneralUser GS's Ukulele variation of that program. */
+const UKULELE_BANK = 8;
 
 /**
  * The bank a track plays: a mandolin on program 25 in the default bank takes GeneralUser's
- * Mandolin variation, chosen here at play time rather than stored in `Track.bank` (#411). A font
+ * Mandolin variation, and a ukulele on program 24 (four single strings, `stringInstrumentOf`) its
+ * Ukulele variation, chosen here at play time rather than stored in `Track.bank` (#411, #432). A font
  * without it falls back to the program's own preset, as any missing bank does.
  */
 function bankOf(track: TrackKey, program: number): number {
-  if (
-    track.kind === 'fretted' &&
-    program === MANDOLIN_PROGRAM &&
-    soundfontBankOf(track.bank) === 0 &&
-    track.tuning &&
-    stringInstrumentOf({ ...track, tuning: track.tuning, program }) === 'mandolin'
-  ) {
-    return MANDOLIN_BANK;
+  if (track.kind === 'fretted' && soundfontBankOf(track.bank) === 0 && track.tuning) {
+    const instrument = stringInstrumentOf({ ...track, tuning: track.tuning, program });
+    if (program === MANDOLIN_PROGRAM && instrument === 'mandolin') return MANDOLIN_BANK;
+    if (program === UKULELE_PROGRAM && instrument === 'ukulele') return UKULELE_BANK;
   }
   return soundfontBankOf(track.bank);
 }
