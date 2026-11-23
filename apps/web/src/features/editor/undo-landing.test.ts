@@ -17,6 +17,7 @@ import { cursorAtPosition } from './cursor';
 import { copySelection, pasteClip } from './clipboard-actions';
 import { barsRange, clipboardScore, cursorAt } from './test/clip-scores';
 import { drumScore } from './test/drum-scores';
+import { keysScore } from './test/key-scores';
 import { must } from './test/must';
 
 async function setup() {
@@ -202,5 +203,26 @@ describe('the cursor after an undo on a drum track', () => {
     goTo(0, 42);
     services.document.getState().undo();
     expect(state().cursor?.pitch).toBe(42);
+  });
+});
+
+describe('the cursor after an undo on a keyboard track', () => {
+  it('lands on the key of an undone note', async () => {
+    const services = createTestServices();
+    await services.document
+      .getState()
+      .openBytes('keys.reprise', (await write(keysScore(), 'reprise')).bytes);
+    services.editing.getState().setEditing(true);
+    const score = (): Score => must(services.document.getState().score, 'score');
+    const beat = must(score().tracks[0]?.bars[1]?.voices[0]?.beats[0]).id;
+    services.document.getState().apply(setNote({ beatId: beat }, { string: 0, fret: 60 }));
+    const cursor = cursorAtPosition(
+      score(),
+      { track: 0, bar: 1, voice: 0, stop: 1 },
+      { string: 0, staff: 'standard', pitch: 71 },
+    );
+    services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
+    services.document.getState().undo();
+    expect(services.selection.getState().cursor?.pitch).toBe(60);
   });
 });

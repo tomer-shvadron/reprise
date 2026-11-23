@@ -332,7 +332,9 @@ function planPitch(input: EntryInput, where: Where, letter: Letter, chord: boole
 /**
  * A pitched note at `midi`, held as `fret` on string 0. `replace`, in overwrite mode, swaps the
  * note in the cursor's lane for it in one chain, keeping what the note had but its tie and
- * accidental; with no note in the lane it adds one. `add` only adds, which is a chord note.
+ * accidental (and the tie chain out of it, which comes untied: tab moves the chain, here the
+ * continuation keeps its pitch); with no note in the lane it adds one. A pitch the beat already
+ * holds is refused. `add` only adds, which is a chord note.
  */
 function planKey(input: EntryInput, where: Where, midi: number, how: 'replace' | 'add'): EntryPlan {
   const note = { string: 0, fret: midi };
@@ -342,7 +344,9 @@ function planKey(input: EntryInput, where: Where, midi: number, how: 'replace' |
     return insertion(input, where, where.at.stop, input.rhythm, note, midi);
   }
   const justInserted = input.inserted === beat.id;
-  const old = how === 'replace' && !justInserted ? noteInSlot(where, input.cursor) : undefined;
+  // By slot, as a second digit on one string is: on a beat just inserted the lane has landed on
+  // the note typed, so a plain letter corrects it and only a shifted one adds to the chord.
+  const old = how === 'replace' ? noteInSlot(where, input.cursor) : undefined;
   const sound = { track: where.track.id, beat: beat.id, ...note };
   if (!old || old.fret === midi) {
     return {
@@ -351,6 +355,10 @@ function planKey(input: EntryInput, where: Where, midi: number, how: 'replace' |
       ...(justInserted && { inserted: beat.id }),
       sound,
     };
+  }
+  if (beat.notes.some(({ fret }) => fret === midi)) {
+    // Never merge two notes: the pitch is already there, so say so and change nothing.
+    return refuse(`${pitchName(midi, where.key)} is already on this beat`);
   }
   const kept: Partial<Note> = { ...old };
   delete kept.id;
@@ -361,6 +369,7 @@ function planKey(input: EntryInput, where: Where, midi: number, how: 'replace' |
       setNote({ beatId: beat.id, id: old.id }, { ...kept, ...note, tie: false }),
     ]),
     lane: midi,
+    ...(justInserted && { inserted: beat.id }),
     sound,
   };
 }

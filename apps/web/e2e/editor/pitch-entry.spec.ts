@@ -24,16 +24,23 @@ test('Pitches are typed by name on a keyboard track, one undo step each', async 
   await page.keyboard.press('ArrowUp');
   await expect(status).toContainText('C5');
 
-  // Letters type a note near the one before it (the middle line to begin with), and A does not
-  // open the chord name field here.
+  // A types a note here (A4, the nearest to the middle line) and does not open the chord name
+  // field; D and G would open Directions… and Grace note… on tab.
+  await page.keyboard.press('a');
+  await expect(status).toContainText('A4');
+  await expect(page.getByRole('combobox')).toHaveCount(0);
+  await page.keyboard.press('ArrowRight');
+  // A plain letter replaces the note in the lane, so a typo is corrected by the right letter.
+  await page.keyboard.press('b');
   await page.keyboard.press('c');
   await expect(status).toContainText('C5');
   await app.expectSound();
   await page.keyboard.press('ArrowRight');
-  for (const letter of ['d', 'e', 'f']) {
+  for (const letter of ['d', 'e']) {
     await page.keyboard.press(letter);
     await page.keyboard.press('ArrowRight');
   }
+  await expect(status).toContainText('E5');
   // The bar is full: the arrow appended a bar. G, then E with G and C added above it.
   await page.keyboard.press('g');
   await expect(status).toContainText('G5');
@@ -42,14 +49,13 @@ test('Pitches are typed by name on a keyboard track, one undo step each', async 
   await page.keyboard.press('Shift+G');
   await page.keyboard.press('Shift+C');
   await expect(status).toContainText('C6');
-  await expect(page.getByRole('combobox')).toHaveCount(0);
 
   const save = () => savedToLibrary(app, () => page.keyboard.press('ControlOrMeta+s'));
   const bars = async () => shapeOf(await save()).tracks[1] ?? [];
   const pitches = (bar: Awaited<ReturnType<typeof bars>>[number] | undefined) =>
     bar?.voices[0]?.beats.map(({ notes }) => notes.map((note) => note.fret));
   const saved = await bars();
-  expect(pitches(saved[0])).toEqual([[72], [74], [76], [77]]);
+  expect(pitches(saved[0])).toEqual([[69], [72], [74], [76]]);
   expect(pitches(saved[1])).toEqual([[79], [76, 79, 84]]);
 
   // One undo takes back one note.

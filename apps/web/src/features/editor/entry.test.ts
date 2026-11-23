@@ -634,7 +634,7 @@ describe('pitch entry on a keyboard track', () => {
   it('takes its octave from the note before the cursor, and the alteration from the key', () => {
     // After the chord E5/C5 the top note is E5; F in G major is F sharp 5.
     expect(frets(beatsOf(after(keys, letter(at(1, 2), 'F')), 1)[2])).toEqual([[0, 78]]);
-    // Across the barline: the last beat of bar 2 leads bar 3's first note.
+    // Across the barline: the last beat of bar 2 (top note E5) leads bar 3's first note.
     expect(frets(beatsOf(after(keys, letter(at(2, 0), 'A')), 2)[0])).toEqual([[0, 81]]);
   });
 
@@ -670,14 +670,42 @@ describe('pitch entry on a keyboard track', () => {
     expect(frets(beatsOf(after(keys, planned), 1)[2])).toEqual([[0, 74]]);
   });
 
+  it('refuses a replacement that lands on a pitch the beat holds, merging nothing', () => {
+    // The chord E5/C5 with the lane on E5 and the note before it G4: C lands on C5 again.
+    const planned = letter(at(1, 1, 76), 'C');
+    expect(planned).toEqual({ refused: 'C5 is already on this beat' });
+  });
+
+  it('corrects the note just typed with a plain letter, and adds with a shifted one', () => {
+    const first = letter(at(1, 2), 'D');
+    const next = after(keys, first);
+    const inserted = 'command' in first ? first.lane : undefined;
+    const typo = letter(
+      at(1, 2, inserted, next),
+      'F',
+      { inserted: beatsOf(next, 1)[2]?.id },
+      false,
+      next,
+    );
+    expect(frets(beatsOf(after(next, typo), 1)[2])).toEqual([[0, 78]]);
+    const chord = letter(
+      at(1, 2, inserted, next),
+      'F',
+      { inserted: beatsOf(next, 1)[2]?.id },
+      true,
+      next,
+    );
+    expect(beatsOf(after(next, chord), 1)[2]?.notes.map((n) => n.fret)).toEqual([74, 78]);
+  });
+
   it('inserts a beat in insert mode, and adds further letters to that beat', () => {
     const insert = letter(at(1, 0, 67), 'D', { mode: 'insert' });
     const next = after(keys, insert);
     expect(beatsOf(next, 1)).toHaveLength(3);
     expect(frets(beatsOf(next, 1)[0])).toEqual([[0, 74]]);
     const inserted = 'command' in insert ? insert.inserted : undefined;
-    const again = letter(at(1, 0, 74, next), 'F', { mode: 'insert', inserted }, false, next);
-    expect(beatsOf(after(next, again), 1)[0]?.notes.map((n) => n.fret)).toEqual([74, 66]);
+    const again = letter(at(1, 0, 74, next), 'F', { mode: 'insert', inserted }, true, next);
+    expect(beatsOf(after(next, again), 1)[0]?.notes.map((n) => n.fret)).toEqual([74, 78]);
   });
 
   it('is refused when the bar has no room for an inserted beat', () => {
