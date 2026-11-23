@@ -603,16 +603,14 @@ describe('standard staff', () => {
       ])
       .build({ ids: 'sequential' });
     const result = laid(built);
-    // Bottoms of the ink: the digits' hang below the baseline is under 0.02 spaces.
-    const bottoms = result.primitives
-      .flatMap((p) =>
-        p.kind === 'glyph' && p.glyph.startsWith('fingering') ? [p.bbox.y + p.bbox.height] : [],
-      )
+    // A glyph's `y` is its baseline, so the step is exact.
+    const baselines = result.primitives
+      .flatMap((p) => (p.kind === 'glyph' && p.glyph.startsWith('fingering') ? [p.y] : []))
       .sort((a, b) => a - b);
-    expect(bottoms).toHaveLength(3);
-    const [a = 0, b = 0, c = 0] = bottoms;
-    expect(b - a).toBeCloseTo(1.1 * 7, 0);
-    expect(c - b).toBeCloseTo(1.1 * 7, 0);
+    expect(baselines).toHaveLength(3);
+    const [a = 0, b = 0, c = 0] = baselines;
+    expect(b - a).toBeCloseTo(1.1 * 7, 2);
+    expect(c - b).toBeCloseTo(1.1 * 7, 2);
   });
 
   it('anchors every note head to its note', () => {
