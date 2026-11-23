@@ -87,6 +87,8 @@ export const MIN_ROOM = 1.5;
 export const MARGIN = 0.3;
 const FINGERING_GAP = 0.4;
 const FINGERING_STEP = 1.1;
+/** Clear space between the ink of two stacked fingering marks, in spaces. */
+const FINGERING_INK_GAP = 0.15;
 
 /** Gap between two voices' chords at one onset when the later moves right, in spaces. */
 const VOICE_GAP = 0.2;
@@ -126,9 +128,10 @@ export interface BeatPlan {
   tuplet?: number;
   /**
    * Fingering, top to bottom within the beat. `y` is the head's, which orders an onset's
-   * entries across voices, and `row` counts up from the stack's bottom once they are merged.
+   * entries across voices, and `lift` is the baseline's height in spaces above `fingeringY`,
+   * set once they are merged.
    */
-  fingering: { glyph: GlyphName; note: Note; y: number; row: number }[];
+  fingering: { glyph: GlyphName; note: Note; y: number; lift: number }[];
   articulation?: ArticulationPlan;
   tremolo?: TremoloPlan;
   /** The target heads of its bends, on a staff shown alone. */
@@ -545,14 +548,14 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
               glyph: RIGHT_HAND[rightHandFinger],
               note: head.note,
               y: head.y,
-              row: 0,
+              lift: 0,
             });
           if (leftHandFinger)
             plan.fingering.push({
               glyph: LEFT_HAND[leftHandFinger],
               note: head.note,
               y: head.y,
-              row: 0,
+              lift: 0,
             });
         }
       }
@@ -660,21 +663,31 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     if (entries) entries.push(...fingering);
     else onsets.set(key, [...fingering]);
   }
+  // Rows are placed by their ink: the step is FINGERING_STEP, and the ink plus a little air
+  // when the mark below reaches higher than the one above hangs (the `i` is 1.54 tall, the `p`
+  // hangs 0.61).
   let fingers = 0;
+  let reach = 0;
+  const fingeringY = top - FINGERING_GAP * space;
   for (const entries of onsets.values()) {
     entries.sort((a, b) => a.y - b.y);
-    for (const [i, entry] of entries.entries()) entry.row = entries.length - 1 - i;
     fingers = Math.max(fingers, entries.length);
-  }
-  const fingeringY = top - FINGERING_GAP * space;
-  let fingeringTop = fingers > 0 ? fingeringY - fingers * FINGERING_STEP * space : top;
-  for (const { fingering } of beats) {
-    // Drawn bottom up from `fingeringY`; the right hand's i is taller than a step.
-    for (const { glyph, row } of fingering) {
-      const ink = fingeringY - row * FINGERING_STEP * space - glyphMetrics(glyph).bbox.top * space;
-      fingeringTop = Math.min(fingeringTop, ink);
+    let lift = 0;
+    let below: GlyphName | undefined;
+    for (const entry of entries.slice().reverse()) {
+      if (below !== undefined) {
+        const clear = glyphMetrics(below).bbox.top - glyphMetrics(entry.glyph).bbox.bottom;
+        // Air only where the inks would meet at the usual step, so a digit stack keeps its 1.1.
+        lift += clear > FINGERING_STEP ? clear + FINGERING_INK_GAP : FINGERING_STEP;
+      }
+      entry.lift = lift;
+      below = entry.glyph;
+      reach = Math.max(reach, lift + glyphMetrics(entry.glyph).bbox.top);
     }
   }
+  // The room a step per row always took stays, so stacks of left-hand digits keep their height.
+  reach = Math.max(reach, fingers * FINGERING_STEP);
+  const fingeringTop = reach > 0 ? fingeringY - reach * space : top;
   return {
     beats,
     voices,
