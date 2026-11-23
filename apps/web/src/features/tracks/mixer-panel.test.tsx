@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { mirrorAudio } from '@/test/mirror-audio';
 import { renderWithServices } from '@/test/render';
-import { GM_TIER_BYPASS_SETTING } from '@/state/app-settings';
+import { CHANNEL_EFFECTS_SETTING, GM_TIER_BYPASS_SETTING } from '@/state/app-settings';
 import { createTestServices } from '@/test/services';
 import { createMemorySettingsBackend, createTestSettings } from '@/test/settings-backend';
 
@@ -53,6 +53,30 @@ describe('MixerPanel', () => {
     const reloaded = createTestServices({ settings: reloadedSettings });
     await reloadedSettings.whenHydrated();
     expect(reloaded.fakeAudio.setGmTierBypass).toHaveBeenLastCalledWith(false);
+  });
+
+  it('toggles the channel reverb and chorus switch and keeps it as a preference', async () => {
+    const settings = createTestSettings(createMemorySettingsBackend());
+    const services = createTestServices({ settings });
+    mirrorAudio(services);
+    renderWithServices(<MixerPanel />, services);
+    const user = userEvent.setup();
+    const toggle = screen.getByRole('switch', { name: 'Reverb and chorus from the file' });
+    expect(toggle).toBeChecked();
+    expect(toggle).toBeEnabled();
+    await user.click(toggle);
+    expect(services.fakeAudio.setChannelEffects).toHaveBeenLastCalledWith(false);
+    expect(toggle).not.toBeChecked();
+    expect(settings.get(CHANNEL_EFFECTS_SETTING)).toBe(false);
+  });
+
+  it('disables the channel switch while the GM switch is off', async () => {
+    const services = createTestServices({});
+    mirrorAudio(services);
+    renderWithServices(<MixerPanel />, services);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('switch', { name: 'No automatic effects on GM sounds' }));
+    expect(screen.getByRole('switch', { name: 'Reverb and chorus from the file' })).toBeDisabled();
   });
 
   it('lists the effects preset beside the instrument of each track', async () => {

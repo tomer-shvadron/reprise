@@ -17,7 +17,9 @@ export interface StringSet {
 
 /** The notes the track's strings sound open, with the capo, ordered from the lowest. */
 export function stringTargets(
-  track: Pick<Track, 'kind' | 'tuning' | 'capo' | 'courses' | 'drone'> | undefined,
+  track:
+    | (Pick<Track, 'kind' | 'tuning' | 'capo' | 'courses' | 'drone'> & { program?: number })
+    | undefined,
   referenceHz: number,
 ): StringSet | undefined {
   if (!track || !canShowTab(track)) return undefined;
@@ -32,7 +34,11 @@ export function stringTargets(
   return {
     targets,
     capo: track.capo,
-    tuningName: findTuningName(track.tuning, { courses: track.courses, drone: track.drone }),
+    tuningName: findTuningName(track.tuning, {
+      courses: track.courses,
+      drone: track.drone,
+      program: track.program,
+    }),
   };
 }
 

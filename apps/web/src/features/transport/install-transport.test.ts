@@ -7,6 +7,7 @@ import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars } from '@/test/position';
 import {
   COUNT_IN_SETTING,
+  CHANNEL_EFFECTS_SETTING,
   GM_TIER_BYPASS_SETTING,
   MASTER_VOLUME_SETTING,
   MEMORY_BUDGET_SETTING,
@@ -57,6 +58,7 @@ describe('installTransport', () => {
       [METRONOME_VOLUME_SETTING.key, 0.4],
       [MASTER_VOLUME_SETTING.key, 0.5],
       [GM_TIER_BYPASS_SETTING.key, false],
+      [CHANNEL_EFFECTS_SETTING.key, false],
       [MEMORY_BUDGET_SETTING.key, 128 * MB],
     ]);
     const settings = createSettingsStore({ local: () => memoryStorage() });
@@ -67,6 +69,7 @@ describe('installTransport', () => {
     expect(services.fakeAudio.setMetronome).toHaveBeenLastCalledWith(true, 0.4);
     expect(services.fakeAudio.setMasterVolume).toHaveBeenLastCalledWith(0.5);
     expect(services.fakeAudio.setGmTierBypass).toHaveBeenLastCalledWith(false);
+    expect(services.fakeAudio.setChannelEffects).toHaveBeenLastCalledWith(false);
     expect(services.fakeAudio.setMemoryBudget).toHaveBeenLastCalledWith(128 * MB);
   });
 
@@ -78,6 +81,7 @@ describe('installTransport', () => {
     expect(services.fakeAudio.setMetronome).toHaveBeenCalledWith(false, 0.7);
     expect(services.fakeAudio.setMasterVolume).toHaveBeenCalledWith(1);
     expect(services.fakeAudio.setGmTierBypass).toHaveBeenCalledWith(true);
+    expect(services.fakeAudio.setChannelEffects).toHaveBeenCalledWith(true);
     expect(services.fakeAudio.setMemoryBudget).toHaveBeenCalledWith(HQ_BUDGET_BYTES);
   });
 
@@ -91,6 +95,7 @@ describe('installTransport', () => {
     services.audio.setMetronome(true, 0.3);
     services.audio.setMasterVolume(0.6);
     services.audio.setGmTierBypass(false);
+    services.audio.setChannelEffects(false);
     services.audio.setMemoryBudget(128 * MB);
     expect(settings.get(COUNT_IN_SETTING)).toBe(true);
     expect(settings.get(COUNT_IN_VOLUME_SETTING)).toBe(0.35);
@@ -98,6 +103,7 @@ describe('installTransport', () => {
     expect(settings.get(METRONOME_VOLUME_SETTING)).toBe(0.3);
     expect(settings.get(MASTER_VOLUME_SETTING)).toBe(0.6);
     expect(settings.get(GM_TIER_BYPASS_SETTING)).toBe(false);
+    expect(settings.get(CHANNEL_EFFECTS_SETTING)).toBe(false);
     expect(settings.get(MEMORY_BUDGET_SETTING)).toBe(128 * MB);
     expect(backend.rows.get(COUNT_IN_SETTING.key)).toBe(true);
 

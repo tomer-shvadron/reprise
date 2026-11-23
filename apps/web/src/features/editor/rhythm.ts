@@ -152,6 +152,30 @@ export function restsFor(ticks: number): Rhythm[] | undefined {
   return rests;
 }
 
+/** Every plain and single-dotted value the model allows, longest first, down to a 256th. */
+const SPLIT_VALUES: Rhythm[] = ([1, 2, 4, 8, 16, 32, 64, 128, 256] as const)
+  .flatMap((duration) =>
+    ([0, 1] as const).map((dots): Rhythm => ({ duration, dots, tuplet: undefined })),
+  )
+  .sort((a, b) => rhythmTicks(b) - rhythmTicks(a));
+
+/**
+ * A length in ticks as note values, longest first: the greedy split that `restsFor` does, but
+ * reaching the 128th and 256th the model allows. Undefined when the length is not a multiple of
+ * the shortest value.
+ */
+export function valuesFor(ticks: number): Rhythm[] | undefined {
+  const values: Rhythm[] = [];
+  let left = ticks;
+  while (left > EPSILON) {
+    const next = SPLIT_VALUES.find((rhythm) => rhythmTicks(rhythm) <= left + EPSILON);
+    if (!next) return undefined;
+    values.push(next);
+    left -= rhythmTicks(next);
+  }
+  return values;
+}
+
 /** The total length of beats, in ticks. */
 export const ticksOf = (beats: readonly Pick<Beat, 'duration' | 'dots' | 'tuplet'>[]): number =>
   beats.reduce((sum, beat) => sum + beatTicks(beat), 0);

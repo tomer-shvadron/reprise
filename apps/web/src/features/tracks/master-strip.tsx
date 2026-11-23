@@ -6,6 +6,7 @@ import { useAppServices } from '@/app/services-context';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 
+const CHANNEL_NOTE = 'Applies to GM sounds while automatic effects are off for them.';
 const BYPASS_NOTE = 'A track’s own effects preset still applies.';
 
 const percentText = (value: number) => `${String(Math.round(value))}%`;
@@ -15,7 +16,10 @@ export function MasterStrip() {
   const { playback, audio } = useAppServices();
   const volume = useStore(playback, (state) => state.settings.masterVolume);
   const gmTierBypass = useStore(playback, (state) => state.settings.gmTierBypass);
+  const channelEffects = useStore(playback, (state) => state.settings.channelEffects);
   const percent = volume * 100;
+  const channelId = useId();
+  const channelNoteId = useId();
   const bypassId = useId();
   const noteId = useId();
   const menu = useStaticContextMenu({
@@ -60,6 +64,26 @@ export function MasterStrip() {
         </div>
         <p id={noteId} className="text-muted-foreground text-xs">
           {BYPASS_NOTE}
+        </p>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-2">
+          <Switch
+            id={channelId}
+            size="sm"
+            checked={channelEffects}
+            disabled={!gmTierBypass}
+            aria-describedby={channelNoteId}
+            onCheckedChange={(on) => {
+              audio.setChannelEffects(on);
+            }}
+          />
+          <label htmlFor={channelId} className="text-xs">
+            Reverb and chorus from the file
+          </label>
+        </div>
+        <p id={channelNoteId} className="text-muted-foreground text-xs">
+          {CHANNEL_NOTE}
         </p>
       </div>
     </div>

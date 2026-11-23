@@ -38,7 +38,16 @@ export type DurationSpec = `${Duration}` | `${Duration}.` | `${Duration}..` | `$
 
 /** The instrument presets `track()` offers; each maps onto a `TrackKind` with its defaults. */
 export type Instrument =
-  'guitar' | 'bass' | 'drums' | 'piano' | 'banjo' | 'mandolin' | 'twelveString';
+  | 'guitar'
+  | 'bass'
+  | 'drums'
+  | 'piano'
+  | 'banjo'
+  | 'mandolin'
+  | 'twelveString'
+  | 'violin'
+  | 'shamisen'
+  | 'ukulele';
 
 export type TrackSpec = Omit<TrackOptions, 'bars' | 'barCount'> & { id?: Id };
 
@@ -100,6 +109,30 @@ const INSTRUMENTS: Record<Instrument, { kind: TrackKind; defaults: TrackSpec }> 
       name: '12-string Guitar',
       shortName: '12-str.',
       courses: [12, 12, 12, 12, 0, 0],
+    },
+  },
+  violin: {
+    kind: 'fretted',
+    defaults: {
+      name: 'Violin',
+      shortName: 'Vln.',
+      tuning: [55, 62, 69, 76],
+      program: 40,
+      display: { notation: 'tab', clef: 'treble', octaveShift: 0 },
+    },
+  },
+  shamisen: {
+    kind: 'fretted',
+    defaults: { name: 'Shamisen', shortName: 'Sham.', tuning: [48, 53, 60], program: 106 },
+  },
+  ukulele: {
+    kind: 'fretted',
+    defaults: {
+      name: 'Ukulele',
+      shortName: 'Uke.',
+      tuning: [67, 60, 64, 69],
+      program: 24,
+      display: { notation: 'tab', clef: 'treble', octaveShift: 0 },
     },
   },
   drums: { kind: 'drums', defaults: {} },

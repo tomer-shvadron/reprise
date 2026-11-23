@@ -49,6 +49,29 @@ describe('TrackEffectsPicker', () => {
     expect(select).toHaveValue('');
   });
 
+  it('says the file’s reverb and chorus apply when the track carries some', async () => {
+    const { services } = await setup();
+    act(() => {
+      services.document
+        .getState()
+        .apply(
+          setTrackProperties(
+            { trackId: services.document.getState().score?.tracks[0]?.id ?? '' },
+            { channel: { reverb: 64 } },
+          ),
+        );
+    });
+    expect(
+      screen.getByRole('option', { name: 'Automatic (the file’s reverb and chorus)' }),
+    ).toBeInTheDocument();
+    act(() => {
+      services.audio.setChannelEffects(false);
+    });
+    expect(
+      screen.getByRole('option', { name: 'Automatic (off on GM sounds)' }),
+    ).toBeInTheDocument();
+  });
+
   it('names the family automatic resolves to once the GM tier bypass is off', async () => {
     const { services } = await setup();
     act(() => {
