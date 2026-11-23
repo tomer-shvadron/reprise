@@ -12,6 +12,7 @@ import type { EditCursor } from '@/state/selection';
 
 import { clampString, cursorAtPosition, defaultStaff, stopCount, stringCount } from './cursor';
 import { laneNear } from './drum-lanes';
+import { clefOf, pitchAtPosition } from './pitch-entry';
 
 /** What a pointer position means to the editor: where the cursor would go, and the note under it, if any. */
 export interface EditHit {
@@ -64,6 +65,29 @@ function laneAtY(
   if (!staff || staff.bottom <= staff.top) return undefined;
   const space = (staff.bottom - staff.top) / 4;
   return laneNear(track, ((staff.bottom - y) / space) * 2, current);
+}
+
+/**
+ * The key written nearest `y` on the track's standard staff in `system`, in bar `bar`'s clef and
+ * key; undefined when the system holds none. Position 0 is the bottom line, a step half a space.
+ */
+function pitchAtY(
+  system: System | undefined,
+  score: Score,
+  trackIndex: number,
+  bar: number,
+  y: number,
+): number | undefined {
+  const track = score.tracks[trackIndex];
+  const staff = system?.staves.find((s) => s.track === track?.id && s.type === 'standard');
+  if (!track || !staff || staff.bottom <= staff.top) return undefined;
+  const space = (staff.bottom - staff.top) / 4;
+  return pitchAtPosition(
+    Math.round(((staff.bottom - y) / space) * 2),
+    clefOf(track, bar),
+    track.display.octaveShift,
+    score.masterBars[bar]?.keySignature ?? { fifths: 0, minor: false },
+  );
 }
 
 /** The staff of `track` in `system` nearest `y`, or the default for the track. */
@@ -182,8 +206,10 @@ export function locate(
       if (track.kind === 'drums') {
         pitch = laneAtY(system(anchor), track, point.y, current?.pitch) ?? current?.pitch;
       } else if (track.kind === 'pitched') {
-        // A click's height is not turned into a pitch yet (#221, part C); the lane stays.
-        pitch = sameTrackLane(current, track.id);
+        // The height of the click is the pitch, as on a drum staff it is the drum.
+        pitch =
+          pitchAtY(system(anchor), score, info.trackIndex, info.masterBarIndex, point.y) ??
+          sameTrackLane(current, track.id);
       }
     }
     return {
@@ -269,7 +295,9 @@ function atStop(
       : undefined;
   const lane =
     track.kind === 'pitched'
-      ? sameTrackLane(at.current, track.id)
+      ? ((at.y !== undefined
+          ? pitchAtY(at.system, score, at.trackIndex, at.bar, at.y)
+          : undefined) ?? sameTrackLane(at.current, track.id))
       : track.kind !== 'drums'
         ? undefined
         : ((at.y !== undefined ? laneAtY(at.system, track, at.y, at.current?.pitch) : undefined) ??

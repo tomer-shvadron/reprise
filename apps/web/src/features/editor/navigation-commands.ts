@@ -4,10 +4,11 @@ import type { Shortcut } from '@/app/keyboard';
 import type { EditCursor } from '@/state/selection';
 
 import { entryController } from './entry-controller';
+import { resolveCursor } from './cursor';
 import { move, movePage, moveString, type Step } from './navigation';
 import { extendRange, rangePatch, type ExtendStep } from './range';
-import { visibleTracks } from './visible';
-import type { Score } from '@reprise/model';
+import { visibleTracks, wantedNotation } from './visible';
+import { shownNotation, type Score } from '@reprise/model';
 import type { LayoutResult } from '@reprise/layout';
 
 export type NavigationCommandId =
@@ -15,6 +16,7 @@ export type NavigationCommandId =
   | 'editor.nextBeat'
   | 'editor.stringUp'
   | 'editor.stringDown'
+  | 'editor.switchStaff'
   | 'editor.barStart'
   | 'editor.barEnd'
   | 'editor.previousBar'
@@ -197,6 +199,20 @@ export function navigationCommands(deps: NavigationDeps): NavigationCommand[] {
       { key: 'ArrowRight', mod: true, shift: true },
       extend('nextBar'),
     ),
+    // Palette only, like the other commands that have no Guitar Pro key: a track shown in both
+    // notations has a tab and a standard staff, and the letters and the strings each belong to one.
+    {
+      id: 'editor.switchStaff',
+      title: 'Switch staff',
+      context: 'editing',
+      run: go((c) => {
+        const at = resolveCursor(c.score, c.cursor);
+        const track = at && c.score.tracks[at.track];
+        const wanted = at && wantedNotation(c.score, deps.document.getState().view, at.track);
+        if (!track || !wanted || shownNotation(track, wanted) !== 'both') return undefined;
+        return { ...c.cursor, staff: c.cursor.staff === 'tab' ? 'standard' : 'tab' };
+      }),
+    },
     command('editor.clearSelection', 'Clear selection', { key: 'Escape' }, () => {
       const c = context();
       if (!c) return;

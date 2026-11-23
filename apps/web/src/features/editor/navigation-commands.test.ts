@@ -147,3 +147,33 @@ describe('the edit navigation commands', () => {
     expect(full.services.document.getState().score?.masterBars).toHaveLength(1);
   });
 });
+
+describe('Switch staff', () => {
+  it('moves the cursor between the tab and standard staves of a track shown in both', async () => {
+    const built = fullBarScore();
+    const track = built.tracks[0];
+    if (!track) throw new Error('no track');
+    const { services, registry } = await setup({
+      ...built,
+      tracks: [{ ...track, display: { ...track.display, notation: 'both' } }],
+    });
+    services.editing.getState().setEditing(true);
+    const switchStaff = registry.get('editor.switchStaff');
+    expect(switchStaff).toMatchObject({ title: 'Switch staff', context: 'editing' });
+    expect(switchStaff?.shortcut).toBeUndefined();
+    const staff = () => services.selection.getState().cursor?.staff;
+    const before = staff();
+    void switchStaff?.run();
+    expect(staff()).not.toBe(before);
+    void switchStaff?.run();
+    expect(staff()).toBe(before);
+  });
+
+  it('does nothing on a track shown in one notation', async () => {
+    const { services, registry } = await setup(fullBarScore());
+    services.editing.getState().setEditing(true);
+    const before = services.selection.getState().cursor?.staff;
+    void registry.get('editor.switchStaff')?.run();
+    expect(services.selection.getState().cursor?.staff).toBe(before);
+  });
+});

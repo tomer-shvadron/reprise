@@ -18,6 +18,7 @@ import { firstStop } from './cursor';
 import { cursorFromHit, locate, stringAt } from './locate';
 import { editTarget } from './range';
 import { drumScore } from './test/drum-scores';
+import { keysScore } from './test/key-scores';
 import { editScore } from './test/scores';
 
 const paged: LayoutOptions = {
@@ -306,5 +307,33 @@ describe('locate on a percussion staff', () => {
     const hit = atPosition(9);
     const cursor = hit && cursorFromHit(built, hit);
     expect(cursor).toMatchObject({ pitch: 42, string: 0 });
+  });
+});
+
+describe('locate on a keyboard track standard staff', () => {
+  const built = keysScore();
+  const result = lay(built, undefined);
+  const track = built.tracks[0]?.id ?? '';
+  const staff = result.systems[0]?.staves.find((s) => s.track === track && s.type === 'standard');
+  const beat = built.tracks[0]?.bars[1]?.voices[0]?.beats[0];
+  const anchor = result.anchors.find((a) => a.kind === 'beat' && a.id === beat?.id);
+  if (!staff || !anchor) throw new Error('no standard staff');
+  const space = (staff.bottom - staff.top) / 4;
+  const box = anchorBox(result, anchor);
+  const x = box.x + box.width / 2;
+  const atPosition = (position: number) =>
+    locate(result, built, pointer(result, x, staff.bottom - (position * space) / 2));
+
+  it('sets the lane to the key written at the height of the click, in the bar key', () => {
+    expect(atPosition(4)).toMatchObject({ pitch: 71, string: 0, staff: 'standard' });
+    expect(atPosition(6)).toMatchObject({ pitch: 74 });
+    // G major has F sharp: the top line is F5 sharp.
+    expect(atPosition(8)).toMatchObject({ pitch: 78 });
+    expect(atPosition(-2)).toMatchObject({ pitch: 60 });
+  });
+
+  it('puts the lane on the cursor it makes', () => {
+    const hit = atPosition(5);
+    expect(hit && cursorFromHit(built, hit)).toMatchObject({ pitch: 72 });
   });
 });

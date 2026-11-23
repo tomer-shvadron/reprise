@@ -1,6 +1,7 @@
 import { maxStoredFret, openStringPitch, type Beat, type Note, type Track } from '@reprise/model';
 
 import type { ClipTrack } from './clipboard-format';
+import { neckPositions, type Position } from './string-choice';
 
 type NeckTrack = Pick<Track, 'tuning' | 'fretCount' | 'capo' | 'drone'>;
 
@@ -14,31 +15,16 @@ export interface Refingered {
   harmonicsMoved: number;
 }
 
-interface Position {
-  string: number;
-  fret: number;
-}
-
 interface Counts {
   dropped: number;
   trillsDropped: number;
   harmonicsMoved: number;
 }
 
-/**
- * Where `pitch` can be played on the target's neck, frets counting from its capo as the model's
- * `midiNote` does: the preferred string first, then the lowest fret.
- */
+/** Where `pitch` can be played on the target's neck: the preferred string first, then the lowest fret. */
 function positions(target: NeckTrack, pitch: number, prefer: number | undefined): Position[] {
-  const found: Position[] = [];
-  for (let string = 1; string <= target.tuning.length; string++) {
-    const open = openStringPitch(target, string);
-    if (open === undefined) continue;
-    const fret = pitch - open - target.capo;
-    if (fret >= 0 && fret <= maxStoredFret(target, string)) found.push({ string, fret });
-  }
   const rank = (p: Position) => (p.string === prefer ? 0 : 1);
-  return found.sort((a, b) => rank(a) - rank(b) || a.fret - b.fret);
+  return neckPositions(target, pitch).sort((a, b) => rank(a) - rank(b) || a.fret - b.fret);
 }
 
 /** The target string tuned to the same open pitch as `string` of the source, if there is one. */

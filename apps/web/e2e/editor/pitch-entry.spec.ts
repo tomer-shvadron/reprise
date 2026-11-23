@@ -62,3 +62,43 @@ test('Pitches are typed by name on a keyboard track, one undo step each', async 
   await page.keyboard.press('ControlOrMeta+z');
   expect(pitches((await bars())[1])).toEqual([[79], [76, 79]]);
 });
+
+// #221, part C: a guitar shown as standard notation takes letters too, and the string is chosen.
+test("A guitar's standard staff takes pitches, with the string chosen and movable", async ({
+  app,
+  page,
+}) => {
+  const status = page.getByTestId('edit-status');
+  await palette(app, 'New song');
+  await app.waitReady();
+  await app.gesture();
+  await expect(status).toBeVisible();
+  await palette(app, 'Show current track as standard notation');
+  await page.locator('body').focus();
+
+  // E, F, G with → between them: the first note sits at the nut, then the hand stays put.
+  for (const letter of ['e', 'f', 'g']) {
+    await page.keyboard.press(letter);
+    await page.keyboard.press('ArrowRight');
+  }
+  await page.keyboard.press('ArrowLeft');
+  await expect(status).toContainText('String 1');
+  await app.expectSound();
+  // ⌥↓ moves the last note, G4, to the next string at the same pitch.
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(status).toContainText('String 2');
+
+  // A digit on that staff is a fret on the cursor's string, as before.
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('5');
+  await expect(status).toContainText('String 2');
+
+  const saved = shapeOf(await savedToLibrary(app, () => page.keyboard.press('ControlOrMeta+s')));
+  const beats = saved.tracks[0]?.[0]?.voices[0]?.beats ?? [];
+  expect(beats.map(({ notes }) => notes.map((note) => [note.string, note.fret]))).toEqual([
+    [[1, 0]],
+    [[1, 1]],
+    [[2, 8]],
+    [[2, 5]],
+  ]);
+});

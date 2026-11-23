@@ -151,6 +151,7 @@ export function installEntry(deps: EntryDeps): () => void {
       ...(plan.land && { land: plan.land }),
       ...(plan.inserted && { inserted: plan.inserted }),
       ...(plan.lane !== undefined && { lane: plan.lane }),
+      ...(plan.string !== undefined && { string: plan.string }),
     });
     // Last, so a throw from the audio side cannot skip the edit.
     if (applied && plan.sound) {

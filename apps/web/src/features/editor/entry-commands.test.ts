@@ -274,4 +274,39 @@ describe('the Standard staff key context', () => {
     expect(chordName).toBeDefined();
     if (chordName) expect(registry.isShadowed(chordName)).toBe(true);
   });
+
+  it("holds on a fretted track's standard staff, whether alone or beside the tab", async () => {
+    const { services, registry, goTo } = await setup();
+    services.editing.getState().setEditing(true);
+    goTo(0, 0);
+    expect(registry.isActive('standardStaff')).toBe(false);
+    const cursor = services.selection.getState().cursor;
+    if (cursor) services.selection.getState().setEdit({ cursor: { ...cursor, staff: 'standard' } });
+    expect(registry.isActive('standardStaff')).toBe(true);
+  });
+
+  it("types a pitch on a guitar's standard staff, choosing the string, and A does not open the chord name", async () => {
+    const { services, press, beats, goTo } = await setup();
+    services.editing.getState().setEditing(true);
+    goTo(0, 3);
+    const cursor = services.selection.getState().cursor;
+    if (cursor) services.selection.getState().setEdit({ cursor: { ...cursor, staff: 'standard' } });
+    // The beats before are quarters on strings 1 to 4, the last on string 4 fret 3 (F3): A is the
+    // nearest A, A3, which string 3 plays at fret 2.
+    expect(press('a')).toBe(true);
+    expect(services.entry.getState().word).toBeUndefined();
+    // It joins the F3 on string 4 as a chord note.
+    expect(beats(0)[3]?.notes.map((n) => [n.string, n.fret])).toEqual([
+      [4, 3],
+      [3, 2],
+    ]);
+    expect(services.selection.getState().cursor?.string).toBe(3);
+  });
+
+  it('leaves the letters to the tab staff of a guitar', async () => {
+    const { services, press } = await setup();
+    services.editing.getState().setEditing(true);
+    expect(press('a')).toBe(true);
+    expect(services.entry.getState().word).toBeDefined();
+  });
 });
