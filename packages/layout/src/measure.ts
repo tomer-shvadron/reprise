@@ -13,13 +13,21 @@ import {
 } from './furniture';
 import { headerWidth } from './header';
 import { staffBar, trackBar, type StaffSlot } from './slots';
-import { durationWidth, rigidShares, segmentWidth, squeezedMin, type Spring } from './spacing';
+import {
+  clearanceParts,
+  durationWidth,
+  rigidShares,
+  segmentWidth,
+  squeezedMin,
+  type Spring,
+} from './spacing';
 import { TICK_EPSILON } from './ticks';
 
 /** Room between neighbouring onsets' extents, and around a bar's content, in staff spaces. */
 const ONSET_GAP = 0.3;
 const LEAD = 1;
 const TRAIL = 0.6;
+const MARK_GAP = 0.2;
 
 /** A master bar's column across every visible staff, before it is placed in a system. */
 export interface BarMeasure {
@@ -51,11 +59,12 @@ export function barWidth(
   squeeze = 1,
   rigidScale = 1,
   fixedScale = 1,
+  markScale = 1,
 ): number {
   let content = 0;
   for (const spring of measure.springs) {
     content += Math.max(
-      squeezedMin(spring, squeeze, rigidScale, fixedScale),
+      squeezedMin(spring, squeeze, rigidScale, fixedScale, markScale),
       spring.natural * factor,
     );
   }
@@ -156,11 +165,32 @@ export function measureBar(
   const rigid = ticks.map(() => 0);
   const fixed = ticks.map(() => 0);
   const ideal = ticks.map(() => 0);
+  // Room the fingering of two neighbouring marked onsets needs between them, `from` to `to`.
+  const clearances: { from: number; to: number; need: number }[] = [];
 
   const extents = slots.map((slot) => {
     const bar = trackBar(slot, index);
     if (!bar) return { above: 0, below: 0 };
     const measured = slot.module.measure(staffBar(score, slot, bar, context, space));
+    const marks: ({ left: number; right: number } | undefined)[] = ticks.map(() => undefined);
+    for (const extent of measured.onsets) {
+      if (extent.marks) {
+        const j = onsetIndex(ticks, extent.tick);
+        const had = marks[j];
+        marks[j] = {
+          left: Math.max(had?.left ?? -Infinity, extent.marks.left),
+          right: Math.max(had?.right ?? -Infinity, extent.marks.right),
+        };
+      }
+    }
+    let prev = -1;
+    for (const [j, mark] of marks.entries()) {
+      if (!mark) continue;
+      const before = marks[prev];
+      if (before)
+        clearances.push({ from: prev, to: j, need: before.right + mark.left + MARK_GAP * space });
+      prev = j;
+    }
     for (const extent of measured.onsets) {
       const i = onsetIndex(ticks, extent.tick);
       left[i] = Math.max(left[i] ?? 0, extent.left);
@@ -183,11 +213,18 @@ export function measureBar(
   const fixedParts = rigidShares(fixed);
   const totalParts = rigidShares(rigid);
   const movableParts = totalParts.map((total, i) => total - (fixedParts[i] ?? 0));
+  // At `markScale` 1 every scale is 1, so each spring holds its F + M of the rigid extents.
+  const marksParts = clearanceParts(clearances, rigid);
   const springs = onsets.map(({ tick, governing }, i): Spring => {
     const next = onsets[i + 1]?.tick ?? end;
     const gap = Math.max(next - tick, TICK_EPSILON);
-    const min =
-      (right[i] ?? 0) + (i + 1 < onsets.length ? (left[i + 1] ?? 0) : 0) + ONSET_GAP * space;
+    const movablePart = movableParts[i] ?? 0;
+    const fixedPart = fixedParts[i] ?? 0;
+    const marksPart = marksParts[i] ?? 0;
+    const min = Math.max(
+      (right[i] ?? 0) + (i + 1 < onsets.length ? (left[i + 1] ?? 0) : 0) + ONSET_GAP * space,
+      fixedPart + movablePart + marksPart,
+    );
     // alphaTab fills an empty voice with one beat of its default duration, a quarter.
     const natural = empty ? durationWidth(PPQ, space) : segmentWidth(gap, governing, space);
     const wish =
@@ -195,8 +232,9 @@ export function measureBar(
     return {
       natural: Math.max(min, natural, wish),
       min,
-      rigid: fixedParts[i] ?? 0,
-      movable: movableParts[i] ?? 0,
+      rigid: fixedPart,
+      movable: movablePart,
+      marks: marksPart,
     };
   });
 

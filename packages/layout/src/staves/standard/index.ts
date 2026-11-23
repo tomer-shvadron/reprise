@@ -104,6 +104,13 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
         onset.rigid = onset.right;
         onset.fixed = Math.max(0, onset.right - (beat.shift ?? 0));
         if (beat.labelRight) onset.ideal = beat.labelRight;
+        if (beat.fingering.length > 0) {
+          const half = Math.max(
+            ...beat.fingering.map(({ glyph }) => glyphWidth(glyph, input.space) / 2),
+          );
+          const shift = beat.shift ?? 0;
+          onset.marks = { left: half - shift, right: shift + half };
+        }
         if (drawsWords(input)) {
           const words = wordsExtent(beat.beat, wordStart(beat), input.space, input.chordDiagrams);
           onset.left = Math.max(onset.left, words.left - (beat.shift ?? 0));

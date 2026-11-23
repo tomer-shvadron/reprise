@@ -93,6 +93,7 @@ function columns(input: SystemInput, from: number): (Column | undefined)[] {
       plan.squeeze,
       plan.rigidScale,
       plan.fixedScale,
+      plan.markScale,
     )) {
       positions.push(onset);
       onset += segment;
