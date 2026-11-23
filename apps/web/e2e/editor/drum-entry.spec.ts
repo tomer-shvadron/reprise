@@ -35,11 +35,12 @@ test('Drums are entered by lane and by GM number, one undo step per hit', async 
   await page.keyboard.press('0');
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('4');
+  await expect(status).toContainText('Drum 4…');
   await page.keyboard.press('2');
   await expect(status).toContainText('Closed Hi-Hat (42)');
+  await expect(status).not.toContainText('Drum 4…');
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('0');
-  await expect(status).not.toContainText('Drum ');
 
   const save = () => savedToLibrary(app, () => page.keyboard.press('ControlOrMeta+s'));
   const hits = (beats: readonly { notes: Record<string, unknown>[] }[]) =>

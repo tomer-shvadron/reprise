@@ -33,16 +33,16 @@ The 80/20 cut of each product. "v1" is what ships at the release checkpoint, whi
 
 | v1                                                                                                                                                       | Deferred                                                    | Dropped |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------- |
-| Track management: add, remove, reorder; properties: name, instrument, string count and tuning, capo, color | Custom bend curve editor with drag points | None |
-| Bar management: insert and delete bars, time signature, key signature, tempo marks, repeats and alternate endings, section markers | Chord diagram editor |  |
-| Guitar Pro style note entry: cursor on string and beat, type fret number, arrow keys move, keys for duration, rest, dot, tie, tuplet; mouse click works too; the note sounds when entered; on a drum track ↑ and ↓ move through the kit, 0 places the drum the cursor is on, and a GM number (38, 42) places that drum | Editing voices three and four |  |
-| All player note effects applied from keyboard or a palette; bends limited to presets: quarter, half, full, with or without release | Automation lanes for volume, pan and tempo curves |  |
-| Two voices per track editable; four stored | Manual overrides of stem direction and beaming |  |
-| Copy, cut and paste of beats and bars across tracks | Page layout customization: margins, fonts, spacing |  |
-| Unlimited undo and redo | Engraving extras such as ossia staves and cue notes |  |
-| Chord names as text above a beat; lyrics as text aligned to beats |  |  |
-| Move a selection up or down a string; transpose a selection by semitones |  |  |
-| Autosave of drafts for crash recovery |  |  |
+| Track management: add, remove, reorder; properties: name, instrument, string count and tuning, capo, color                                               | Custom bend curve editor with drag points                   | None    |
+| Bar management: insert and delete bars, time signature, key signature, tempo marks, repeats and alternate endings, section markers                       | Chord diagram editor                                        |         |
+| Guitar Pro style note entry: cursor on string and beat, type fret number, arrow keys move, keys for duration, rest, dot, tie, tuplet; mouse click works too; the note sounds when entered; on a drum track ↑ and ↓ move through the kit, 0 places the drum the cursor is on, and a GM number (38, 42) places that drum | Editing voices three and four                               |         |
+| All player note effects applied from keyboard or a palette; bends limited to presets: quarter, half, full, with or without release                       | Automation lanes for volume, pan and tempo curves           |         |
+| Two voices per track editable; four stored                                                                                                               | Manual overrides of stem direction and beaming              |         |
+| Copy, cut and paste of beats and bars across tracks                                                                                                      | Page layout customization: margins, fonts, spacing          |         |
+| Unlimited undo and redo                                                                                                                                  | Engraving extras such as ossia staves and cue notes         |         |
+| Chord names as text above a beat; lyrics as text aligned to beats                                                                                        |                                                             |         |
+| Move a selection up or down a string; transpose a selection by semitones                                                                                 |                                                             |         |
+| Autosave of drafts for crash recovery                                                                                                                    |                                                             |         |
 
 ## Formats
 
