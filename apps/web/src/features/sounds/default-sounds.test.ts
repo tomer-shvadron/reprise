@@ -61,6 +61,14 @@ describe('soundFamilyOf', () => {
     expect(soundFamilyOf({ kind: 'fretted', program: 105, tuning })).toBe('other');
   });
 
+  it('takes a ukulele out of the acoustic-guitar family, and leaves a nylon guitar in it', () => {
+    const uke = { kind: 'fretted' as const, program: 24, tuning: [67, 60, 64, 69] };
+    expect(soundFamilyOf(uke)).toBe('other');
+    expect(soundFamilyOf({ ...uke, tuning: [67, 60, 64, 69, 72] })).toBe('acoustic-guitar');
+    expect(soundFamilyOf({ ...uke, tuning: [40, 45, 50, 55, 59, 64] })).toBe('acoustic-guitar');
+    expect(soundFamilyOf({ ...uke, courses: [12, 0, 0, 0] })).toBe('acoustic-guitar');
+  });
+
   it('leaves a 12-string with its program family, so Emilyguitar plays it doubled', () => {
     const track = {
       kind: 'fretted' as const,
