@@ -12,6 +12,7 @@ import { markCursor } from './edit-here';
 import { caretBoxes, caretRect, rangeBoxes } from './geometry';
 import { barRangeOf, rangeBars, rangeBeats, rangeSpan } from './range';
 import { visibleTracks } from './visible';
+import { noteAtCursor } from './drum-lanes';
 import { beatWithTrack } from './words';
 
 type MenuServices = Pick<AppServices, 'document' | 'selection' | 'playback' | 'heard'>;
@@ -258,7 +259,7 @@ function editKeyboardRequest(
   const found = cursor.beat === undefined ? undefined : beatWithTrack(score, cursor.beat);
   const bar = barNumber(score, cursor.masterBar);
   if (found && facts) {
-    const onNote = found.beat.notes.find((n) => n.string === cursor.string);
+    const onNote = noteAtCursor(found.track, found.beat.notes, cursor);
     if (onNote) {
       return {
         surface: 'score.note',

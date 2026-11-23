@@ -217,6 +217,12 @@ export function installEntry(deps: EntryDeps): () => void {
           enter(value, pending.cursor);
           return;
         }
+        if (track(pending.cursor.track)?.kind === 'drums') {
+          // Two digits typed: refuse the number as typed, not the first digit and then the second.
+          clearPending();
+          enter(value, pending.cursor);
+          return;
+        }
         flush();
         const after = context();
         if (after) start(digit, after.cursor);

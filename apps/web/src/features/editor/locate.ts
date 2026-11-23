@@ -167,7 +167,7 @@ export function locate(
     if (anchor.kind === 'note') {
       note = anchor.id;
       string = index.noteString.get(anchor.id) ?? 1;
-      if (track.kind === 'drums') pitch = noteKey(score, beatId, anchor.id);
+      if (track.kind === 'drums') pitch = noteKey(score, beatId, anchor.id) ?? current?.pitch;
     } else {
       const strings = stringCount(score, info.trackIndex);
       const fromLine =

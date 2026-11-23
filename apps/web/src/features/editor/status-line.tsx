@@ -14,7 +14,7 @@ import type { EditingStore } from '@/state/editing';
 import type { SelectionStore } from '@/state/selection';
 
 import { resolveCursor } from './cursor';
-import { DEFAULT_LANE, laneLabel } from './drum-lanes';
+import { cursorLane, laneLabel } from './drum-lanes';
 import { DurationStepItems } from './duration-steps';
 import type { EntryStore } from './entry-store';
 import { rhythmLabel } from './rhythm';
@@ -73,7 +73,7 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
       `Bar ${String(at.bar + 1)}`,
       cursor.beat === undefined ? 'End of bar' : `Beat ${String(at.stop + 1)}`,
       ...(cursor.string > 0 ? [`String ${String(cursor.string)}`] : []),
-      ...(drums ? [laneLabel(cursor.pitch ?? DEFAULT_LANE)] : []),
+      ...(drums ? [laneLabel(cursorLane(cursor))] : []),
     ].join(' · ');
   const segments = [
     <StatusSegment

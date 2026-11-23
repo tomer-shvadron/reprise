@@ -549,6 +549,15 @@ describe('installEntry on a drum track', () => {
     expect(entry.getState().message).toBe('No drum sound on key 9: drums are 27 to 87');
   });
 
+  it('refuses 8 then 8 once, as 88', async () => {
+    const { controller, entry, beats } = await drums();
+    controller().fret(8);
+    controller().fret(8);
+    expect(entry.getState().pending).toBeUndefined();
+    expect(beats(0)).toHaveLength(0);
+    expect(entry.getState().message).toBe('No drum sound on key 88: drums are 27 to 87');
+  });
+
   it('moves the lane to the key typed, so 0 then repeats it', async () => {
     const { controller, services, beats, score } = await drums();
     controller().fret(4);

@@ -27,7 +27,7 @@ import { scoreIndex } from '@/features/score';
 import type { EditCursor, SelectionState } from '@/state/selection';
 
 import { resolveCursor, stopCount, type Resolved } from './cursor';
-import { DEFAULT_LANE, LAST_DRUM_KEY, laneLabel } from './drum-lanes';
+import { cursorLane, LAST_DRUM_KEY, laneLabel, noteAtCursor } from './drum-lanes';
 import { rangeBeats } from './range';
 import {
   longer,
@@ -135,7 +135,9 @@ export function planEntry(input: EntryInput, action: EntryAction): EntryPlan {
     case 'fret':
       return planFret(input, where, action.fret);
     case 'lane':
-      return planFret(input, where, laneOf(input.cursor));
+      return where.track.kind === 'drums'
+        ? planFret(input, where, cursorLane(input.cursor))
+        : refuse('A hit is placed on a drum track only');
     case 'rest':
       return planRest(input, where);
     case 'tie':
@@ -158,8 +160,6 @@ export function planEntry(input: EntryInput, action: EntryAction): EntryPlan {
       return planDeleteBeat(where);
   }
 }
-
-const laneOf = (cursor: EditCursor): number => cursor.pitch ?? DEFAULT_LANE;
 
 /** Fretted tracks with strings and drum tracks take notes; pitched tracks wait for pitch entry. */
 function guardNotes(where: Where): EntryPlan | undefined {
@@ -357,18 +357,15 @@ function planRhythm(
   };
 }
 
-/** The note of a beat in the cursor's slot: its string, or its lane on a drum track. */
 const noteInSlot = (where: Where, cursor: EditCursor) =>
-  where.beat?.notes.find((note) =>
-    where.track.kind === 'drums' ? note.fret === laneOf(cursor) : note.string === cursor.string,
-  );
+  where.beat && noteAtCursor(where.track, where.beat.notes, cursor);
 
 function planTie(input: EntryInput, where: Where): EntryPlan {
   const refusal = guardNotes(where);
   if (refusal) return refusal;
   const drums = where.track.kind === 'drums';
   const string = drums ? 0 : input.cursor.string;
-  const lane = drums ? laneOf(input.cursor) : undefined;
+  const lane = drums ? cursorLane(input.cursor) : undefined;
   const { beat, track, at } = where;
   const existing = noteInSlot(where, input.cursor);
   if (beat && existing?.tie) {
@@ -408,7 +405,7 @@ function planDeleteNote(input: EntryInput, where: Where): EntryPlan {
   if (ids.length === 0) {
     return refuse(
       where.track.kind === 'drums'
-        ? `No ${percussionInstrument(laneOf(input.cursor))?.name ?? 'hit'} on this beat`
+        ? `No ${percussionInstrument(cursorLane(input.cursor))?.name ?? 'hit'} on this beat`
         : `No note on string ${String(input.cursor.string)} to delete`,
     );
   }

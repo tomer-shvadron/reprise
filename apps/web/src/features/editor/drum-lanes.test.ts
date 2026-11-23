@@ -1,7 +1,15 @@
 import { note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_LANE, drumLanes, laneLabel, laneNear, stepLane } from './drum-lanes';
+import {
+  DEFAULT_LANE,
+  cursorLane,
+  drumLanes,
+  noteAtCursor,
+  laneLabel,
+  laneNear,
+  stepLane,
+} from './drum-lanes';
 
 const empty = score().track('drums').bar().build().tracks[0];
 if (!empty) throw new Error('no track');
@@ -40,8 +48,13 @@ describe('stepLane', () => {
     expect(stepLane(empty, 57, -1)).toBeUndefined();
   });
 
-  it('refuses a key that is not on the list', () => {
-    expect(stepLane(empty, 5, -1)).toBeUndefined();
+  it('steps from where a key off the list would sit, so the arrows always move', () => {
+    // Cowbell (56) is no kit lane: after its last hit is deleted the lane still steps.
+    expect(stepLane(empty, 56, -1)).toBe(51);
+    expect(stepLane(empty, 56, 1)).toBe(50);
+    // An unknown key sits where layout draws it, on position 4.
+    expect(stepLane(empty, 5, -1)).toBe(47);
+    expect(stepLane(empty, 5, 1)).toBe(45);
   });
 });
 
@@ -51,10 +64,36 @@ describe('laneNear', () => {
     expect(laneNear(empty, 5, 38)).toBe(38);
     expect(laneNear(empty, 5, 37)).toBe(37);
   });
+
+  it('gives the snare on a shared line when the current lane is elsewhere, then the lowest key', () => {
+    expect(laneNear(empty, 5, 42)).toBe(38);
+    expect(laneNear(empty, 5, undefined)).toBe(38);
+    // Position 8 holds the ride (51) and the ride bell (53): the lowest key.
+    expect(laneNear(empty, 8, 42)).toBe(51);
+  });
 });
 
 describe('laneLabel', () => {
   it('names the drum and its key', () => {
     expect(laneLabel(DEFAULT_LANE)).toBe('Acoustic Snare (38)');
+  });
+});
+
+describe('cursorLane', () => {
+  it('reads the cursor lane, else the snare', () => {
+    expect(cursorLane({})).toBe(38);
+    expect(cursorLane({ pitch: 42 })).toBe(42);
+  });
+});
+
+describe('noteAtCursor', () => {
+  const notes = [
+    { string: 0, fret: 36 },
+    { string: 0, fret: 42 },
+  ];
+  it('finds a drum hit by lane and a fretted note by string', () => {
+    expect(noteAtCursor({ kind: 'drums' }, notes, { string: 0, pitch: 42 })).toBe(notes[1]);
+    expect(noteAtCursor({ kind: 'drums' }, notes, { string: 0 })).toBeUndefined();
+    expect(noteAtCursor({ kind: 'fretted' }, notes, { string: 0 })).toBe(notes[0]);
   });
 });

@@ -18,7 +18,7 @@ import {
 import type { EditCursor, EditRange, RangeEnd } from '@/state/selection';
 
 import { stringCount } from './cursor';
-import { DEFAULT_LANE, lanePosition } from './drum-lanes';
+import { cursorLane, lanePosition } from './drum-lanes';
 import { endSpan, rangeSpan, type TimePoint } from './range';
 
 /** A tab or standard staff has five or six lines to a staff `height`; this is one gap of the standard five. */
@@ -73,9 +73,9 @@ function caretOn(
   }
   const wide = Math.max(width, staffSpace(staff) * MIN_CARET_SPACES);
   if (staff.type === 'percussion') {
-    // One space tall on the lane's line or space; position 0 is the bottom line, 2 to a space.
+    // One space tall on the lane's line or space; position 0 is the bottom line, two to a space.
     const space = staffSpace(staff);
-    const y = staff.bottom - (lanePosition(cursor.pitch ?? DEFAULT_LANE) * space) / 2;
+    const y = staff.bottom - (lanePosition(cursorLane(cursor)) * space) / 2;
     return {
       system,
       box: { x: x - wide / 2, y: y - space / 2, width: wide, height: space },

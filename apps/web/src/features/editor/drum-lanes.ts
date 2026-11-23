@@ -1,4 +1,6 @@
-import { percussionInstrument, type Track } from '@reprise/model';
+import { percussionInstrument, type Note, type Track } from '@reprise/model';
+
+import type { EditCursor } from '@/state/selection';
 
 /** The snare: the lane a drum cursor starts on. */
 export const DEFAULT_LANE = 38;
@@ -11,8 +13,27 @@ const DEFAULT_KIT = [
   36, 38, 37, 42, 44, 46, 41, 43, 45, 47, 48, 50, 49, 57, 51, 53, 52, 55,
 ] as const;
 
-/** The staff position of a drum key; keys the model does not know sort with the snare. */
-const positionOf = (midi: number): number => percussionInstrument(midi)?.staffPosition ?? 5;
+/** Where layout draws a key the model does not know (`UNMAPPED_POSITION` in the layout package). */
+const UNMAPPED_POSITION = 4;
+
+/** The staff position of a drum key, as layout draws it. */
+const positionOf = (midi: number): number =>
+  percussionInstrument(midi)?.staffPosition ?? UNMAPPED_POSITION;
+
+/** The lane a drum cursor is on: its own, else the snare. */
+export const cursorLane = (cursor: Pick<EditCursor, 'pitch'>): number =>
+  cursor.pitch ?? DEFAULT_LANE;
+
+/** The note of a beat in the cursor's slot: its string on a fretted track, its lane on a drum one. */
+export function noteAtCursor<T extends Pick<Note, 'string' | 'fret'>>(
+  track: Pick<Track, 'kind'>,
+  notes: readonly T[],
+  cursor: Pick<EditCursor, 'string' | 'pitch'>,
+): T | undefined {
+  return notes.find((note) =>
+    track.kind === 'drums' ? note.fret === cursorLane(cursor) : note.string === cursor.string,
+  );
+}
 
 /**
  * The lanes a drum cursor walks, bottom of the staff first: the default kit plus every
@@ -34,8 +55,9 @@ export function drumLanes(track: Pick<Track, 'bars'>): number[] {
 }
 
 /**
- * The lane `delta` away from `midi`: -1 up the staff, +1 down, as the string keys count. It stops
- * at the ends of the list; undefined there, or when `midi` is not a drum key.
+ * The lane `delta` away from `midi`: -1 up the staff, +1 down, as the string keys count. A key
+ * that is not on the list (the last hit of a non-kit drum was deleted, or a file's unknown key)
+ * is stepped from where it would sit, so the arrows always move. Undefined at the ends.
  */
 export function stepLane(
   track: Pick<Track, 'bars'>,
@@ -43,26 +65,28 @@ export function stepLane(
   delta: -1 | 1,
 ): number | undefined {
   const lanes = drumLanes(track);
-  const from = lanes.indexOf(midi);
-  if (from < 0) return undefined;
-  return lanes[from - delta];
+  if (!lanes.includes(midi)) {
+    lanes.push(midi);
+    lanes.sort((a, b) => positionOf(a) - positionOf(b) || a - b);
+  }
+  return lanes[lanes.indexOf(midi) - delta];
 }
 
 /**
  * The lane nearest a staff position (0 is the bottom line, 8 the top one), for a click. Of several
- * lanes on one line the `current` one wins, else the first in the list.
+ * lanes on one line the `current` one wins, then the snare, then the lowest key.
  */
 export function laneNear(
   track: Pick<Track, 'bars'>,
   position: number,
   current: number | undefined,
 ): number {
+  const rank = (lane: number) => (lane === current ? 0 : lane === DEFAULT_LANE ? 1 : 2);
   let best = DEFAULT_LANE;
   let nearest = Number.POSITIVE_INFINITY;
   for (const lane of drumLanes(track)) {
     const distance = Math.abs(positionOf(lane) - position);
-    const ties = distance === nearest && lane === current;
-    if (distance < nearest || ties) {
+    if (distance < nearest || (distance === nearest && rank(lane) < rank(best))) {
       best = lane;
       nearest = distance;
     }

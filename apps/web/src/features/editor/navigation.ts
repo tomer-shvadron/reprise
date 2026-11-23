@@ -3,7 +3,7 @@ import { beatTicks, type Id, type Score } from '@reprise/model';
 
 import type { EditCursor } from '@/state/selection';
 
-import { stepLane, DEFAULT_LANE } from './drum-lanes';
+import { cursorLane, stepLane } from './drum-lanes';
 import {
   clampString,
   cursorAtPosition,
@@ -74,7 +74,7 @@ export function moveString(
   if (stringCount(score, at.track) === 0) {
     const track = score.tracks[at.track];
     if (track?.kind !== 'drums') return undefined;
-    const pitch = stepLane(track, cursor.pitch ?? DEFAULT_LANE, delta);
+    const pitch = stepLane(track, cursorLane(cursor), delta);
     return pitch === undefined ? undefined : { ...cursor, pitch };
   }
   const string = clampString(score, at.track, cursor.string + delta);

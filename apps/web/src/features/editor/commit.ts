@@ -69,14 +69,17 @@ export function commitEdit(
   entry.getState().setMessage(undefined);
   const { score } = document.getState();
   const base = options.base ?? selection.getState().cursor;
-  if (options.moveCursor !== false && options.land && score && base) {
-    const cursor = landingCursor(score, options.land, base);
-    if (cursor) selection.getState().setEdit({ cursor, currentTrack: cursor.track });
-  }
-  if (options.moveCursor !== false && options.lane !== undefined) {
-    const { cursor } = selection.getState();
-    if (cursor && cursor.pitch !== options.lane) {
-      selection.getState().setEdit({ cursor: { ...cursor, pitch: options.lane } });
+  if (options.moveCursor !== false) {
+    // One write per hit: the landing is made already on the hit's lane.
+    const { lane } = options;
+    const from = base && lane !== undefined ? { ...base, pitch: lane } : base;
+    const landed =
+      options.land && score && from ? landingCursor(score, options.land, from) : undefined;
+    const current = selection.getState().cursor;
+    if (landed) {
+      selection.getState().setEdit({ cursor: landed, currentTrack: landed.track });
+    } else if (lane !== undefined && current && current.pitch !== lane) {
+      selection.getState().setEdit({ cursor: { ...current, pitch: lane } });
     }
   }
   // Only where the cursor is: an entry committed after the cursor moved away names no beat it sits on.

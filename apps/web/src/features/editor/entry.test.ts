@@ -173,7 +173,7 @@ describe('a fret digit', () => {
       { string: 0, staff: 'standard' },
     );
     if (!cursor) throw new Error('no cursor');
-    for (const action of [{ kind: 'fret', fret: 1 }, { kind: 'lane' }, { kind: 'tie' }] as const) {
+    for (const action of [{ kind: 'fret', fret: 1 }, { kind: 'tie' }] as const) {
       expect(plan(keys, cursor, action)).toEqual({
         refused: 'Note entry works on fretted and drum tracks only',
       });
@@ -566,6 +566,13 @@ describe('drum entry', () => {
   it.each([9, 26, 88])('refuses %i, which no drum sound sits on', (key) => {
     expect(plan(drums, at(0, 0), { kind: 'fret', fret: key })).toEqual({
       refused: `No drum sound on key ${String(key)}: drums are 27 to 87`,
+    });
+  });
+
+  it('is refused as a lane hit on a fretted track', () => {
+    const guitar = entryScore();
+    expect(plan(guitar, cursorAt(guitar, 0, 0), { kind: 'lane' })).toEqual({
+      refused: 'A hit is placed on a drum track only',
     });
   });
 
